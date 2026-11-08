@@ -1,0 +1,55 @@
+name: Website (GitHub Pages)
+
+# Publishes the static Aurex website (web/site.html + web/src/site) to GitHub Pages.
+# One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+# Optional: set the repository variable AUREX_APP_URL (Settings -> Secrets and variables -> Actions
+# -> Variables) to the live app's URL so "Get started" and "Sign in" link to it.
+
+on:
+  push:
+    branches: [main, claude/gifted-ritchie-8xzdk9]
+    paths:
+      - "web/**"
+      - "package-lock.json"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build static website
+        run: npm run build:site
+        env:
+          SITE_BASE: /${{ github.event.repository.name }}/
+          VITE_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+          VITE_APP_URL: ${{ vars.AUREX_APP_URL }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

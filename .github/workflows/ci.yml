@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/gifted-ritchie-8xzdk9]
   pull_request:
 
 jobs:

@@ -146,6 +146,16 @@ The software is a foundation. Running a real money or brokerage business has req
 7. **Backups.** Back up the database file continuously (for example with Litestream) and test restores.
 8. **Disclosures.** AI trading signals are decision aids, not financial advice. Keep the in-app disclaimers and add your own terms.
 
+### Website on GitHub Pages
+
+The public website (Home, Features, Pricing, Security, About) also builds as a static site:
+
+```bash
+npm run build:site
+```
+
+`.github/workflows/pages.yml` publishes it to `https://<owner>.github.io/<repo>/` on every push. One-time setup: **Settings → Pages → Source: GitHub Actions**. Set the repository variable `AUREX_APP_URL` to the live app's URL so the sign-up buttons point at it; until then they read "Launching soon". GitHub Pages can't run the app itself (accounts, payments, AI, trading), which needs a server such as Railway.
+
 ### Railway (one command)
 
 ```bash

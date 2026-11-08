@@ -512,3 +512,5 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 }
 .site .brand span { display: inline; }
 .plan-card .pill { align-self: flex-start; }
+.btn.soon { background: var(--brand-soft); color: var(--brand-text); cursor: default; }
+.btn.soon:hover { background: var(--brand-soft); }

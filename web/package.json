@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:site": "vite build --mode site && node scripts/finalize-site.mjs"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

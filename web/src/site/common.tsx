@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Icon } from "../components/icons";
+import { APP_URL, STATIC_SITE } from "../env";
 import { useAuth } from "../state";
 
 export function usePageTitle(title: string) {
@@ -27,12 +28,22 @@ export function SectionHead({ eyebrow, title, lead, center }: { eyebrow?: string
   );
 }
 
+/**
+ * Link into the app (sign-up, sign-in, dashboard). In the app build it's a router link; on the
+ * static website it points at APP_URL, or renders `fallback` while the app isn't live yet.
+ */
+export function AppLink({ to, className, children, fallback = null }: { to: string; className?: string; children: ReactNode; fallback?: ReactNode }) {
+  if (!STATIC_SITE) return <Link className={className} to={to}>{children}</Link>;
+  if (APP_URL) return <a className={className} href={APP_URL + to}>{children}</a>;
+  return <>{fallback}</>;
+}
+
 export function PrimaryCta({ children = "Create free account" }: { children?: ReactNode }) {
   const { user } = useAuth();
   return (
-    <Link className="btn lg" to={user ? "/app" : "/register"}>
+    <AppLink className="btn lg" to={user ? "/app" : "/register"} fallback={<span className="btn lg soon" aria-disabled="true">Launching soon</span>}>
       {user ? "Open your dashboard" : children}
-    </Link>
+    </AppLink>
   );
 }
 

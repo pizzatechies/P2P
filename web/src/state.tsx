@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "./api";
+import { STATIC_SITE } from "./env";
 import type { Meta, User } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (STATIC_SITE) {
+      // The static website has no API: pages fall back to the platform's default figures.
+      setLoading(false);
+      return;
+    }
     Promise.all([refresh(), api.get<Meta>("/api/meta").then(setMeta).catch(() => undefined)]).finally(() => setLoading(false));
   }, [refresh]);
 

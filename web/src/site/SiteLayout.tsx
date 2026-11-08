@@ -4,6 +4,7 @@ import { Icon } from "../components/icons";
 import { ThemeButton } from "../components/Layout";
 import { Logo } from "../components/Logo";
 import { useAuth } from "../state";
+import { AppLink } from "./common";
 
 const LINKS = [
   { to: "/features", label: "Features" },
@@ -41,11 +42,11 @@ export function SiteLayout() {
           <div className="row site-actions">
             <ThemeButton />
             {user ? (
-              <Link className="btn" to="/app">Open app</Link>
+              <AppLink className="btn" to="/app">Open app</AppLink>
             ) : (
               <>
-                <Link className="btn ghost hide-sm" to="/login">Sign in</Link>
-                <Link className="btn" to="/register">Get started</Link>
+                <AppLink className="btn ghost hide-sm" to="/login">Sign in</AppLink>
+                <AppLink className="btn" to="/register" fallback={<span className="pill brand">Launching soon</span>}>Get started</AppLink>
               </>
             )}
             <button className="btn ghost icon-btn menu-btn" aria-label={open ? "Close menu" : "Open menu"} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -58,7 +59,7 @@ export function SiteLayout() {
             {LINKS.map((l) => (
               <NavLink key={l.to} to={l.to}>{l.label}</NavLink>
             ))}
-            {!user && <NavLink to="/login">Sign in</NavLink>}
+            {!user && <AppLink to="/login">Sign in</AppLink>}
           </nav>
         )}
       </header>
@@ -92,9 +93,9 @@ export function SiteLayout() {
             </div>
             <div>
               <h4>Account</h4>
-              {user ? <Link to="/app">Dashboard</Link> : <Link to="/register">Create account</Link>}
-              {!user && <Link to="/login">Sign in</Link>}
-              <Link to={user ? "/app/settings" : "/login"}>Settings</Link>
+              {user ? <AppLink to="/app">Dashboard</AppLink> : <AppLink to="/register" fallback={<span className="faint small">Launching soon</span>}>Create account</AppLink>}
+              {!user && <AppLink to="/login">Sign in</AppLink>}
+              <AppLink to={user ? "/app/settings" : "/login"}>Settings</AppLink>
             </div>
           </div>
           <div className="footer-legal">
