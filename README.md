@@ -29,7 +29,7 @@ npm run dev
 - Web app: http://localhost:5173 (Vite, proxies `/api` to the server)
 - API: http://localhost:4000
 
-Create two accounts in two browser windows, add sandbox money and send it back and forth. To make yourself an admin, set `ADMIN_EMAILS=you@example.com` before registering.
+Create two accounts in two browser windows, add sandbox money and send it back and forth. To make yourself an admin, set `ADMIN_EMAILS=you@example.com`. It applies when that account registers or next signs in.
 
 ### Configuration
 

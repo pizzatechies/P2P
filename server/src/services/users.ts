@@ -163,6 +163,12 @@ export async function authenticate(
     const secret = decryptSecret(user.totp_secret_enc!, ctx.config.masterKey);
     if (!verifyTotp(secret, input.totpCode)) throw new HttpError(401, "totp_invalid", "That code is not valid");
   }
+  // ADMIN_EMAILS also applies to accounts created before the address was added to it.
+  if (user.role !== "admin" && ctx.config.adminEmails.has(user.email.toLowerCase())) {
+    run(ctx.db, "UPDATE users SET role = 'admin' WHERE id = ?", user.id);
+    audit(ctx, user.id, "admin.promoted_from_config");
+    return getUserRow(ctx, user.id);
+  }
   return user;
 }
 

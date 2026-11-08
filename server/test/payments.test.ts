@@ -215,3 +215,33 @@ describe("payments", () => {
     expect(verifyLedger(ctx).ok).toBe(true);
   });
 });
+
+describe("admin accounts", () => {
+  it("grants admin from ADMIN_EMAILS at sign-up and to existing accounts at login", async () => {
+    const { createApp } = await import("../src/app.js");
+    const { loadConfig } = await import("../src/config.js");
+    const { openDb } = await import("../src/db/index.js");
+    const base = { NODE_ENV: "test", DATABASE_PATH: ":memory:", MASTER_KEY: "test-master-key-0123456789abcdef0123456789" };
+    const db = openDb(":memory:");
+
+    // Registered while the address is NOT an admin email.
+    const before = createApp(loadConfig({ ...base }), db).app;
+    const reg = await request(before).post("/api/auth/register").set("x-aurex-csrf", "1")
+      .send({ email: "Owner@Example.com", handle: "owner", displayName: "Owner", password: "correct-horse-42" });
+    expect(reg.body.user.role).toBe("user");
+
+    // Operator adds the address; the next login promotes the existing account.
+    const after = createApp(loadConfig({ ...base, ADMIN_EMAILS: "owner@example.com, boss@example.com" }), db).app;
+    const login = await request(after).post("/api/auth/login").set("x-aurex-csrf", "1")
+      .send({ email: "owner@example.com", password: "correct-horse-42" });
+    expect(login.body.user.role).toBe("admin");
+
+    // New sign-ups with an admin email are admins straight away; everyone else is not.
+    const boss = await request(after).post("/api/auth/register").set("x-aurex-csrf", "1")
+      .send({ email: "boss@example.com", handle: "boss", displayName: "Boss", password: "correct-horse-42" });
+    expect(boss.body.user.role).toBe("admin");
+    const other = await request(after).post("/api/auth/register").set("x-aurex-csrf", "1")
+      .send({ email: "someone@example.com", handle: "someone", displayName: "Someone", password: "correct-horse-42" });
+    expect(other.body.user.role).toBe("user");
+  });
+});
