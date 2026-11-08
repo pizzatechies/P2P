@@ -1,0 +1,23 @@
+{
+  "name": "p2p-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "P2P Hub - peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in one app.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev -w server\" \"npm:dev -w web\"",
+    "build": "npm run build -w server && npm run build -w web",
+    "start": "npm run start -w server",
+    "test": "npm run test -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
