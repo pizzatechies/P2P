@@ -146,6 +146,18 @@ The software is a foundation. Running a real money or brokerage business has req
 7. **Backups.** Back up the database file continuously (for example with Litestream) and test restores.
 8. **Disclosures.** AI trading signals are decision aids, not financial advice. Keep the in-app disclaimers and add your own terms.
 
+### Railway (one command)
+
+```bash
+npm i -g @railway/cli
+```
+
+```bash
+RAILWAY_API_TOKEN=<account token> ADMIN_EMAILS=you@example.com ./scripts/deploy-railway.sh
+```
+
+The script is safe to re-run. It creates (or reuses) the project and service, attaches a persistent volume at `/data` for the database, creates a public domain, sets the production variables (generating `MASTER_KEY` once), uploads the code, waits for the build and checks `/api/health`. Any optional setting from `.env.example` that's in your shell (for example `ANTHROPIC_API_KEY`) is copied to the service. Use an **account** token from railway.com/account/tokens with no workspace selected.
+
 ### Docker
 
 ```bash
