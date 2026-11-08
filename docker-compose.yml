@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/p2p.db
+    volumes:
+      - p2p-data:/data
+    restart: unless-stopped
+
+volumes:
+  p2p-data:

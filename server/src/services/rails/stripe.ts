@@ -44,8 +44,8 @@ export function stripeRail(opts: { secretKey: string; appUrl: string }): Payment
         mode: "payment",
         client_reference_id: input.externalId,
         customer_email: input.email,
-        success_url: `${opts.appUrl}/wallet?deposit=success&ref=${input.externalId}`,
-        cancel_url: `${opts.appUrl}/wallet?deposit=canceled&ref=${input.externalId}`,
+        success_url: `${opts.appUrl}/app/wallet?deposit=success&ref=${input.externalId}`,
+        cancel_url: `${opts.appUrl}/app/wallet?deposit=canceled&ref=${input.externalId}`,
         metadata: { external_id: input.externalId, user_id: input.userId },
         payment_intent_data: { metadata: { external_id: input.externalId } },
         line_items: [

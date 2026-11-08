@@ -19,7 +19,11 @@ export function metaRoutes(ctx: Ctx) {
       },
       limits: { maxTxUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
       fx: { source: rates.source, asOf: rates.asOf },
-      trading: { liveTradingAllowed: ctx.config.ALLOW_LIVE_TRADING, paperStartingCash: ctx.config.PAPER_STARTING_CASH },
+      trading: {
+        liveTradingAllowed: ctx.config.ALLOW_LIVE_TRADING,
+        paperStartingCash: ctx.config.PAPER_STARTING_CASH,
+        aiMaxPositionPct: ctx.config.AI_MAX_POSITION_PCT,
+      },
     });
   });
   return r;
