@@ -6,11 +6,16 @@ import { AdminPage } from "./pages/Admin";
 import { AIHubPage } from "./pages/AIHub";
 import { LoginPage, RegisterPage } from "./pages/Auth";
 import { DashboardPage } from "./pages/Dashboard";
-import { LandingPage } from "./pages/Landing";
 import { PaymentsPage } from "./pages/Payments";
 import { SettingsPage } from "./pages/Settings";
 import { TradingPage } from "./pages/Trading";
 import { WalletPage } from "./pages/Wallet";
+import { AboutPage } from "./site/About";
+import { FeaturesPage } from "./site/Features";
+import { HomePage } from "./site/Home";
+import { PricingPage } from "./site/Pricing";
+import { SecurityPage } from "./site/Security";
+import { SiteLayout } from "./site/SiteLayout";
 import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
 import "./styles.css";
 
@@ -42,7 +47,13 @@ createRoot(document.getElementById("root")!).render(
       <AuthProvider>
         <ToastProvider>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route element={<SiteLayout />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/features" element={<FeaturesPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/security" element={<SecurityPage />} />
+              <Route path="/about" element={<AboutPage />} />
+            </Route>
             <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
             <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
             <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
