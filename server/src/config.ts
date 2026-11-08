@@ -14,7 +14,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   HOST: z.string().default("0.0.0.0"),
-  DATABASE_PATH: z.string().default("./data/p2p.db"),
+  DATABASE_PATH: z.string().default("./data/aurex.db"),
   /** Public URL of the web app. Used for redirects (Stripe) and the CSRF origin check. */
   APP_URL: z.string().url().default("http://localhost:5173"),
   /** High-entropy secret used to encrypt stored API keys and 2FA secrets. `openssl rand -hex 32` */
@@ -74,7 +74,7 @@ export interface Config extends Env {
   appOrigin: string;
 }
 
-const DEV_MASTER_KEY = "p2p-hub-dev-only-master-key-change-me";
+const DEV_MASTER_KEY = "aurex-dev-only-master-key-change-me";
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   const parsed = EnvSchema.safeParse(source);

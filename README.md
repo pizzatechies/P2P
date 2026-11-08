@@ -1,4 +1,4 @@
-# P2P Hub
+# Aurex
 
 Peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in one web app.
 
@@ -124,7 +124,7 @@ To add bank transfers, mobile money (M-Pesa, MTN, Airtel via an aggregator such 
 - Passwords use scrypt (N=2¹⁵) and are compared in constant time. Login takes the same time whether or not the user exists.
 - Sessions use random 256-bit tokens in `HttpOnly`, `SameSite=Lax` cookies (`Secure` in production). Only a SHA-256 of the token is stored, so sessions can be revoked.
 - Optional **TOTP two-factor** login works with any authenticator app.
-- **CSRF:** every state-changing request must carry a custom `X-P2P-CSRF` header, which other origins can't send.
+- **CSRF:** every state-changing request must carry a custom `X-Aurex-CSRF` header, which other origins can't send.
 - Third-party API keys and 2FA secrets are encrypted at rest with AES-256-GCM, using a key derived from `MASTER_KEY`.
 - Helmet security headers include a strict Content-Security-Policy.
 - Rate limits apply per IP (auth, API) and per user (money movement, AI, orders).
@@ -158,13 +158,13 @@ Edit `.env` (at least `MASTER_KEY` and `APP_URL`), then:
 docker compose up --build -d
 ```
 
-The app serves on port 4000, and data lives in the `p2p-data` volume.
+The app serves on port 4000, and data lives in the `aurex-data` volume.
 
 ---
 
 ## API overview
 
-All endpoints are under `/api` and use JSON bodies. Mutations need the header `X-P2P-CSRF: 1`. Errors look like `{ "error": { "code", "message" } }`.
+All endpoints are under `/api` and use JSON bodies. Mutations need the header `X-Aurex-CSRF: 1`. Errors look like `{ "error": { "code", "message" } }`.
 
 | Area | Endpoints |
 |---|---|

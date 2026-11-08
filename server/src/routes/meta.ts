@@ -9,7 +9,7 @@ export function metaRoutes(ctx: Ctx) {
   r.get("/meta", async (_req, res) => {
     const rates = await getRates(ctx);
     res.json({
-      appName: "P2P Hub",
+      appName: "Aurex",
       currencies: Object.values(CURRENCIES),
       rails: describeRails(ctx),
       fees: {

@@ -17,7 +17,7 @@ function headers(t: CompatTarget): Record<string, string> {
   if (t.apiKey) h.Authorization = `Bearer ${t.apiKey}`;
   if (t.provider.id === "openrouter") {
     h["HTTP-Referer"] = t.appUrl;
-    h["X-Title"] = "P2P Hub";
+    h["X-Title"] = "Aurex";
   }
   return h;
 }

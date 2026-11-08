@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # Node 22.13+ is required for the built-in node:sqlite module.
-FROM node:22-slim AS build
+# Override NODE_IMAGE to pull from a mirror, e.g. mirror.gcr.io/library/node:22-slim
+ARG NODE_IMAGE=node:22-slim
+
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json server/
@@ -9,10 +12,10 @@ RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
-FROM node:22-slim
+FROM ${NODE_IMAGE}
 ENV NODE_ENV=production \
     PORT=4000 \
-    DATABASE_PATH=/data/p2p.db
+    DATABASE_PATH=/data/aurex.db
 WORKDIR /app
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules

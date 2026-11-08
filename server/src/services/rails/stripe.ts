@@ -54,7 +54,7 @@ export function stripeRail(opts: { secretKey: string; appUrl: string }): Payment
             price_data: {
               currency: input.currency.toLowerCase(),
               unit_amount: input.amount,
-              product_data: { name: "P2P Hub wallet top-up" },
+              product_data: { name: "Aurex wallet top-up" },
             },
           },
         ],

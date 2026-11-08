@@ -16,7 +16,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(method !== "GET" ? { "X-P2P-CSRF": "1" } : {}),
+      ...(method !== "GET" ? { "X-Aurex-CSRF": "1" } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -47,7 +47,7 @@ export async function streamSse(
   const res = await fetch(url, {
     method: "POST",
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-P2P-CSRF": "1" },
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Aurex-CSRF": "1" },
     body: JSON.stringify(body),
     signal,
   });

@@ -15,8 +15,8 @@ import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
 import "./styles.css";
 
 try {
-  const saved = localStorage.getItem("p2p-theme");
-  if (saved === "light" || saved === "dark") applyTheme(saved);
+  const saved = localStorage.getItem("aurex-theme");
+  applyTheme(saved === "dark" ? "dark" : "light");
 } catch {
   /* storage unavailable */
 }

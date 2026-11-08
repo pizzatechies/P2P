@@ -7,10 +7,10 @@ services:
       - .env
     environment:
       NODE_ENV: production
-      DATABASE_PATH: /data/p2p.db
+      DATABASE_PATH: /data/aurex.db
     volumes:
-      - p2p-data:/data
+      - aurex-data:/data
     restart: unless-stopped
 
 volumes:
-  p2p-data:
+  aurex-data:

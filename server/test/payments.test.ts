@@ -28,11 +28,11 @@ describe("auth", () => {
 
   it("rejects weak passwords and duplicate handles", async () => {
     const { app } = makeApp();
-    const weak = await request(app).post("/api/auth/register").set("x-p2p-csrf", "1")
+    const weak = await request(app).post("/api/auth/register").set("x-aurex-csrf", "1")
       .send({ email: "w@example.com", handle: "weakling", displayName: "W", password: "short" });
     expect(weak.status).toBe(400);
     const { user } = await signup(app, "dup");
-    const again = await request(app).post("/api/auth/register").set("x-p2p-csrf", "1")
+    const again = await request(app).post("/api/auth/register").set("x-aurex-csrf", "1")
       .send({ email: "other@example.com", handle: user.handle, displayName: "X", password: "correct-horse-42" });
     expect(again.status).toBe(409);
   });

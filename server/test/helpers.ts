@@ -24,7 +24,7 @@ export async function signup(app: ReturnType<typeof makeApp>["app"], name = "use
   const handle = `${name}${seq}`.slice(0, 20);
   const res = await agent
     .post("/api/auth/register")
-    .set("x-p2p-csrf", "1")
+    .set("x-aurex-csrf", "1")
     .send({ email: `${handle}@example.com`, handle, displayName: name, password: "correct-horse-42" });
   if (res.status !== 201) throw new Error(`signup failed: ${res.status} ${JSON.stringify(res.body)}`);
   return { agent, user: res.body.user as { id: string; handle: string; email: string } };
@@ -34,9 +34,9 @@ export async function signup(app: ReturnType<typeof makeApp>["app"], name = "use
 export function api(agent: ReturnType<typeof request.agent>) {
   return {
     get: (url: string) => agent.get(url),
-    post: (url: string, body?: object) => agent.post(url).set("x-p2p-csrf", "1").send(body ?? {}),
-    put: (url: string, body?: object) => agent.put(url).set("x-p2p-csrf", "1").send(body ?? {}),
-    patch: (url: string, body?: object) => agent.patch(url).set("x-p2p-csrf", "1").send(body ?? {}),
-    del: (url: string) => agent.delete(url).set("x-p2p-csrf", "1"),
+    post: (url: string, body?: object) => agent.post(url).set("x-aurex-csrf", "1").send(body ?? {}),
+    put: (url: string, body?: object) => agent.put(url).set("x-aurex-csrf", "1").send(body ?? {}),
+    patch: (url: string, body?: object) => agent.patch(url).set("x-aurex-csrf", "1").send(body ?? {}),
+    del: (url: string) => agent.delete(url).set("x-aurex-csrf", "1"),
   };
 }

@@ -80,22 +80,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export const useToast = () => useContext(ToastContext);
 
 // ---------------------------------------------------------------------------
-// Theme (system / light / dark), remembered per browser
+// Theme: white & gold by default, black & gold on request. Remembered per browser.
 // ---------------------------------------------------------------------------
-export type Theme = "system" | "light" | "dark";
+export type Theme = "light" | "dark";
 
 function readTheme(): Theme {
   try {
-    const t = localStorage.getItem("p2p-theme");
-    return t === "light" || t === "dark" ? t : "system";
+    return localStorage.getItem("aurex-theme") === "dark" ? "dark" : "light";
   } catch {
-    return "system";
+    return "light";
   }
 }
 
 export function applyTheme(theme: Theme) {
-  if (theme === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
 export function useTheme(): [Theme, (t: Theme) => void] {
@@ -104,8 +102,7 @@ export function useTheme(): [Theme, (t: Theme) => void] {
     setTheme(t);
     applyTheme(t);
     try {
-      if (t === "system") localStorage.removeItem("p2p-theme");
-      else localStorage.setItem("p2p-theme", t);
+      localStorage.setItem("aurex-theme", t);
     } catch {
       /* storage unavailable */
     }

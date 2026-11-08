@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Icon } from "../components/icons";
+import { Logo } from "../components/Logo";
 import { ThemeButton } from "../components/Layout";
 import { useAuth } from "../state";
 
@@ -11,8 +12,8 @@ export function LandingPage() {
     <div className="landing">
       <nav className="landing-nav">
         <Link to="/" className="brand" style={{ padding: 0 }}>
-          <span className="brand-mark"><Icon.Swap size={17} /></span>
-          <span>P2P Hub</span>
+          <Logo size={30} />
+          <span>Aurex</span>
         </Link>
         <div className="row">
           <ThemeButton />
@@ -30,7 +31,7 @@ export function LandingPage() {
       <section className="hero">
         <div>
           <span className="pill brand">Payments · AI · Investing</span>
-          <h1 style={{ marginTop: 16 }}>Money, AI and markets in one place.</h1>
+          <h1 style={{ marginTop: 16 }}>Money, AI and markets, <span className="gold">all in one place.</span></h1>
           <p className="lead">
             Send and request money in 19 currencies, chat with every major AI model from one screen, and trade
             stocks with an AI analyst that explains its reasoning and waits for your go-ahead.
@@ -94,7 +95,7 @@ export function LandingPage() {
         </div>
       </section>
       <p className="foot-note">
-        P2P Hub runs in sandbox mode by default: deposits and withdrawals are simulated until an operator connects a
+        Aurex runs in sandbox mode by default: deposits and withdrawals are simulated until an operator connects a
         licensed payment provider. AI trading signals are educational decision aids, not financial advice. Investing
         involves risk, including loss of principal.
       </p>

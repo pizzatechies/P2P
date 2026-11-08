@@ -150,7 +150,7 @@ export function verifyTotp(secretB32: string, code: string, timeMs = Date.now())
   return false;
 }
 
-export function totpUri(secretB32: string, account: string, issuer = "P2P Hub") {
+export function totpUri(secretB32: string, account: string, issuer = "Aurex") {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secretB32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 }

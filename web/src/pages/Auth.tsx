@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api";
-import { Icon } from "../components/icons";
+import { Logo } from "../components/Logo";
 import { ErrorText, Field } from "../components/ui";
 import { CurrencySelect } from "../components/ui";
 import { useAuth } from "../state";
@@ -12,8 +12,8 @@ function AuthShell({ title, subtitle, children }: { title: string; subtitle: str
     <div className="auth-wrap">
       <div className="auth-card">
         <Link to="/" className="brand" style={{ justifyContent: "center", padding: "0 0 18px" }}>
-          <span className="brand-mark"><Icon.Swap size={17} /></span>
-          <span>P2P Hub</span>
+          <Logo size={30} />
+          <span>Aurex</span>
         </Link>
         <div className="card" style={{ padding: 26 }}>
           <h1 style={{ fontSize: 22 }}>{title}</h1>
@@ -55,7 +55,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell title="Welcome back" subtitle="Sign in to your P2P Hub account.">
+    <AuthShell title="Welcome back" subtitle="Sign in to your Aurex account.">
       <form className="stack" onSubmit={submit}>
         <Field label="Email">
           <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

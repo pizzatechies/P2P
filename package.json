@@ -1,8 +1,8 @@
 {
-  "name": "p2p-hub",
+  "name": "aurex",
   "version": "0.1.0",
   "private": true,
-  "description": "P2P Hub - peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in one app.",
+  "description": "Aurex - peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in one app.",
   "workspaces": [
     "server",
     "web"

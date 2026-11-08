@@ -1,5 +1,5 @@
 {
-  "name": "@p2p-hub/server",
+  "name": "@aurex/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",

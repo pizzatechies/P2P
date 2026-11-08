@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { initials } from "../format";
 import { useAuth, useTheme, type Theme } from "../state";
 import { Icon } from "./icons";
+import { Logo } from "./Logo";
 
 const NAV = [
   { to: "/app", label: "Dashboard", icon: Icon.Home, end: true },
@@ -14,15 +15,10 @@ const NAV = [
 
 export function ThemeButton() {
   const [theme, setTheme] = useTheme();
-  const next: Record<Theme, Theme> = { system: "light", light: "dark", dark: "system" };
-  const ThemeIcon = theme === "light" ? Icon.Sun : theme === "dark" ? Icon.Moon : Icon.Monitor;
+  const next: Theme = theme === "light" ? "dark" : "light";
+  const ThemeIcon = theme === "light" ? Icon.Moon : Icon.Sun;
   return (
-    <button
-      className="btn ghost icon-btn"
-      onClick={() => setTheme(next[theme])}
-      title={`Theme: ${theme} (click to change)`}
-      aria-label={`Theme: ${theme}. Change theme`}
-    >
+    <button className="btn ghost icon-btn" onClick={() => setTheme(next)} title={`Switch to ${next} theme`} aria-label={`Switch to ${next} theme`}>
       <ThemeIcon />
     </button>
   );
@@ -35,11 +31,9 @@ export function Layout() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <NavLink to="/app" className="brand" aria-label="P2P Hub home">
-          <span className="brand-mark">
-            <Icon.Swap size={17} />
-          </span>
-          <span>P2P Hub</span>
+        <NavLink to="/app" className="brand" aria-label="Aurex home">
+          <Logo size={30} />
+          <span>Aurex</span>
         </NavLink>
         <nav style={{ display: "contents" }} aria-label="Main">
           {NAV.map(({ to, label, icon: I, end }) => (

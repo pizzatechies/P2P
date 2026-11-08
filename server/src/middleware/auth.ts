@@ -3,8 +3,8 @@ import type { Ctx } from "../context.js";
 import { forbidden, HttpError, unauthorized } from "../lib/errors.js";
 import { toAuthUser, userForSessionToken } from "../services/users.js";
 
-export const SESSION_COOKIE = "p2p_session";
-export const CSRF_HEADER = "x-p2p-csrf";
+export const SESSION_COOKIE = "aurex_session";
+export const CSRF_HEADER = "x-aurex-csrf";
 
 export function parseCookies(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
