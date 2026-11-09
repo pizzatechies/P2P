@@ -22,9 +22,11 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/server/package.json server/
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
-RUN mkdir -p /data && chown node:node /data
+COPY docker-entrypoint.sh /usr/local/bin/aurex-entrypoint
+RUN chmod +x /usr/local/bin/aurex-entrypoint && mkdir -p /data && chown node:node /data
 VOLUME /data
-USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+# The entrypoint fixes permissions on the mounted data disk, then drops to the "node" user.
+ENTRYPOINT ["aurex-entrypoint"]
 CMD ["node", "--disable-warning=ExperimentalWarning", "server/dist/index.js"]

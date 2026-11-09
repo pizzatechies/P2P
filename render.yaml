@@ -1,0 +1,29 @@
+# Render Blueprint for Aurex: Dashboard -> New -> Blueprint -> pick this repository.
+# Or deploy from the command line with scripts/deploy-render.sh.
+services:
+  - type: web
+    name: aurex
+    runtime: docker
+    plan: starter            # a persistent disk needs a paid instance; free instances lose data and sleep
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    disk:
+      name: aurex-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /data/aurex.db
+      - key: TRUST_PROXY
+        value: "true"
+      - key: PAYMENT_RAILS
+        value: sandbox
+      - key: MASTER_KEY
+        generateValue: true
+      - key: APP_URL          # set to the service URL, e.g. https://aurex.onrender.com
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false

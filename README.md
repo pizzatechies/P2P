@@ -178,6 +178,14 @@ npm run build:site
 
 `.github/workflows/pages.yml` publishes it to `https://<owner>.github.io/<repo>/` on every push. One-time setup: **Settings → Pages → Source: GitHub Actions**. Set the repository variable `AUREX_APP_URL` to the live app's URL so the sign-up buttons point at it; until then they read "Launching soon". GitHub Pages can't run the app itself (accounts, payments, AI, trading), which needs a server such as Railway.
 
+### Render (one command)
+
+```bash
+RENDER_API_KEY=<api key> ADMIN_EMAILS=you@example.com ./scripts/deploy-render.sh
+```
+
+The script creates (or reuses) a Docker web service from this public repository on the Starter plan in Frankfurt. It attaches a 1 GB persistent disk at `/data`, sets the production variables (generating `MASTER_KEY`), waits for the build and checks `/api/health`. It's safe to re-run: on later runs it deploys the latest commit. You can also use **New → Blueprint** in the Render dashboard with `render.yaml`. A persistent disk needs a paid instance type, because free instances lose data and sleep (which would also stop the autopilot).
+
 ### Railway (one command)
 
 ```bash
