@@ -245,3 +245,16 @@ describe("admin accounts", () => {
     expect(other.body.user.role).toBe("user");
   });
 });
+
+describe("pay links", () => {
+  it("shows a public profile for a handle without signing in, and nothing private", async () => {
+    const { app } = makeApp();
+    const { user } = await signup(app, "payee");
+    const res = await request(app).get(`/api/public/users/@${user.handle}`);
+    expect(res.status).toBe(200);
+    expect(res.body.user).toEqual({ id: user.id, handle: user.handle, displayName: "payee" });
+    expect(JSON.stringify(res.body)).not.toContain("@example.com");
+    expect((await request(app).get("/api/public/users/nobody_here")).status).toBe(404);
+    expect((await request(app).get("/api/public/users/bad%20handle")).status).toBe(404);
+  });
+});

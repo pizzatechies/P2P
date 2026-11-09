@@ -1,11 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { Logo } from "../components/Logo";
 import { ErrorText, Field } from "../components/ui";
 import { CurrencySelect } from "../components/ui";
 import { useAuth } from "../state";
 import type { User } from "../types";
+
+/** Where to go after signing in: a safe, same-site path from ?next=, or the dashboard. */
+function useNext(fallback: string) {
+  const [params] = useSearchParams();
+  const next = params.get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : fallback;
+}
 
 function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
@@ -29,6 +36,7 @@ export function LoginPage() {
   const { setUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const next = useNext((location.state as { from?: string } | null)?.from ?? "/app");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
@@ -43,7 +51,7 @@ export function LoginPage() {
     try {
       const { user } = await api.post<{ user: User }>("/api/auth/login", { email, password, totpCode: needTotp ? totpCode : undefined });
       setUser(user);
-      navigate((location.state as { from?: string } | null)?.from ?? "/app", { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.code === "totp_required") {
         setNeedTotp(true);
@@ -71,7 +79,7 @@ export function LoginPage() {
         <ErrorText error={error} />
         <button className="btn block lg" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         <p className="small muted" style={{ textAlign: "center" }}>
-          New here? <Link to="/register">Create an account</Link>
+          New here? <Link to={`/register${location.search}`}>Create an account</Link>
         </p>
       </form>
     </AuthShell>
@@ -81,6 +89,8 @@ export function LoginPage() {
 export function RegisterPage() {
   const { setUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const next = useNext("/app");
   const [form, setForm] = useState({ displayName: "", handle: "", email: "", password: "", defaultCurrency: "USD" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -93,7 +103,7 @@ export function RegisterPage() {
     try {
       const { user } = await api.post<{ user: User }>("/api/auth/register", form);
       setUser(user);
-      navigate("/app", { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -122,7 +132,7 @@ export function RegisterPage() {
         <ErrorText error={error} />
         <button className="btn block lg" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
         <p className="small muted" style={{ textAlign: "center" }}>
-          Already have an account? <Link to="/login">Sign in</Link>
+          Already have an account? <Link to={`/login${location.search}`}>Sign in</Link>
         </p>
       </form>
     </AuthShell>

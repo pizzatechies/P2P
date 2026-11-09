@@ -53,6 +53,8 @@ export interface PlaceOrderRequest {
   limitPrice?: number;
   signalId?: string;
   confirm?: boolean;
+  /** "autopilot" when the AI places the order itself under the user's autopilot limits. */
+  placedBy?: "user" | "autopilot";
 }
 
 /**
@@ -67,9 +69,10 @@ export async function placeOrder(ctx: Ctx, userId: string, req: PlaceOrderReques
 
   const { broker, market } = brokerFor(ctx, userId);
   const quote = await market.quote(symbol);
-  const source: OrderInput["source"] = req.signalId ? "ai" : "manual";
+  const placedBy = req.placedBy ?? "user";
+  const source: OrderInput["source"] = req.signalId || placedBy === "autopilot" ? "ai" : "manual";
 
-  if (source === "ai") {
+  if (req.signalId) {
     const signal = one<{ id: string; symbol: string; executed_order_id: string | null }>(
       ctx.db,
       "SELECT id, symbol, executed_order_id FROM ai_signals WHERE id = ? AND user_id = ?",
@@ -79,7 +82,12 @@ export async function placeOrder(ctx: Ctx, userId: string, req: PlaceOrderReques
     if (!signal) throw badRequest("Unknown AI signal");
     if (signal.symbol !== symbol) throw badRequest("Order symbol doesn't match the AI signal");
     if (signal.executed_order_id) throw unprocessable("signal_used", "This AI signal has already been executed");
-    if (!req.confirm) throw unprocessable("confirmation_required", "Confirm that you want to place this AI-suggested order");
+    // The autopilot's standing permission (switched on and acknowledged by the user) is its confirmation.
+    if (!req.confirm && placedBy !== "autopilot") {
+      throw unprocessable("confirmation_required", "Confirm that you want to place this AI-suggested order");
+    }
+  }
+  if (source === "ai") {
     if (req.side === "buy") {
       const account = await broker.account();
       const cap = account.equity * ctx.config.AI_MAX_POSITION_PCT;
@@ -100,6 +108,7 @@ export async function placeOrder(ctx: Ctx, userId: string, req: PlaceOrderReques
     limitPrice: req.limitPrice,
     source,
     signalId: req.signalId,
+    placedBy,
   });
   if (req.signalId) {
     run(ctx.db, "UPDATE ai_signals SET executed_order_id = ? WHERE id = ? AND user_id = ?", order.id, req.signalId, userId);

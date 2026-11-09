@@ -19,6 +19,8 @@ export function metaRoutes(ctx: Ctx) {
       },
       limits: { maxTxUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
       fx: { source: rates.source, asOf: rates.asOf },
+      ai: { freeDailyRequests: ctx.config.AI_FREE_DAILY_REQUESTS, freeModels: [...ctx.config.freeModels] },
+      autopilot: { enabled: ctx.config.AUTOPILOT_ENABLED, liveAllowed: ctx.config.ALLOW_LIVE_AUTOPILOT },
       trading: {
         liveTradingAllowed: ctx.config.ALLOW_LIVE_TRADING,
         paperStartingCash: ctx.config.PAPER_STARTING_CASH,

@@ -220,4 +220,65 @@ export const migrations: string[] = [
   );
   CREATE INDEX ai_signals_user ON ai_signals(user_id, created_at);
   `,
+  /* 2: AI autopilot + free AI allowance */ `
+  ALTER TABLE orders ADD COLUMN placed_by TEXT NOT NULL DEFAULT 'user';
+
+  CREATE TABLE autopilot_settings (
+    user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    enabled            INTEGER NOT NULL DEFAULT 0,
+    mode               TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto','approve')),
+    provider           TEXT NOT NULL DEFAULT 'rules',
+    model              TEXT,
+    symbols            TEXT NOT NULL DEFAULT '[]',   -- empty list = use the watchlist
+    interval_min       INTEGER NOT NULL DEFAULT 30,
+    max_position_pct   REAL NOT NULL DEFAULT 5,
+    max_exposure_pct   REAL NOT NULL DEFAULT 50,
+    max_trades_per_day INTEGER NOT NULL DEFAULT 5,
+    max_daily_loss_pct REAL NOT NULL DEFAULT 3,
+    min_confidence     REAL NOT NULL DEFAULT 0.6,
+    use_exits          INTEGER NOT NULL DEFAULT 1,
+    allow_live         INTEGER NOT NULL DEFAULT 0,
+    acknowledged_at    TEXT,
+    paused_reason      TEXT,
+    consecutive_errors INTEGER NOT NULL DEFAULT 0,
+    day_date           TEXT,
+    day_start_equity   REAL,
+    last_run_at        TEXT,
+    next_run_at        TEXT,
+    updated_at         TEXT NOT NULL
+  );
+  CREATE INDEX autopilot_due ON autopilot_settings(enabled, next_run_at);
+
+  CREATE TABLE autopilot_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,     -- run, buy, sell, exit, hold, approval, skip, pause, error
+    symbol     TEXT,
+    message    TEXT NOT NULL,
+    detail     TEXT NOT NULL DEFAULT '{}',
+    order_id   TEXT,
+    signal_id  TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX autopilot_events_user ON autopilot_events(user_id, id);
+
+  -- Stop-loss / take-profit levels for positions the autopilot opened.
+  CREATE TABLE autopilot_guards (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    symbol      TEXT NOT NULL,
+    stop_loss   REAL,
+    take_profit REAL,
+    signal_id   TEXT,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, symbol)
+  );
+
+  -- Requests made with server-provided AI keys, per user per UTC day (free allowance).
+  CREATE TABLE ai_usage (
+    user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day      TEXT NOT NULL,
+    requests INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+  );
+  `,
 ];

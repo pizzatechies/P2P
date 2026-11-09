@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { initials } from "../format";
+import { useInstall, useOnline } from "../pwa";
 import { useAuth, useTheme, type Theme } from "../state";
 import { Icon } from "./icons";
 import { Logo } from "./Logo";
@@ -27,6 +28,8 @@ export function ThemeButton() {
 export function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const install = useInstall();
+  const online = useOnline();
   if (!user) return null;
   return (
     <div className="shell">
@@ -58,6 +61,11 @@ export function Layout() {
             </div>
           </div>
           <div className="row" style={{ gap: 4 }}>
+            {install.kind === "prompt" && (
+              <button className="btn ghost icon-btn" title="Install Aurex as an app" aria-label="Install Aurex as an app" onClick={install.install}>
+                <Icon.ArrowDown />
+              </button>
+            )}
             <ThemeButton />
             <button
               className="btn ghost icon-btn"
@@ -74,6 +82,11 @@ export function Layout() {
         </div>
       </aside>
       <main className="main">
+        {!online && (
+          <div className="banner" role="status">
+            You're offline. Balances and prices may be out of date, and payments will work again when you reconnect.
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

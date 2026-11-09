@@ -43,10 +43,11 @@ export function SecurityPage() {
       icon: <Icon.Chart />,
       title: "AI & trading safeguards",
       items: [
-        "The AI analyst only suggests; every AI order needs your explicit confirmation",
+        "AI orders need your confirmation unless you switch on Autopilot, which you must explicitly accept first",
+        "Autopilot only trades within your limits and pauses itself at your daily loss limit or after repeated errors",
         `AI-suggested buys are capped at ${cap}% of your portfolio`,
         "Each AI signal can be executed once, and long-only rules prevent accidental short selling",
-        "Live, real-money brokerage is off unless the platform operator explicitly enables it",
+        "Live, real-money brokerage is off unless the platform operator explicitly enables it, and live autopilot needs a second, separate opt-in",
       ],
     },
   ];

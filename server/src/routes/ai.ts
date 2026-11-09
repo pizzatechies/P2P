@@ -13,7 +13,8 @@ import {
   historyFor,
   listConversations,
 } from "../services/ai/conversations.js";
-import { listModels, providerStatus, resolve, streamChat } from "../services/ai/gateway.js";
+import { freeUsage } from "../services/ai/allowance.js";
+import { authorizeUse, listModels, providerStatus, streamChat } from "../services/ai/gateway.js";
 import type { Usage } from "../services/ai/types.js";
 
 const SYSTEM_PROMPT =
@@ -42,7 +43,7 @@ export function aiRoutes(ctx: Ctx) {
   const aiLimiter = rateLimit({ name: "ai", windowMs: 60_000, max: ctx.config.isTest ? 10_000 : 30, key: (req) => req.user!.id });
 
   r.get("/providers", (req, res) => {
-    res.json({ providers: providerStatus(ctx, req.user!.id) });
+    res.json({ providers: providerStatus(ctx, req.user!.id), freeAllowance: freeUsage(ctx, req.user!.id) });
   });
 
   r.get("/providers/:id/models", async (req, res) => {
@@ -66,7 +67,8 @@ export function aiRoutes(ctx: Ctx) {
   r.post("/chat", aiLimiter, async (req, res) => {
     const body = parse(ChatBody, req.body);
     const userId = req.user!.id;
-    resolve(ctx, userId, body.provider); // fail fast (JSON error) if the provider isn't connected
+    // Fail fast with a JSON error (not connected, not free, allowance used up) before streaming starts.
+    const authorized = authorizeUse(ctx, userId, body.provider, body.model);
 
     let conversationId = body.conversationId;
     const isNew = !conversationId;
@@ -87,7 +89,7 @@ export function aiRoutes(ctx: Ctx) {
         system: SYSTEM_PROMPT,
         messages,
         signal: sse.signal,
-      })) {
+      }, authorized)) {
         if (ev.type === "text") {
           text += ev.text;
           sse.send("delta", { text: ev.text });
@@ -127,7 +129,6 @@ export function aiRoutes(ctx: Ctx) {
       body.targets.map(async (target, index) => {
         const started = Date.now();
         try {
-          resolve(ctx, userId, target.provider);
           for await (const ev of streamChat(ctx, userId, {
             ...target,
             system: SYSTEM_PROMPT,

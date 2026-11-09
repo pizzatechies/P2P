@@ -29,6 +29,8 @@ export interface OrderInput {
   limitPrice?: number;
   source: "manual" | "ai";
   signalId?: string;
+  /** Who pressed the button: the user, or the AI autopilot acting within the user's limits. */
+  placedBy?: "user" | "autopilot";
 }
 
 export interface OrderView {
@@ -42,6 +44,7 @@ export interface OrderView {
   filledQty: number;
   filledAvgPrice: number | null;
   source: "manual" | "ai";
+  placedBy: "user" | "autopilot";
   rejectReason: string | null;
   createdAt: string;
 }

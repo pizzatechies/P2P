@@ -78,6 +78,7 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
       filledQty: num(o.filled_qty) ?? 0,
       filledAvgPrice: num(o.filled_avg_price),
       source: local?.source ?? "manual",
+      placedBy: local?.placed_by ?? "user",
       rejectReason: null,
       createdAt: o.created_at,
     };
@@ -140,8 +141,8 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
       const now = nowIso();
       run(
         ctx.db,
-        `INSERT INTO orders (id, user_id, broker, broker_order_id, symbol, side, type, qty, limit_price, status, source, signal_id, created_at, updated_at)
-         VALUES (?, ?, 'alpaca', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO orders (id, user_id, broker, broker_order_id, symbol, side, type, qty, limit_price, status, source, signal_id, placed_by, created_at, updated_at)
+         VALUES (?, ?, 'alpaca', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         userId,
         o.id,
@@ -153,6 +154,7 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
         o.status,
         input.source,
         input.signalId ?? null,
+        input.placedBy ?? "user",
         now,
         now,
       );

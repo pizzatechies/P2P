@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { Ctx } from "../../context.js";
 import { badRequest, unprocessable } from "../../lib/errors.js";
 import { getUserKey } from "../keys.js";
+import { assertFreeModel, chargeFreeRequest } from "./allowance.js";
 import { listAnthropicModels, streamAnthropic, structuredAnthropic } from "./anthropic.js";
 import { streamDemo } from "./demo.js";
 import { completeCompat, listCompatModels, streamCompat, type CompatTarget } from "./openaiCompat.js";
@@ -50,6 +51,19 @@ export function resolve(ctx: Ctx, userId: string, providerId: string): ResolvedP
   return r;
 }
 
+/**
+ * Resolves credentials for one AI request and, when it will run on the server's own key, applies the
+ * free allowance (model allowlist + daily request count). Call once per request.
+ */
+export function authorizeUse(ctx: Ctx, userId: string, providerId: string, model: string): ResolvedProvider {
+  const r = resolve(ctx, userId, providerId);
+  if (r.source === "server") {
+    assertFreeModel(ctx, providerId, model);
+    chargeFreeRequest(ctx, userId);
+  }
+  return r;
+}
+
 function compatTarget(ctx: Ctx, r: ResolvedProvider): CompatTarget {
   return { provider: r.provider, apiKey: r.apiKey, baseUrl: r.baseUrl!, appUrl: ctx.config.APP_URL };
 }
@@ -64,6 +78,7 @@ export function providerStatus(ctx: Ctx, userId: string) {
       kind: p.kind,
       available: !!r,
       source: r?.source ?? null,
+      free: r?.source === "server" || r?.source === "builtin",
       keyRequired: p.keyRequired,
       keyUrl: p.keyUrl ?? null,
       listModels: p.listModels,
@@ -72,9 +87,14 @@ export function providerStatus(ctx: Ctx, userId: string) {
   });
 }
 
-export async function* streamChat(ctx: Ctx, userId: string, req: ChatRequest): AsyncGenerator<StreamEvent> {
-  const r = resolve(ctx, userId, req.provider);
+export async function* streamChat(
+  ctx: Ctx,
+  userId: string,
+  req: ChatRequest,
+  authorized?: ResolvedProvider,
+): AsyncGenerator<StreamEvent> {
   if (!req.model.trim()) throw badRequest("Pick a model");
+  const r = authorized ?? authorizeUse(ctx, userId, req.provider, req.model);
   switch (r.provider.kind) {
     case "demo":
       yield* streamDemo(req);
@@ -109,6 +129,7 @@ export async function completeStructured<T extends z.ZodType>(
 ): Promise<{ data: z.infer<T>; model: string }> {
   const r = resolve(ctx, userId, opts.provider);
   if (r.provider.kind === "demo") throw new AIProviderError("The demo provider can't produce analysis", "demo");
+  authorizeUse(ctx, userId, opts.provider, opts.model);
   if (r.provider.kind === "anthropic") {
     return structuredAnthropic(r.apiKey!, { ...opts, effort: "high" });
   }

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { AutopilotPanel } from "../components/Autopilot";
 import { PriceChart } from "../components/charts";
 import { Icon } from "../components/icons";
 import { Delta, Empty, ErrorText, Field, Modal, StatusPill } from "../components/ui";
@@ -107,7 +108,7 @@ export function TradingPage() {
         <div className="card">
           <div className="stat-label">AI guardrail</div>
           <div className="stat-value" style={{ fontSize: 20 }}>Max {aiCapPct}% per AI trade</div>
-          <div className="stat-sub">Every AI order needs your confirmation</div>
+          <div className="stat-sub">You confirm AI orders, or let <a href="#autopilot">Autopilot</a> trade within your limits</div>
         </div>
       </div>
 
@@ -158,6 +159,10 @@ export function TradingPage() {
       <div className="grid grid-2" style={{ marginBottom: 16 }}>
         <OrderTicket symbol={symbol} quote={chart.data?.quote ?? null} held={position?.qty ?? 0} onPlaced={refreshAll} />
         <AnalystPanel symbol={symbol} onExecuted={refreshAll} onAnalyzed={() => signals.reload()} maxPct={aiCapPct} liveTradingNote={meta?.trading.liveTradingAllowed ?? false} />
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <AutopilotPanel onTraded={refreshAll} />
       </div>
 
       <div className="card flush" style={{ marginBottom: 16 }}>
@@ -211,7 +216,11 @@ export function TradingPage() {
                       <td>
                         <div style={{ fontWeight: 600 }}>
                           <span className={o.side === "buy" ? "good" : "bad"}>{o.side.toUpperCase()}</span> {fmtQty(o.qty)} {o.symbol}
-                          {o.source === "ai" && <span className="pill brand" style={{ marginLeft: 6 }}>AI</span>}
+                          {o.placedBy === "autopilot" ? (
+                            <span className="pill brand" style={{ marginLeft: 6 }}>Autopilot</span>
+                          ) : (
+                            o.source === "ai" && <span className="pill brand" style={{ marginLeft: 6 }}>AI</span>
+                          )}
                         </div>
                         <div className="faint xs">{o.type}{o.limitPrice ? ` @ ${num(o.limitPrice)}` : ""} · {timeAgo(o.createdAt)}</div>
                         {o.rejectReason && <div className="error-text xs">{o.rejectReason}</div>}
@@ -512,7 +521,7 @@ function AnalystPanel({ symbol, onExecuted, onAnalyzed, maxPct, liveTradingNote 
           </div>
         )}
         <p className="faint xs">
-          Signals are generated from price data and are not financial advice. AI orders are capped at {maxPct}% of your portfolio and always need your confirmation.
+          Signals are generated from price data and are not financial advice. AI orders are capped at {maxPct}% of your portfolio and need your confirmation, unless you switch on Autopilot below.
           {liveTradingNote ? " Live trading is enabled on this server." : ""}
         </p>
       </div>

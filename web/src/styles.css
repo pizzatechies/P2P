@@ -514,3 +514,21 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .plan-card .pill { align-self: flex-start; }
 .btn.soon { background: var(--brand-soft); color: var(--brand-text); cursor: default; }
 .btn.soon:hover { background: var(--brand-soft); }
+
+/* AI Autopilot */
+.autopilot { border-top: 3px solid var(--brand); }
+.autopilot-settings { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.autopilot-feed { max-height: 360px; overflow-y: auto; }
+.feed-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.feed-item:last-child { border-bottom: 0; }
+.feed-item .pill { margin-top: 1px; }
+.feed-why { margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 640px) { .feed-item { flex-wrap: wrap; } }
+
+/* Pay links & sharing */
+.pay-card { text-align: center; padding: 28px 24px; display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.pay-avatar { width: 64px; height: 64px; font-size: 22px; margin: 0 auto 10px; background: var(--brand-soft); color: var(--brand-text); }
+.pay-amount { font-size: 38px; font-weight: 740; letter-spacing: -0.03em; margin-top: 12px; }
+.pay-link { padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); word-break: break-all; }
+.btn.wa { background: #25d366; color: #052e16; }
+.btn.wa:hover { background: #1fbe5b; text-decoration: none; }

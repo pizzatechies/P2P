@@ -73,12 +73,14 @@ export function FeaturesPage() {
       <Section id="trading">
         <div className="split">
           <div>
-            <SectionHead eyebrow="AI trading" title="An analyst on your side, not in your seat" lead="Aurex's AI analyst reads the trend, momentum and volatility of any stock and proposes a trade, sized and with exits, then waits for you." />
+            <SectionHead eyebrow="AI trading" title="An analyst on your side, and an autopilot when you want one" lead="Aurex's AI analyst reads the trend, momentum and volatility of any stock and proposes a trade, sized and with exits. Switch on Autopilot and it can act for you, inside rules you set." />
             <ul className="check-list">
               <Check>Practise with ${cash} of paper money on every account</Check>
               <Check>Connect your own Alpaca account for live market data and brokerage</Check>
               <Check>Signals cite moving averages, RSI, MACD, volatility and recent returns</Check>
-              <Check>Every AI order needs your confirmation and is capped at {cap}% of your portfolio</Check>
+              <Check>AI Autopilot can trade for you on a schedule, or ask before each trade</Check>
+              <Check>You set the limits: per position (up to {cap}%), total invested, trades per day, minimum confidence</Check>
+              <Check>A daily loss limit pauses the autopilot automatically; stop-losses close its positions</Check>
               <Check>Watchlists, limit orders, positions and full order history</Check>
             </ul>
             <p className="faint small">AI signals are educational decision aids, not financial advice.</p>

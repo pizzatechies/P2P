@@ -64,7 +64,7 @@ export function HomePage() {
           <Link to="/features#trading" className="pillar">
             <span className="pillar-ico"><Icon.Chart /></span>
             <h3>AI-assisted trading</h3>
-            <p>An analyst that reads the charts, sizes the trade and sets a stop-loss, then lets you make the call.</p>
+            <p>An analyst that reads the charts, sizes the trade and sets a stop-loss, and an autopilot that can trade for you within your limits.</p>
             <span className="pillar-link">Trading →</span>
           </Link>
         </div>
@@ -96,7 +96,7 @@ export function HomePage() {
           <div><strong>{sendFee}</strong><span>to send money to anyone on Aurex</span></div>
           <div><strong>{currencies}</strong><span>currencies, from dollars to kwacha</span></div>
           <div><strong>{PROVIDERS.length}</strong><span>AI providers in one place</span></div>
-          <div><strong>100%</strong><span>of AI trades need your approval</span></div>
+          <div><strong>{Math.round((meta?.trading.aiMaxPositionPct ?? 0.1) * 100)}%</strong><span>max of your portfolio in any one AI trade</span></div>
         </div>
       </Section>
 
@@ -131,7 +131,7 @@ export function HomePage() {
           items={[
             { q: "Is Aurex free?", a: <>Opening an account is free, and sending money to other Aurex users is {sendFee.toLowerCase()}. Currency conversion includes a small, clearly shown spread. See <Link to="/pricing">pricing</Link>.</> },
             { q: "Which AI models can I use?", a: "Claude, GPT, Gemini, Mistral, Llama (via Groq or Together), Grok, DeepSeek, Perplexity, self-hosted models via Ollama, and hundreds more through OpenRouter. A built-in assistant works with no setup at all." },
-            { q: "Will the AI trade for me?", a: "No. The AI analyst suggests a trade with its reasoning, size, stop-loss and target, but nothing is placed until you review and confirm it. AI-suggested positions are also capped at a share of your portfolio." },
+            { q: "Will the AI trade for me?", a: "Only if you want it to. By default the AI analyst suggests trades and waits for you. Switch on AI Autopilot and it trades for you on a schedule, strictly inside limits you set: a maximum per position and in total, trades per day, a minimum confidence, and a daily loss limit that pauses it. You can also have it ask before every trade, and pause it any time." },
             { q: "Can I practise before using real money?", a: "Yes. Every account includes a paper-trading portfolio with virtual cash, so you can try strategies and the AI analyst risk-free." },
             { q: "Is my money real right now?", a: "Aurex is currently in sandbox mode: deposits and withdrawals use test money while licensed payment partners are being connected. Transfers between users work exactly as they will with real funds." },
           ]}

@@ -6,10 +6,42 @@ import { Icon } from "../components/icons";
 import { ActivityList, ConvertDialog, DepositDialog, RequestDialog, SendDialog } from "../components/money";
 import { Delta } from "../components/ui";
 import { money, pct, usd } from "../format";
+import { useInstall } from "../pwa";
 import { useAuth, useLoad } from "../state";
 import type { Activity, Balance, Bar, PaymentRequest, Provider, Quote, TradingAccount, TradingSettings } from "../types";
 
 type Dialog = null | "send" | "request" | "deposit" | "convert";
+
+/** Suggests installing Aurex to the home screen (Android/desktop prompt, or iOS instructions). */
+function InstallCard() {
+  const install = useInstall();
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem("aurex-install-dismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  if (hidden || !install.kind) return null;
+  const dismiss = () => {
+    setHidden(true);
+    try {
+      localStorage.setItem("aurex-install-dismissed", "1");
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  return (
+    <div className="banner info" style={{ alignItems: "center" }}>
+      <span className="grow">
+        <strong>Get the Aurex app.</strong>{" "}
+        {install.kind === "ios" ? "In Safari, tap the Share button, then “Add to Home Screen”." : "Install it on this device for one-tap access, even on slow connections."}
+      </span>
+      {install.kind === "prompt" && <button className="btn sm" onClick={install.install}>Install</button>}
+      <button className="btn ghost sm" onClick={dismiss}>Not now</button>
+    </div>
+  );
+}
 
 export function DashboardPage() {
   const { user, meta } = useAuth();
@@ -50,6 +82,8 @@ export function DashboardPage() {
           <p className="muted">Here's your money, your AI tools and your portfolio at a glance.</p>
         </div>
       </div>
+
+      <InstallCard />
 
       {sandbox && (
         <div className="banner info">

@@ -15,6 +15,7 @@ import { aiRoutes } from "./routes/ai.js";
 import { authRoutes } from "./routes/auth.js";
 import { metaRoutes } from "./routes/meta.js";
 import { paymentRoutes } from "./routes/payments.js";
+import { publicRoutes } from "./routes/public.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { tradingRoutes } from "./routes/trading.js";
 import { webhookRoutes } from "./routes/webhooks.js";
@@ -58,6 +59,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   app.get("/api/health", (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
   app.use("/api", metaRoutes(ctx));
   app.use("/api/auth", authRoutes(ctx));
+  app.use("/api/public", publicRoutes(ctx));
   app.use("/api/settings", settingsRoutes(ctx));
   app.use("/api/payments", paymentRoutes(ctx));
   app.use("/api/ai", aiRoutes(ctx));

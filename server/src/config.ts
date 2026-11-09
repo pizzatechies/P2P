@@ -61,6 +61,18 @@ const EnvSchema = z.object({
   PAPER_STARTING_CASH: z.coerce.number().positive().default(100_000),
   /** Max share of portfolio value a single AI-suggested order may use (0-1). */
   AI_MAX_POSITION_PCT: z.coerce.number().min(0.01).max(1).default(0.1),
+  /** Lets users switch on the AI autopilot (AI places trades within the user's limits). */
+  AUTOPILOT_ENABLED: bool.default(true),
+  /** Must be true before the autopilot may trade a LIVE (real-money) brokerage account. */
+  ALLOW_LIVE_AUTOPILOT: bool.default(false),
+  /** Shortest interval a user may set between autopilot runs. */
+  AUTOPILOT_MIN_INTERVAL_MIN: z.coerce.number().int().min(1).max(1440).default(5),
+
+  // ---- Free AI allowance (applies only when server-provided keys are used) ----
+  /** Requests per user per UTC day on the server's AI keys. 0 = unlimited. Users' own keys are never limited. */
+  AI_FREE_DAILY_REQUESTS: z.coerce.number().int().min(0).default(25),
+  /** Optional allowlist of "provider:model" pairs usable on the server's keys, e.g. anthropic:claude-haiku-5-5 */
+  AI_FREE_MODELS: z.string().default(""),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -72,6 +84,7 @@ export interface Config extends Env {
   adminEmails: Set<string>;
   rails: string[];
   appOrigin: string;
+  freeModels: Set<string>;
 }
 
 const DEV_MASTER_KEY = "aurex-dev-only-master-key-change-me";
@@ -118,5 +131,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     ),
     rails,
     appOrigin: new URL(env.APP_URL).origin,
+    freeModels: new Set(
+      env.AI_FREE_MODELS.split(",")
+        .map((m) => m.trim())
+        .filter(Boolean),
+    ),
   };
 }

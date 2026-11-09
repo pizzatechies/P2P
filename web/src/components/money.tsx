@@ -60,13 +60,27 @@ function RecipientInput({ value, onChange }: { value: string; onChange: (v: stri
   );
 }
 
-export function SendDialog({ onClose, onDone, initialTo = "" }: { onClose: () => void; onDone: () => void; initialTo?: string }) {
+export function SendDialog({
+  onClose,
+  onDone,
+  initialTo = "",
+  initialAmount = "",
+  initialCurrency,
+  initialMemo = "",
+}: {
+  onClose: () => void;
+  onDone: () => void;
+  initialTo?: string;
+  initialAmount?: string;
+  initialCurrency?: string;
+  initialMemo?: string;
+}) {
   const { user, meta } = useAuth();
   const toast = useToast();
   const [to, setTo] = useState(initialTo);
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
-  const [memo, setMemo] = useState("");
+  const [amount, setAmount] = useState(initialAmount);
+  const [currency, setCurrency] = useState(initialCurrency ?? user?.defaultCurrency ?? "USD");
+  const [memo, setMemo] = useState(initialMemo);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [key] = useState(idempotencyKey);

@@ -29,6 +29,8 @@ export interface Meta {
   fees: { p2pBps: number; fxSpreadBps: number; withdrawalBps: number };
   limits: { maxTxUsd: number; dailyUsd: number };
   fx: { source: "live" | "static"; asOf: string };
+  ai?: { freeDailyRequests: number; freeModels: string[] };
+  autopilot?: { enabled: boolean; liveAllowed: boolean };
   trading: { liveTradingAllowed: boolean; paperStartingCash: number; aiMaxPositionPct: number };
 }
 
@@ -70,6 +72,15 @@ export interface Provider {
   keyUrl: string | null;
   listModels: boolean;
   models: { id: string; label: string }[];
+  free?: boolean;
+}
+
+export interface FreeAllowance {
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+  resetsAt: string;
+  models: string[];
 }
 
 export interface Conversation { id: string; title: string; provider: string; model: string; updatedAt: string }
@@ -135,6 +146,7 @@ export interface Order {
   filledQty: number;
   filledAvgPrice: number | null;
   source: "manual" | "ai";
+  placedBy?: "user" | "autopilot";
   rejectReason: string | null;
   createdAt: string;
 }
@@ -155,4 +167,43 @@ export interface Signal {
   indicators: Record<string, number | null>;
   executedOrderId: string | null;
   createdAt: string;
+}
+
+export interface AutopilotSettings {
+  enabled: boolean;
+  mode: "auto" | "approve";
+  provider: string;
+  model: string | null;
+  symbols: string[];
+  intervalMin: number;
+  maxPositionPct: number;
+  maxExposurePct: number;
+  maxTradesPerDay: number;
+  maxDailyLossPct: number;
+  minConfidence: number;
+  useExits: boolean;
+  allowLive: boolean;
+  acknowledged: boolean;
+  pausedReason: string | null;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+
+export interface AutopilotEvent {
+  id: number;
+  kind: "run" | "buy" | "sell" | "exit" | "hold" | "approval" | "skip" | "pause" | "error" | string;
+  symbol: string | null;
+  message: string;
+  detail: { qty?: number; price?: number; confidence?: number; side?: "buy" | "sell"; rationale?: string };
+  orderId: string | null;
+  signalId: string | null;
+  executed: boolean;
+  createdAt: string;
+}
+
+export interface AutopilotStatus {
+  settings: AutopilotSettings;
+  stats: { tradesToday: number; dayStartEquity: number | null; equity: number | null; dayPnlPct: number | null };
+  limits: { maxPositionPctCap: number; minIntervalMin: number; liveAutopilotAllowed: boolean; serverEnabled: boolean };
+  events: AutopilotEvent[];
 }

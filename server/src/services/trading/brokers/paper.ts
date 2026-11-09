@@ -32,6 +32,7 @@ export interface OrderRow {
   filled_qty: number;
   filled_avg_price: number | null;
   source: "manual" | "ai";
+  placed_by: "user" | "autopilot";
   signal_id: string | null;
   reject_reason: string | null;
   created_at: string;
@@ -48,6 +49,7 @@ export const orderView = (o: OrderRow): OrderView => ({
   filledQty: o.filled_qty,
   filledAvgPrice: o.filled_avg_price,
   source: o.source,
+  placedBy: o.placed_by ?? "user",
   rejectReason: o.reject_reason,
   createdAt: o.created_at,
 });
@@ -199,8 +201,8 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
       const now = nowIso();
       run(
         ctx.db,
-        `INSERT INTO orders (id, user_id, broker, symbol, side, type, qty, limit_price, status, source, signal_id, created_at, updated_at)
-         VALUES (?, ?, 'paper', ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)`,
+        `INSERT INTO orders (id, user_id, broker, symbol, side, type, qty, limit_price, status, source, signal_id, placed_by, created_at, updated_at)
+         VALUES (?, ?, 'paper', ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?)`,
         id,
         userId,
         input.symbol,
@@ -210,6 +212,7 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
         input.limitPrice ?? null,
         input.source,
         input.signalId ?? null,
+        input.placedBy ?? "user",
         now,
         now,
       );

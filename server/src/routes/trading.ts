@@ -7,6 +7,13 @@ import { parse } from "../lib/validate.js";
 import { requireAuth } from "../middleware/auth.js";
 import { deleteUserKey, saveUserKey } from "../services/keys.js";
 import { analyze, getSignal, listSignals } from "../services/trading/analyst.js";
+import {
+  autopilotStatus,
+  pauseAutopilot,
+  resumeAutopilot,
+  runAutopilot,
+  updateAutopilotSettings,
+} from "../services/trading/autopilot.js";
 import { ALPACA_LIVE, ALPACA_PAPER, alpacaRequest } from "../services/trading/brokers/alpaca.js";
 import { resetPaperAccount } from "../services/trading/brokers/paper.js";
 import {
@@ -35,6 +42,23 @@ const AnalyzeBody = z.object({
   symbol: z.string().min(1).max(12),
   provider: z.string().max(30).optional(),
   model: z.string().max(200).optional(),
+});
+
+const AutopilotBody = z.object({
+  enabled: z.boolean().optional(),
+  acknowledge: z.boolean().optional(),
+  mode: z.enum(["auto", "approve"]).optional(),
+  provider: z.string().max(30).optional(),
+  model: z.string().max(200).nullable().optional(),
+  symbols: z.array(z.string().min(1).max(12)).max(20).optional(),
+  intervalMin: z.coerce.number().int().optional(),
+  maxPositionPct: z.coerce.number().optional(),
+  maxExposurePct: z.coerce.number().optional(),
+  maxTradesPerDay: z.coerce.number().int().optional(),
+  maxDailyLossPct: z.coerce.number().optional(),
+  minConfidence: z.coerce.number().optional(),
+  useExits: z.boolean().optional(),
+  allowLive: z.boolean().optional(),
 });
 
 const AlpacaKeysBody = z.object({
@@ -169,6 +193,45 @@ export function tradingRoutes(ctx: Ctx) {
     });
     audit(ctx, req.user!.id, "trading.ai_order", { orderId: result.order.id, signalId: signal.id }, req.ip);
     res.status(201).json(result);
+  });
+
+  // ---- AI Autopilot ---------------------------------------------------------
+  async function autopilotView(userId: string) {
+    const status = autopilotStatus(ctx, userId);
+    let equity: number | null = null;
+    try {
+      equity = (await brokerFor(ctx, userId).broker.account()).equity;
+    } catch {
+      /* broker unreachable: show the rest */
+    }
+    const start = status.stats.dayStartEquity;
+    const dayPnlPct = equity !== null && start ? Math.round(((equity - start) / start) * 10000) / 100 : null;
+    return { ...status, stats: { ...status.stats, equity, dayPnlPct } };
+  }
+
+  r.get("/autopilot", async (req, res) => {
+    res.json(await autopilotView(req.user!.id));
+  });
+
+  r.put("/autopilot", async (req, res) => {
+    const body = parse(AutopilotBody, req.body);
+    updateAutopilotSettings(ctx, req.user!.id, body, req.ip);
+    res.json(await autopilotView(req.user!.id));
+  });
+
+  r.post("/autopilot/run", aiLimiter, async (req, res) => {
+    const result = await runAutopilot(ctx, req.user!.id, { manual: true });
+    res.json({ result, ...(await autopilotView(req.user!.id)) });
+  });
+
+  r.post("/autopilot/pause", async (req, res) => {
+    pauseAutopilot(ctx, req.user!.id);
+    res.json(await autopilotView(req.user!.id));
+  });
+
+  r.post("/autopilot/resume", async (req, res) => {
+    resumeAutopilot(ctx, req.user!.id);
+    res.json(await autopilotView(req.user!.id));
   });
 
   return r;

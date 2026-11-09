@@ -6,7 +6,7 @@ import { Markdown } from "../components/Markdown";
 import { ErrorText } from "../components/ui";
 import { timeAgo } from "../format";
 import { useLoad, useToast } from "../state";
-import type { ChatMsg, Conversation, Provider } from "../types";
+import type { ChatMsg, Conversation, FreeAllowance, Provider } from "../types";
 
 interface Target {
   provider: string;
@@ -88,7 +88,9 @@ function ModelPicker({ providers, value, onChange }: { providers: Provider[]; va
 
 export function AIHubPage() {
   const toast = useToast();
-  const providers = useLoad(() => api.get<{ providers: Provider[] }>("/api/ai/providers").then((r) => r.providers));
+  const providerData = useLoad(() => api.get<{ providers: Provider[]; freeAllowance: FreeAllowance }>("/api/ai/providers"));
+  const providers = { data: providerData.data?.providers ?? null };
+  const allowance = providerData.data?.freeAllowance;
   const conversations = useLoad(() => api.get<{ conversations: Conversation[] }>("/api/ai/conversations").then((r) => r.conversations));
   const [mode, setMode] = useState<"chat" | "compare">("chat");
   const [target, setTarget] = useState<Target | null>(null);
@@ -156,6 +158,7 @@ export function AIHubPage() {
       patchLast((m) => ({ ...m, pending: false }));
       setStreaming(false);
       conversations.reload();
+      if (current?.source === "server") providerData.reload();
     }
   }
 
@@ -176,7 +179,11 @@ export function AIHubPage() {
         <div>
           <h1>AI Hub</h1>
           <p className="muted">
-            {connected.length} provider{connected.length === 1 ? "" : "s"} connected · <Link to="/app/settings#ai-keys">manage API keys</Link>
+            {connected.length} provider{connected.length === 1 ? "" : "s"} connected
+            {allowance?.limit && list.some((p) => p.source === "server") ? (
+              <> · <span className={allowance.remaining === 0 ? "bad" : ""}>free today: {allowance.remaining} of {allowance.limit} left</span></>
+            ) : null}
+            {" · "}<Link to="/app/settings#ai-keys">manage API keys</Link>
           </p>
         </div>
         <div className="seg" role="tablist" aria-label="Mode">
@@ -212,7 +219,9 @@ export function AIHubPage() {
               {current && !current.available && (
                 <span className="small bad">Not connected — <Link to="/app/settings#ai-keys">add a {current.name} key</Link></span>
               )}
-              {current?.source && current.kind !== "demo" && <span className="pill">{current.source === "user" ? "your key" : "server key"}</span>}
+              {current?.source && current.kind !== "demo" && (
+                <span className={`pill ${current.source === "server" ? "brand" : ""}`}>{current.source === "user" ? "your key · unlimited" : "free allowance"}</span>
+              )}
             </div>
             <div className="chat-scroll" ref={scrollRef}>
               {messages.length === 0 && (

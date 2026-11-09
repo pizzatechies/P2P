@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 import { Icon } from "../components/icons";
 import { ActivityList, RequestDialog, SendDialog } from "../components/money";
+import { PayLinkCard } from "../components/share";
 import { Empty, StatusPill } from "../components/ui";
 import { money, timeAgo } from "../format";
 import { useLoad, useToast } from "../state";
@@ -51,6 +52,10 @@ export function PaymentsPage() {
           <button className="btn" onClick={() => { setSendTo(""); setDialog("send"); }}><Icon.Send size={16} /> Send money</button>
           <button className="btn secondary" onClick={() => setDialog("request")}>Request money</button>
         </div>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <PayLinkCard />
       </div>
 
       {contacts.length > 0 && (

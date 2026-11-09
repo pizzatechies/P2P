@@ -6,6 +6,8 @@ Peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in 
 |---|---|
 | **Payments** | Multi-currency wallets (19 currencies), send by @handle or email, request money, currency conversion, deposits and withdrawals through pluggable payment rails, all on a double-entry ledger |
 | **AI Hub** | Chat with Claude, GPT, Gemini, Mistral, Llama (Groq/Together), Grok, DeepSeek, OpenRouter's catalogue, Perplexity and self-hosted Ollama models. Responses stream live, conversations are saved, a compare mode runs up to 4 models side by side, and users can bring their own encrypted keys |
+| **AI Autopilot** | Optional: the AI trades for the user on a schedule, strictly inside limits they set (per position, total invested, trades per day, minimum confidence, daily loss stop), or proposes trades for one-tap approval |
+| **Reach** | Installable app (add to home screen, works offline for the app shell), shareable pay links that sign new people up and land them on the payment, WhatsApp sharing, and a free daily AI allowance |
 | **Trading** | Paper trading with $100k virtual cash, or each user's own Alpaca account. Charts and indicators, plus an AI analyst that returns buy/sell/hold signals with position size, stop-loss and take-profit. Execution is one click, but the user must confirm and position caps apply |
 
 It works out of the box with no keys at all: sandbox payments, simulated market data, a rule-based analyst and an offline demo assistant. Add keys to switch each part to real providers.
@@ -118,6 +120,26 @@ To add bank transfers, mobile money (M-Pesa, MTN, Airtel via an aggregator such 
   - Each signal can be executed only once.
   - AI buys are capped at `AI_MAX_POSITION_PCT` of portfolio equity (default 10%).
   - "Sell" without a position is downgraded to "hold", because the account is long-only.
+
+### AI Autopilot
+
+`server/src/services/trading/autopilot.ts`. Off by default; each user switches it on after accepting a plain-language summary of what it will do. A background scheduler (started in `index.ts`) runs each user's autopilot at their chosen interval. On every run:
+
+1. **Safety first:** live (real-money) accounts are refused unless the server sets `ALLOW_LIVE_AUTOPILOT=true` *and* the user opts in. Alpaca accounts only trade while the market is open. If the portfolio is down more than the user's daily loss limit since the day started, the autopilot pauses until the user resumes it.
+2. **Exits:** positions it opened are sold at the AI's stop-loss or take-profit.
+3. **Decisions:** the analyst reviews each watched symbol (up to 10). It acts only at or above the user's confidence threshold, sizes buys within the per-position and total-invested caps (never above `AI_MAX_POSITION_PCT`), and stops at the daily trade limit. In "ask me first" mode it records proposals the user approves with one tap.
+4. **Logging:** every decision, including holds and errors, is logged and shown in the Trading page. Three failed runs in a row pause it.
+
+Orders record who placed them (`placed_by`: user or autopilot).
+
+### Free AI allowance
+
+Requests that run on the server's own provider keys count against `AI_FREE_DAILY_REQUESTS` per user per UTC day. `AI_FREE_MODELS` can restrict those keys to low-cost models, for example `anthropic:claude-haiku-5-5`. Users' own keys and the offline demo assistant are never limited. The AI Hub shows how many free requests are left today.
+
+### Installable app & pay links
+
+- `web/public/sw.js` + `manifest.webmanifest` make Aurex installable (Android/desktop install prompt, iOS "Add to Home Screen"). The service worker caches only the app shell and static assets, never API responses.
+- `/pay/@handle?amount=12&currency=USD&note=Dinner` is a public page anyone can open. Signed-in visitors pay in one tap. Others sign up or sign in and are returned straight to the payment. **Payments → Your pay link** builds these links with Copy, Share and WhatsApp buttons.
 
 ### Security
 
