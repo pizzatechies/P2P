@@ -532,3 +532,15 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .pay-link { padding: 10px 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-2); word-break: break-all; }
 .btn.wa { background: #25d366; color: #052e16; }
 .btn.wa:hover { background: #1fbe5b; text-decoration: none; }
+
+/* Demo video */
+.demo-frame { border-radius: 16px; overflow: hidden; border: 1px solid var(--border); box-shadow: 0 24px 60px rgb(60 45 10 / 0.12); background: #000; aspect-ratio: 16 / 9; }
+.demo-frame video { display: block; width: 100%; height: 100%; }
+.demo-home { max-width: 960px; margin: 0 auto; }
+.demo-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
+.chapters { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.chapters li + li { border-top: 1px solid var(--border); }
+.chapters button { display: flex; gap: 12px; width: 100%; padding: 12px 14px; border: 0; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.chapters button:hover { background: var(--brand-soft); }
+.chapter-time { color: var(--brand-text); font-weight: 650; min-width: 34px; }
+@media (max-width: 1000px) { .demo-layout { grid-template-columns: 1fr; } }

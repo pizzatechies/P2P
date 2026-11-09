@@ -42,6 +42,9 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
           "img-src": ["'self'", "data:"],
           "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           "font-src": ["'self'", "https://fonts.gstatic.com"],
+          // Only force HTTPS sub-requests in production; in development it breaks plain-HTTP access
+          // from other devices on the network (e.g. testing on a phone via http://192.168.x.x).
+          "upgrade-insecure-requests": config.isProd ? [] : null,
         },
       },
       crossOriginEmbedderPolicy: false,

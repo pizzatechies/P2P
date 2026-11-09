@@ -8,6 +8,7 @@ import { AppLink } from "./common";
 
 const LINKS = [
   { to: "/features", label: "Features" },
+  { to: "/demo", label: "Demo" },
   { to: "/pricing", label: "Pricing" },
   { to: "/security", label: "Security" },
   { to: "/about", label: "About" },

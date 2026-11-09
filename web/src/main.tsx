@@ -12,6 +12,7 @@ import { SettingsPage } from "./pages/Settings";
 import { TradingPage } from "./pages/Trading";
 import { WalletPage } from "./pages/Wallet";
 import { AboutPage } from "./site/About";
+import { DemoPage } from "./site/Demo";
 import { FeaturesPage } from "./site/Features";
 import { HomePage } from "./site/Home";
 import { PricingPage } from "./site/Pricing";
@@ -76,6 +77,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/security" element={<SecurityPage />} />
               <Route path="/about" element={<AboutPage />} />
+              <Route path="/demo" element={<DemoPage />} />
             </Route>
             <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
             <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />

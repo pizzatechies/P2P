@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Icon } from "../components/icons";
 import { useAuth } from "../state";
 import { CtaBand, Faq, PrimaryCta, ProductPreview, PROVIDERS, Section, SectionHead, usePageTitle } from "./common";
+import { DemoVideo } from "./Demo";
 
 export function HomePage() {
   usePageTitle("");
@@ -24,7 +25,7 @@ export function HomePage() {
             </p>
             <div className="row wrap">
               <PrimaryCta />
-              <a className="btn lg secondary" href="#how">See how it works</a>
+              <a className="btn lg secondary" href="#demo">Watch the demo</a>
             </div>
             <ul className="hero-points">
               <li>Free to open</li>
@@ -45,6 +46,16 @@ export function HomePage() {
           ))}
         </div>
       </div>
+
+      <Section id="demo">
+        <SectionHead center eyebrow="Watch the demo" title="Aurex in 48 seconds" lead="Sign up, send money, share a pay link, ask an AI and switch on Autopilot, all in one tour." />
+        <div className="demo-home">
+          <DemoVideo />
+          <p style={{ textAlign: "center", marginTop: 14 }}>
+            <Link to="/demo">Jump to a chapter →</Link>
+          </p>
+        </div>
+      </Section>
 
       <Section>
         <SectionHead center eyebrow="One app, three superpowers" title="Everything you do with money online" lead="Stop juggling a payments app, an AI subscription and a brokerage. Aurex brings them together with one account and one standard of care." />
