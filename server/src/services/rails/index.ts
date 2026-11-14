@@ -1,5 +1,6 @@
 import type { Ctx } from "../../context.js";
 import { badRequest } from "../../lib/errors.js";
+import { flutterwaveRail } from "./flutterwave.js";
 import { sandboxRail } from "./sandbox.js";
 import { stripeRail } from "./stripe.js";
 import type { PaymentRail } from "./types.js";
@@ -16,6 +17,8 @@ export function getRails(ctx: Ctx): Map<string, PaymentRail> {
     if (id === "sandbox") rails.set(id, sandboxRail);
     else if (id === "stripe" && ctx.config.STRIPE_SECRET_KEY) {
       rails.set(id, stripeRail({ secretKey: ctx.config.STRIPE_SECRET_KEY, appUrl: ctx.config.APP_URL }));
+    } else if (id === "flutterwave" && ctx.config.FLUTTERWAVE_SECRET_KEY) {
+      rails.set(id, flutterwaveRail({ secretKey: ctx.config.FLUTTERWAVE_SECRET_KEY, appUrl: ctx.config.APP_URL, baseUrl: ctx.config.FLUTTERWAVE_BASE_URL }));
     } else console.warn(`[rails] unknown or unconfigured payment rail "${id}" ignored`);
   }
   registries.set(ctx.config, rails);

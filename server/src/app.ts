@@ -13,6 +13,7 @@ import { csrfGuard, loadSession } from "./middleware/auth.js";
 import { adminRoutes } from "./routes/admin.js";
 import { aiRoutes } from "./routes/ai.js";
 import { authRoutes } from "./routes/auth.js";
+import { connectionRoutes } from "./routes/connections.js";
 import { metaRoutes } from "./routes/meta.js";
 import { paymentRoutes } from "./routes/payments.js";
 import { publicRoutes } from "./routes/public.js";
@@ -65,6 +66,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   app.use("/api/public", publicRoutes(ctx));
   app.use("/api/settings", settingsRoutes(ctx));
   app.use("/api/payments", paymentRoutes(ctx));
+  app.use("/api/connections", connectionRoutes(ctx));
   app.use("/api/ai", aiRoutes(ctx));
   app.use("/api/trading", tradingRoutes(ctx));
   app.use("/api/admin", adminRoutes(ctx));

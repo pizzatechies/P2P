@@ -52,4 +52,8 @@ export interface PaymentRail {
   currencies: string[] | "*";
   createDeposit?(input: DepositInput): Promise<DepositResult>;
   createPayout?(input: PayoutInput): Promise<PayoutResult>;
+  /** Asks the provider for the real state of a pending deposit (never trust a redirect or webhook alone). */
+  checkDeposit?(input: { externalId: string; providerRef: string | null; currency: string; amount: number }): Promise<"completed" | "pending" | "failed">;
+  /** Asks the provider for the real state of a pending payout. */
+  checkPayout?(input: { externalId: string; providerRef: string | null }): Promise<"completed" | "pending" | "failed">;
 }

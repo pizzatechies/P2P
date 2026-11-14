@@ -75,6 +75,17 @@ export function stripeRail(opts: { secretKey: string; appUrl: string }): Payment
       }
       return { status: "pending", providerRef: json.id, redirectUrl: json.url };
     },
+    async checkDeposit({ providerRef }) {
+      if (!providerRef) return "pending";
+      const res = await fetch(`${STRIPE_API}/checkout/sessions/${encodeURIComponent(providerRef)}`, {
+        headers: { Authorization: `Bearer ${opts.secretKey}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const json = (await res.json()) as { status?: string; payment_status?: string };
+      if (!res.ok) return "pending";
+      if (json.payment_status === "paid" || json.payment_status === "no_payment_required") return "completed";
+      return json.status === "expired" ? "failed" : "pending";
+    },
   };
 }
 

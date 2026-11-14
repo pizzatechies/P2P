@@ -11,7 +11,7 @@ import {
   userAccount,
   type JournalRow,
 } from "./ledger.js";
-import { getRail } from "./rails/index.js";
+import { getRail, getRails } from "./rails/index.js";
 import type { PayoutDestination } from "./rails/types.js";
 import { findUserByIdentifier, getUserRow, publicProfile, type UserRow } from "./users.js";
 
@@ -363,6 +363,31 @@ export function getExternalForUser(ctx: Ctx, userId: string, id: string) {
   const r = loadExternal(ctx, id);
   if (r.user_id !== userId) throw notFound("Transfer not found");
   return externalView(r);
+}
+
+export function findExternalById(ctx: Ctx, id: string) {
+  return one<ExternalRow>(ctx.db, "SELECT * FROM external_transfers WHERE id = ?", id);
+}
+
+/**
+ * Asks the payment rail for the real state of a pending deposit or withdrawal and settles it.
+ * Used when the user returns from a hosted checkout, by webhooks (as a trigger only), and on demand.
+ */
+export async function refreshExternal(ctx: Ctx, id: string, userId?: string) {
+  const ext = loadExternal(ctx, id);
+  if (userId && ext.user_id !== userId) throw notFound("Transfer not found");
+  if (ext.status !== "pending") return externalView(ext);
+  const rail = getRails(ctx).get(ext.rail);
+  if (ext.direction === "deposit" && rail?.checkDeposit) {
+    const state = await rail.checkDeposit({ externalId: ext.id, providerRef: ext.provider_ref, currency: ext.currency, amount: ext.amount });
+    if (state === "completed") completeDeposit(ctx, ext.id);
+    else if (state === "failed") failDeposit(ctx, ext.id, "The payment wasn't completed");
+  } else if (ext.direction === "withdrawal" && rail?.checkPayout) {
+    const state = await rail.checkPayout({ externalId: ext.id, providerRef: ext.provider_ref });
+    if (state === "completed") settleWithdrawal(ctx, ext.id);
+    else if (state === "failed") reverseWithdrawal(ctx, ext.id, "The payout provider rejected the transfer");
+  }
+  return externalView(loadExternal(ctx, id));
 }
 
 export function findExternalByProviderRef(ctx: Ctx, rail: string, ref: string) {

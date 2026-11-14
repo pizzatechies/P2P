@@ -68,6 +68,27 @@ const EnvSchema = z.object({
   /** Shortest interval a user may set between autopilot runs. */
   AUTOPILOT_MIN_INTERVAL_MIN: z.coerce.number().int().min(1).max(1440).default(5),
 
+  // ---- Connections to outside institutions (aggregators). Each is off until its keys are set. ----
+  PLAID_CLIENT_ID: optionalString,
+  PLAID_SECRET: optionalString,
+  /** sandbox | production */
+  PLAID_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  PLAID_COUNTRY_CODES: z.string().default("US,CA,GB,IE,FR,ES,NL,DE"),
+  PLAID_BASE_URL: optionalString,
+  SALTEDGE_APP_ID: optionalString,
+  SALTEDGE_SECRET: optionalString,
+  SALTEDGE_BASE_URL: z.string().url().default("https://www.saltedge.com/api/v6"),
+  MONO_SECRET_KEY: optionalString,
+  MONO_WEBHOOK_SECRET: optionalString,
+  MONO_BASE_URL: z.string().url().default("https://api.withmono.com"),
+  SNAPTRADE_CLIENT_ID: optionalString,
+  SNAPTRADE_CONSUMER_KEY: optionalString,
+  SNAPTRADE_BASE_URL: optionalString,
+  /** Flutterwave payment rail (add "flutterwave" to PAYMENT_RAILS). */
+  FLUTTERWAVE_SECRET_KEY: optionalString,
+  FLUTTERWAVE_WEBHOOK_HASH: optionalString,
+  FLUTTERWAVE_BASE_URL: z.string().url().default("https://api.flutterwave.com/v3"),
+
   // ---- Free AI allowance (applies only when server-provided keys are used) ----
   /** Requests per user per UTC day on the server's AI keys. 0 = unlimited. Users' own keys are never limited. */
   AI_FREE_DAILY_REQUESTS: z.coerce.number().int().min(0).default(25),
@@ -110,6 +131,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     .filter(Boolean);
   if (rails.includes("stripe") && !env.STRIPE_SECRET_KEY) {
     throw new Error("PAYMENT_RAILS includes 'stripe' but STRIPE_SECRET_KEY is not set.");
+  }
+  if (rails.includes("flutterwave") && !env.FLUTTERWAVE_SECRET_KEY) {
+    throw new Error("PAYMENT_RAILS includes 'flutterwave' but FLUTTERWAVE_SECRET_KEY is not set.");
   }
   if (isProd && rails.includes("sandbox")) {
     console.warn(

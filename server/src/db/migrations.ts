@@ -281,4 +281,49 @@ export const migrations: string[] = [
     PRIMARY KEY (user_id, day)
   );
   `,
+  /* 3: connections to outside financial institutions (aggregators) */ `
+  CREATE TABLE linked_connections (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider       TEXT NOT NULL,
+    status         TEXT NOT NULL CHECK (status IN ('pending','active','error')),
+    external_id    TEXT,               -- the aggregator's item / connection / account id
+    secret_enc     TEXT,               -- access token, AES-256-GCM (see lib/crypto.ts)
+    institution    TEXT,
+    country        TEXT,
+    error          TEXT,
+    meta           TEXT NOT NULL DEFAULT '{}',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    last_synced_at TEXT
+  );
+  CREATE INDEX linked_connections_user ON linked_connections(user_id, created_at);
+
+  -- Balances read from outside institutions. Informational only: never part of the ledger.
+  CREATE TABLE linked_accounts (
+    id            TEXT PRIMARY KEY,
+    connection_id TEXT NOT NULL REFERENCES linked_connections(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    external_id   TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    kind          TEXT NOT NULL,       -- bank, savings, card, credit, loan, investment, wallet, other
+    mask          TEXT,
+    currency      TEXT,
+    balance       REAL,
+    available     REAL,
+    updated_at    TEXT NOT NULL,
+    UNIQUE (connection_id, external_id)
+  );
+  CREATE INDEX linked_accounts_user ON linked_accounts(user_id);
+
+  -- A user's identity at an aggregator that keys data by customer (Salt Edge, SnapTrade).
+  CREATE TABLE provider_customers (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider    TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    secret_enc  TEXT,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (user_id, provider)
+  );
+  `,
 ];

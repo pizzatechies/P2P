@@ -17,6 +17,7 @@ import {
   listExternal,
   listRequests,
   payRequest,
+  refreshExternal,
   sendMoney,
   withdraw,
 } from "../services/payments.js";
@@ -165,6 +166,10 @@ export function paymentRoutes(ctx: Ctx) {
 
   r.get("/transfers", (req, res) => {
     res.json({ transfers: listExternal(ctx, req.user!.id) });
+  });
+
+  r.post("/transfers/:id/refresh", async (req, res) => {
+    res.json({ transfer: await refreshExternal(ctx, String(req.params.id), req.user!.id) });
   });
 
   r.get("/transfers/:id", (req, res) => {

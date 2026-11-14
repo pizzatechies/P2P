@@ -16,17 +16,27 @@ vi.mock("../src/services/trading/analyst.js", async (importOriginal) => {
       const result = await mod.analyze(...args);
       if (!override.action) return result;
       const price = result.signal.price;
-      return {
-        ...result,
-        signal: {
-          ...result.signal,
-          action: override.action,
-          confidence: override.confidence ?? 0.8,
-          suggestedQty: 100_000,
-          stopLoss: override.stopPct ? Math.round(price * (1 - override.stopPct) * 100) / 100 : null,
-          takeProfit: override.targetPct ? Math.round(price * (1 + override.targetPct) * 100) / 100 : null,
-        },
+      const signal = {
+        ...result.signal,
+        action: override.action,
+        confidence: override.confidence ?? 0.8,
+        suggestedQty: 100_000,
+        stopLoss: override.stopPct ? Math.round(price * (1 - override.stopPct) * 100) / 100 : null,
+        takeProfit: override.targetPct ? Math.round(price * (1 + override.targetPct) * 100) / 100 : null,
       };
+      // Keep the stored signal in step with the override, as it is in the real app.
+      const { run } = await import("../src/db/index.js");
+      run(
+        args[0].db,
+        "UPDATE ai_signals SET action = ?, confidence = ?, suggested_qty = ?, stop_loss = ?, take_profit = ? WHERE id = ?",
+        signal.action,
+        signal.confidence,
+        signal.suggestedQty,
+        signal.stopLoss,
+        signal.takeProfit,
+        signal.id,
+      );
+      return { ...result, signal };
     }),
   };
 });
