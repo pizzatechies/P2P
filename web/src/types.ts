@@ -207,3 +207,53 @@ export interface AutopilotStatus {
   limits: { maxPositionPctCap: number; minIntervalMin: number; liveAutopilotAllowed: boolean; serverEnabled: boolean };
   events: AutopilotEvent[];
 }
+
+export interface ConnectorInfo {
+  id: string;
+  name: string;
+  category: "bank" | "brokerage" | "payments" | "crypto";
+  kind: "aggregator" | "rail" | "planned";
+  coverage: string;
+  regions: string[];
+  countries: string[];
+  capabilities: string[];
+  description: string;
+  envKeys: string[];
+  signupUrl?: string;
+  docsUrl?: string;
+  beta?: boolean;
+  configured: boolean;
+}
+
+export interface LinkedAccount {
+  id: string;
+  name: string;
+  kind: string;
+  mask: string | null;
+  currency: string | null;
+  balance: number | null;
+  available: number | null;
+  updatedAt: string;
+}
+
+export interface LinkedConnection {
+  id: string;
+  provider: string;
+  providerName: string;
+  status: "active" | "error" | "pending";
+  institution: string | null;
+  country: string | null;
+  error: string | null;
+  lastSyncedAt: string | null;
+  createdAt: string;
+  accounts: LinkedAccount[];
+}
+
+export interface ConnectionsOverview {
+  baseCurrency: string;
+  netWorth: number;
+  unconvertedAccounts: number;
+  totals: { currency: string; total: number }[];
+  connections: LinkedConnection[];
+  pending: { id: string; provider: string; createdAt: string }[];
+}

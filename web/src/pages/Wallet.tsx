@@ -42,8 +42,20 @@ export function WalletPage() {
   useEffect(() => {
     loadActivity();
     const status = params.get("deposit");
-    if (status === "success") toast("Payment received. Your wallet updates as soon as the provider confirms it.");
+    const ref = params.get("ref");
     if (status === "canceled") toast("Checkout canceled. No money was taken.", "error");
+    else if (status && ref) {
+      // Ask the provider (through Aurex) what actually happened; the redirect alone proves nothing.
+      api
+        .post<{ transfer: ExternalTransfer }>(`/api/payments/transfers/${encodeURIComponent(ref)}/refresh`)
+        .then(({ transfer }) => {
+          if (transfer.status === "completed") toast(`${money(transfer.amount, transfer.currency)} added to your wallet`);
+          else if (transfer.status === "failed") toast("The payment didn't go through. No money was added.", "error");
+          else toast("Payment received. Your wallet updates as soon as the provider confirms it.");
+          refresh();
+        })
+        .catch(() => toast("We'll update your wallet as soon as the provider confirms the payment."));
+    }
     if (status) setParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

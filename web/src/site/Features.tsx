@@ -101,7 +101,30 @@ export function FeaturesPage() {
         </div>
       </Section>
 
-      <Section tone="warm">
+      <Section id="connections" tone="warm">
+        <div className="split reverse">
+          <div>
+            <SectionHead eyebrow="Connections" title="All your money, wherever it lives" lead="Link banks, brokerages and mobile wallets from around the world and see every balance, and your net worth, next to your Aurex wallet." />
+            <ul className="check-list">
+              <Check>Banks and cards across North America, the UK and Europe, through Plaid</Check>
+              <Check>Banks in dozens more countries through Salt Edge, and African banks through Mono</Check>
+              <Check>Brokerages such as Schwab, Fidelity, Robinhood and Interactive Brokers, through SnapTrade</Check>
+              <Check>Card, bank and mobile-money deposits and withdrawals across Africa, through Flutterwave</Check>
+              <Check>Read-only and revocable: you sign in at your bank, Aurex never sees the password</Check>
+            </ul>
+            <p className="faint small">Available providers depend on your country and on what the Aurex operator has enabled.</p>
+          </div>
+          <div className="feature-visual">
+            <div className="fv-title"><Icon.Link size={16} /> Connections</div>
+            <div className="fv-field"><span className="faint xs">Net worth across linked accounts</span><strong className="num">$27,411.32</strong></div>
+            {[["Demo Bank Zambia", "ZK 43,510.75"], ["Nairobi Demo Bank", "KSh 162,420.00"], ["Demo Brokerage", "$24,510.33"]].map(([n, v]) => (
+              <div key={n} className="row between small" style={{ padding: "6px 2px", borderBottom: "1px solid var(--border)" }}><span>{n}</span><strong className="num">{v}</strong></div>
+            ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section>
         <SectionHead center eyebrow="And everywhere" title="Thoughtful details throughout" />
         <div className="mini-grid">
           {[

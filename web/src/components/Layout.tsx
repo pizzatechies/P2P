@@ -8,6 +8,7 @@ import { Logo } from "./Logo";
 const NAV = [
   { to: "/app", label: "Dashboard", icon: Icon.Home, end: true },
   { to: "/app/wallet", label: "Wallet", icon: Icon.Wallet },
+  { to: "/app/connections", label: "Connections", icon: Icon.Link },
   { to: "/app/payments", label: "Payments", icon: Icon.Send },
   { to: "/app/ai", label: "AI Hub", icon: Icon.Sparkle },
   { to: "/app/trading", label: "Trading", icon: Icon.Chart },

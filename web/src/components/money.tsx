@@ -313,8 +313,11 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
           <Field label={dest.type === "mobile_money" ? "Phone number" : "Account number"}>
             <input className="input num" value={dest.accountNumber} onChange={(e) => setDest({ ...dest, accountNumber: e.target.value })} required minLength={4} />
           </Field>
-          <Field label={dest.type === "mobile_money" ? "Network (optional)" : "Bank / routing code (optional)"}>
-            <input className="input" value={dest.bankCode} onChange={(e) => setDest({ ...dest, bankCode: e.target.value })} />
+          <Field
+            label={dest.type === "mobile_money" ? `Network code${rail === "flutterwave" ? "" : " (optional)"}` : `Bank code${rail === "flutterwave" ? "" : " (optional)"}`}
+            hint={rail === "flutterwave" ? (dest.type === "mobile_money" ? "e.g. MPS for M-Pesa, MTN for MTN MoMo" : "Your bank's code from Flutterwave's bank list") : undefined}
+          >
+            <input className="input" value={dest.bankCode} onChange={(e) => setDest({ ...dest, bankCode: e.target.value.toUpperCase() })} required={rail === "flutterwave"} />
           </Field>
         </div>
         <ErrorText error={error} />

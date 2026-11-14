@@ -8,7 +8,7 @@ import { Delta } from "../components/ui";
 import { money, pct, usd } from "../format";
 import { useInstall } from "../pwa";
 import { useAuth, useLoad } from "../state";
-import type { Activity, Balance, Bar, PaymentRequest, Provider, Quote, TradingAccount, TradingSettings } from "../types";
+import type { Activity, Balance, Bar, ConnectionsOverview, PaymentRequest, Provider, Quote, TradingAccount, TradingSettings } from "../types";
 
 type Dialog = null | "send" | "request" | "deposit" | "convert";
 
@@ -62,6 +62,7 @@ export function DashboardPage() {
     );
   });
   const providers = useLoad(() => api.get<{ providers: Provider[] }>("/api/ai/providers").then((r) => r.providers));
+  const linked = useLoad(() => api.get<ConnectionsOverview>("/api/connections"));
 
   const refreshMoney = () => {
     balances.reload();
@@ -167,6 +168,30 @@ export function DashboardPage() {
               </Link>
             ))}
             {!watch.data && <div className="skeleton" style={{ height: 120 }} />}
+          </div>
+
+          <div className="card">
+            <div className="card-head">
+              <h2>Linked accounts</h2>
+              <Link to="/app/connections" className="small">Manage</Link>
+            </div>
+            {!linked.data && !linked.error ? (
+              <div className="skeleton" style={{ height: 60 }} />
+            ) : linked.data && linked.data.connections.length > 0 ? (
+              <>
+                <div className="stat-label">Net worth outside Aurex</div>
+                <div className="stat-value" style={{ fontSize: 22 }}>{money(linked.data.netWorth, linked.data.baseCurrency)}</div>
+                <div className="stat-sub">
+                  {linked.data.connections.reduce((n, c) => n + c.accounts.length, 0)} accounts at {linked.data.connections.length} institution
+                  {linked.data.connections.length === 1 ? "" : "s"}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted small">Link your bank, brokerage or mobile wallet to see all your money in one place.</p>
+                <Link className="btn sm secondary" style={{ marginTop: 10 }} to="/app/connections"><Icon.Link size={14} /> Connect an account</Link>
+              </>
+            )}
           </div>
 
           <div className="card">

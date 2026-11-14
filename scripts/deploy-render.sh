@@ -51,14 +51,17 @@ if [ -z "$SERVICE" ]; then
     --arg admins "${ADMIN_EMAILS:-}" \
     --arg key "$(openssl rand -hex 32)" \
     --arg app "https://$NAME.onrender.com" \
+    --arg rails "${PAYMENT_RAILS:-sandbox}" \
     '[{key: "NODE_ENV", value: "production"}, {key: "DATABASE_PATH", value: "/data/aurex.db"},
-      {key: "TRUST_PROXY", value: "true"}, {key: "PAYMENT_RAILS", value: "sandbox"},
+      {key: "TRUST_PROXY", value: "true"}, {key: "PAYMENT_RAILS", value: $rails},
       {key: "MASTER_KEY", value: $key}, {key: "APP_URL", value: $app}, {key: "ADMIN_EMAILS", value: $admins}]')
   for name in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET P2P_FEE_BPS FX_SPREAD_BPS WITHDRAWAL_FEE_BPS MAX_TX_USD \
     DAILY_LIMIT_USD FX_LIVE ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY MISTRAL_API_KEY GROQ_API_KEY XAI_API_KEY \
     DEEPSEEK_API_KEY OPENROUTER_API_KEY TOGETHER_API_KEY PERPLEXITY_API_KEY AI_DEFAULT_MODEL AI_FREE_DAILY_REQUESTS \
     AI_FREE_MODELS ALPACA_DATA_KEY_ID ALPACA_DATA_SECRET_KEY ALLOW_LIVE_TRADING AI_MAX_POSITION_PCT AUTOPILOT_ENABLED \
-    ALLOW_LIVE_AUTOPILOT AUTOPILOT_MIN_INTERVAL_MIN; do
+    ALLOW_LIVE_AUTOPILOT AUTOPILOT_MIN_INTERVAL_MIN PLAID_CLIENT_ID PLAID_SECRET PLAID_ENV PLAID_COUNTRY_CODES \
+    SALTEDGE_APP_ID SALTEDGE_SECRET MONO_SECRET_KEY MONO_WEBHOOK_SECRET SNAPTRADE_CLIENT_ID SNAPTRADE_CONSUMER_KEY \
+    FLUTTERWAVE_SECRET_KEY FLUTTERWAVE_WEBHOOK_HASH; do
     if [ -n "${!name:-}" ]; then ENV_VARS=$(echo "$ENV_VARS" | jq -c --arg k "$name" --arg v "${!name}" '. + [{key: $k, value: $v}]'); fi
   done
   BODY=$(jq -nc --arg n "$NAME" --arg o "$OWNER_ID" --arg repo "$REPO_URL" --arg branch "$BRANCH" \

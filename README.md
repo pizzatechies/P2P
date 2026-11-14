@@ -8,6 +8,7 @@ Peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in 
 | **AI Hub** | Chat with Claude, GPT, Gemini, Mistral, Llama (Groq/Together), Grok, DeepSeek, OpenRouter's catalogue, Perplexity and self-hosted Ollama models. Responses stream live, conversations are saved, a compare mode runs up to 4 models side by side, and users can bring their own encrypted keys |
 | **AI Autopilot** | Optional: the AI trades for the user on a schedule, strictly inside limits they set (per position, total invested, trades per day, minimum confidence, daily loss stop), or proposes trades for one-tap approval |
 | **Reach** | Installable app (add to home screen, works offline for the app shell), shareable pay links that sign new people up and land them on the payment, WhatsApp sharing, and a free daily AI allowance |
+| **Connections** | Link outside banks, cards, brokerages and wallets through Plaid, Salt Edge, Mono and SnapTrade to see a combined net worth, plus Flutterwave for mobile money (M-Pesa, MTN MoMo, Airtel) and bank payouts across Africa |
 | **Trading** | Paper trading with $100k virtual cash, or each user's own Alpaca account. Charts and indicators, plus an AI analyst that returns buy/sell/hold signals with position size, stop-loss and take-profit. Execution is one click, but the user must confirm and position caps apply |
 
 It works out of the box with no keys at all: sandbox payments, simulated market data, a rule-based analyst and an offline demo assistant. Add keys to switch each part to real providers.
@@ -43,6 +44,8 @@ Copy `.env.example` to `server/.env` and fill in what you need. The server loads
 | Any other AI provider for every user | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, … |
 | Real market data | `ALPACA_DATA_KEY_ID`, `ALPACA_DATA_SECRET_KEY` (a free Alpaca account works) |
 | Card deposits | `PAYMENT_RAILS=sandbox,stripe`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
+| Mobile money, cards and bank payouts in Africa | `PAYMENT_RAILS=…,flutterwave`, `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_HASH` |
+| Link outside banks and brokerages | Any of `PLAID_*`, `SALTEDGE_*`, `MONO_*`, `SNAPTRADE_*` (see [Connections](#connections)) |
 | Live exchange rates | `FX_LIVE=true` |
 
 Users can also add their own AI keys and Alpaca keys under **Settings**. These are stored encrypted with AES-256-GCM.
@@ -99,7 +102,7 @@ System accounts: `external` (the outside world), `clearing` (withdrawals in flig
 | `sandbox` | instant | instant | Test money. Account numbers ending in `0000` fail, to demo reversals |
 | `stripe` | Stripe Checkout | – | Wallet credited only from the signed `checkout.session.completed` webhook. Point Stripe at `POST /api/webhooks/stripe` |
 
-To add bank transfers, mobile money (M-Pesa, MTN, Airtel via an aggregator such as Flutterwave or Paystack), or card payouts, implement the `PaymentRail` interface in `rails/types.ts` and register it in `rails/index.ts`. The ledger and UI don't change.
+Rails included: `sandbox`, `stripe` (cards) and `flutterwave` (cards, bank transfers, and M-Pesa, MTN and Airtel mobile money; see [Connections](#connections)). To add another rail, implement the `PaymentRail` interface in `rails/types.ts` and register it in `rails/index.ts`. The ledger and UI don't change.
 
 ### AI Hub
 
@@ -131,6 +134,38 @@ To add bank transfers, mobile money (M-Pesa, MTN, Airtel via an aggregator such 
 4. **Logging:** every decision, including holds and errors, is logged and shown in the Trading page. Three failed runs in a row pause it.
 
 Orders record who placed them (`placed_by`: user or autopilot).
+
+### Connections
+
+**Connections** links accounts a user holds elsewhere: banks, cards, brokerages and wallets. Aurex reads their balances and shows a combined net worth, converted to the user's default currency at mid-market rates. No one network reaches every institution in the world, so Aurex goes through licensed aggregators, each covering a region:
+
+| Provider | Coverage | Keys | Webhook |
+|---|---|---|---|
+| Plaid (Hosted Link) | US, Canada, UK, Europe | `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` | `/api/webhooks/plaid` |
+| Salt Edge (AIS v6) | Europe, Middle East, Asia, Latin America, Africa | `SALTEDGE_APP_ID`, `SALTEDGE_SECRET` | none (the redirect completes the link) |
+| Mono (beta) | Nigeria and other African markets | `MONO_SECRET_KEY`, `MONO_WEBHOOK_SECRET` | `/api/webhooks/mono` |
+| SnapTrade | Retail brokerages (Schwab, Fidelity, Robinhood, IBKR, …) | `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY` | none |
+| Demo institutions | Six simulated banks and a brokerage | enabled with the `sandbox` rail | none |
+
+How it works:
+
+- The user picks a provider and is sent to that provider's own consent page. Their bank password never touches Aurex.
+- The provider redirects back to `/app/connections?callback=<provider>&link=<id>`. The server then confirms the link with the provider and stores the access token encrypted (AES-256-GCM).
+- Webhooks never mark a link active on their own. They only make the server ask the provider again.
+- Linked balances are **read-only snapshots**. They never enter the ledger. Moving money in or out of an Aurex wallet still goes through a payment rail.
+- **Disconnect** revokes access at the provider (best effort) and deletes the stored token and accounts.
+
+Each provider needs its own operator agreement and keys, and production access usually needs the provider's review. The provider cards in the app tell admins which variables to set.
+
+**Payment rails** move money in and out of the Aurex wallet:
+
+- `stripe`: cards, Apple Pay and Google Pay.
+- `flutterwave`: cards, bank transfers and mobile money across Africa. Supported currencies are NGN, GHS, KES, UGX, TZS, ZAR, ZMW, USD, EUR and GBP.
+  - For payouts, the withdraw form asks for the Flutterwave bank code, such as `MPS` for M-Pesa or `MTN` for MTN MoMo.
+  - Deposits are verified with Flutterwave before money is credited (`verify_by_reference`: same currency, full amount).
+  - Webhooks must carry the `verif-hash` header matching `FLUTTERWAVE_WEBHOOK_HASH`.
+
+Direct M-Pesa (Daraja), direct MTN MoMo, Wise, PayPal and Coinbase are listed as *planned*.
 
 ### Free AI allowance
 
@@ -228,7 +263,8 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Trading | `GET /trading/account`, `GET /trading/quote/:symbol`, `GET /trading/bars/:symbol`, `GET/POST/DELETE /trading/watchlist`, `GET/POST /trading/orders`, `POST /trading/orders/:id/cancel`, `POST /trading/analyze`, `GET /trading/signals`, `POST /trading/signals/:id/execute` |
 | Settings | `PATCH /settings/profile`, `POST /settings/password`, `POST /settings/2fa/{setup,confirm,disable}`, `GET/PUT/DELETE /settings/api-keys/:provider`, `PUT/DELETE /trading/alpaca-keys`, `PUT /trading/broker` |
 | Admin | `GET /admin/overview`, `GET /admin/users`, `POST /admin/users/:id/status` |
-| Webhooks | `POST /webhooks/stripe` |
+| Connections | `GET /connections/providers`, `GET /connections`, `POST /connections/:provider/start`, `POST /connections/links/:id/complete`, `POST /connections/:id/sync`, `DELETE /connections/:id` |
+| Webhooks | `POST /webhooks/stripe`, `POST /webhooks/flutterwave`, `POST /webhooks/plaid`, `POST /webhooks/mono` |
 
 ## Tests
 
@@ -236,4 +272,4 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 npm test
 ```
 
-The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails.
+The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections are tested against stub servers that mimic the Plaid, Salt Edge, SnapTrade and Flutterwave APIs, covering link flows, cross-user isolation, forged webhooks, underpaid deposits and failed-payout refunds.

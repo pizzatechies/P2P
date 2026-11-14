@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { Layout } from "./components/Layout";
 import { AdminPage } from "./pages/Admin";
 import { AIHubPage } from "./pages/AIHub";
+import { ConnectionsPage, ConnectSandboxPage } from "./pages/Connections";
 import { LoginPage, RegisterPage } from "./pages/Auth";
 import { DashboardPage } from "./pages/Dashboard";
 import { PayPage } from "./pages/Pay";
@@ -82,9 +83,11 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
             <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
             <Route path="/pay/:handle" element={<PayPage />} />
+            <Route path="/connect/sandbox" element={<RequireAuth><ConnectSandboxPage /></RequireAuth>} />
             <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>
               <Route index element={<DashboardPage />} />
               <Route path="wallet" element={<WalletPage />} />
+              <Route path="connections" element={<ConnectionsPage />} />
               <Route path="payments" element={<PaymentsPage />} />
               <Route path="ai" element={<AIHubPage />} />
               <Route path="trading" element={<TradingPage />} />
