@@ -121,6 +121,19 @@ Rails included: `sandbox`, `stripe`, `flutterwave`, `mpesa`, `mtn-momo`, `paypal
 
 ### Trading
 
+**Demo accounts, the academy and real accounts**
+- Every user starts with a **demo account** of virtual money. They can restart it any time with a balance from $1,000 to $1,000,000.
+- **Learn** (`/app/learn`) has six short lessons: how markets work, order types, risk and position sizing, reading charts, trading with the AI analyst, and going live. Each ends with a quiz graded on the server (80% to pass); the answers never reach the browser. Six **practice missions** are detected from demo activity: first buy, a limit order, a sale, three different stocks, an AI analysis and a watchlist.
+- **Upgrade to real** (`/app/upgrade`) requires:
+  - a verified email and 2FA;
+  - all quizzes passed and `LIVE_MIN_PRACTICE_TRADES` demo trades;
+  - an appropriateness questionnaire and four acknowledgements.
+- The questionnaire gives warnings for risky answers (for example, speculating with no experience or limited savings). The user must acknowledge them before applying.
+- The applicant must be 18+, and `LIVE_COUNTRIES` can restrict where real accounts are offered. Personal details are encrypted with `MASTER_KEY`.
+- Admins review applications under Admin → Real-account applications, or set `LIVE_UPGRADE_AUTO_APPROVE=true`.
+- Live brokerage keys and the live broker are refused until the application is approved and `ALLOW_LIVE_TRADING=true`. Revoking an approval returns the user to their demo account immediately.
+- Real trades go through the user's own licensed broker (Alpaca), which runs its own identity checks; Aurex never holds securities.
+
 - **Market data:** Alpaca (real, IEX feed) when the user or server has Alpaca keys. Otherwise a deterministic simulated market of 20 well-known tickers, clearly labelled as synthetic.
 - **Brokers:** the built-in paper broker (market and limit orders, long-only, instant fills) or the user's **own** Alpaca account through their own keys. Paper is the default. Live Alpaca accounts are refused unless the operator sets `ALLOW_LIVE_TRADING=true`.
 - **AI analyst:** computes SMA 20/50/200, RSI, MACD, ATR, volatility, returns and the 52-week range, then asks the selected model for a structured signal. Claude responses use structured outputs, which are schema-guaranteed; other providers use JSON mode plus validation. With no AI connected, a transparent rule-based model is used.
@@ -205,6 +218,7 @@ Requests that run on the server's own provider keys count against `AI_FREE_DAILY
 No system can honestly promise to be unhackable. Aurex is built so that a single failure doesn't lose anyone's money: a stolen password, a stolen session, a leaked database file or a forged webhook each run into another layer.
 
 **Accounts**
+- Email verification: 6-digit codes sent through Resend (`RESEND_API_KEY`, `EMAIL_FROM`). In development the code is shown in the app instead. Codes are stored hashed, expire after 15 minutes, allow 5 attempts and can be resent after a minute. A verified email is required for withdrawals, being found or paid by email (so nobody can intercept money by registering someone else's address), admin access and real accounts. Security alerts are also emailed to verified addresses. Without an email provider in production, verification is off and the server warns at startup.
 - Passwords: scrypt (N=2¹⁵), at least `PASSWORD_MIN_LENGTH` (12) characters. Common, repetitive and personal passwords are refused, and so are passwords found in known breaches. The breach check uses the Have I Been Pwned range API, so only 5 characters of a SHA-1 hash leave the server.
 - Lockout: `LOGIN_MAX_ATTEMPTS` failed passwords or 2FA codes lock the account for `LOGIN_LOCK_MINUTES`. The lock doubles each time, up to 24 hours, and a locked account doesn't even check passwords. Per-IP limits apply on top.
 - Two-factor (TOTP): each code is accepted only once (replay protection). Ten one-time **recovery codes** are issued and stored only as hashes. Signing in with one starts a security hold.
@@ -307,7 +321,8 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Admin | `GET /admin/overview`, `GET /admin/users`, `POST /admin/users/:id/status` |
 | Connections | `GET /connections/providers`, `GET /connections`, `POST /connections/:provider/start`, `POST /connections/links/:id/complete`, `POST /connections/:id/sync`, `DELETE /connections/:id`, `GET /connections/oauth/:provider/callback` |
 | Payouts | `POST /payments/payout-requirements`, `POST /payments/transfers/:id/refresh` |
-| Security | `POST /auth/reauth`, `GET /settings/security`, `POST /settings/security/alerts/read`, `DELETE /settings/sessions/:id`, `POST /settings/sessions/revoke-others`, `POST /settings/2fa/recovery-codes`, `POST /settings/admin/claim` |
+| Academy & upgrade | `GET /learn`, `POST /learn/lessons/:id/quiz`, `POST /trading/account/reset`, `GET/PUT /trading/upgrade`, `POST /trading/upgrade/submit`, `GET /admin/upgrades`, `POST /admin/upgrades/:userId/review` |
+| Security | `POST /auth/reauth`, `POST /auth/email/send`, `POST /auth/email/verify`, `GET /settings/security`, `POST /settings/security/alerts/read`, `DELETE /settings/sessions/:id`, `POST /settings/sessions/revoke-others`, `POST /settings/2fa/recovery-codes`, `POST /settings/admin/claim` |
 | Webhooks | `POST /webhooks/stripe`, `/flutterwave`, `/plaid`, `/mono`, `/paypal`, `/skrill`, `/mtn-momo` (PUT or POST), `/mpesa/<secret>/stk`, `/mpesa/<secret>/b2c/result`, `/mpesa/<secret>/b2c/timeout` |
 
 ## Tests
@@ -316,4 +331,4 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 npm test
 ```
 
-The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.
+The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. Further suites cover email verification (including Resend delivery and alert emails), the academy (server-side grading, missions), demo resets and the real-account upgrade (checklist, encryption, warnings, admin review, live-key enforcement). A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.

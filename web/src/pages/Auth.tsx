@@ -106,6 +106,8 @@ export function LoginPage() {
   );
 }
 
+export const VERIFY_KEY = "aurex-verify-email";
+
 export function RegisterPage() {
   const { setUser } = useAuth();
   const navigate = useNavigate();
@@ -122,9 +124,16 @@ export function RegisterPage() {
     setError(null);
     try {
       const { user, emailVerification } = await api.post<{ user: User; emailVerification: { devCode?: string } | null }>("/api/auth/register", form);
-      setUser(user);
       // Prompt for the emailed code on arrival (in development the code itself comes back too).
-      navigate(next, { replace: true, state: emailVerification ? { verifyEmail: true, devCode: emailVerification.devCode ?? null } : undefined });
+      if (emailVerification) {
+        try {
+          sessionStorage.setItem(VERIFY_KEY, JSON.stringify({ devCode: emailVerification.devCode ?? null }));
+        } catch {
+          /* storage unavailable: the dashboard banner still offers verification */
+        }
+      }
+      setUser(user);
+      navigate(next, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {

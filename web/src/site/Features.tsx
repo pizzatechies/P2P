@@ -7,7 +7,6 @@ export function FeaturesPage() {
   usePageTitle("Features");
   const { meta } = useAuth();
   const spread = ((meta?.fees.fxSpreadBps ?? 50) / 100).toFixed(2);
-  const cash = (meta?.trading.paperStartingCash ?? 100000).toLocaleString("en-US");
   const cap = Math.round((meta?.trading.aiMaxPositionPct ?? 0.1) * 100);
   const rails = (meta?.rails ?? []).map((r) => r.name);
 
@@ -75,7 +74,9 @@ export function FeaturesPage() {
           <div>
             <SectionHead eyebrow="AI trading" title="An analyst on your side, and an autopilot when you want one" lead="Aurex's AI analyst reads the trend, momentum and volatility of any stock and proposes a trade, sized and with exits. Switch on Autopilot and it can act for you, inside rules you set." />
             <ul className="check-list">
-              <Check>Practise with ${cash} of paper money on every account</Check>
+              <Check>Start with a demo account of virtual money ($1,000 to $1,000,000), and restart it any time</Check>
+              <Check>Learn the essentials in six short lessons with quizzes, then complete practice missions</Check>
+              <Check>Upgrade to a real account when you're ready: a short questionnaire, review, then your own licensed broker</Check>
               <Check>Connect your own Alpaca account for live market data and brokerage</Check>
               <Check>Signals cite moving averages, RSI, MACD, volatility and recent returns</Check>
               <Check>AI Autopilot can trade for you on a schedule, or ask before each trade</Check>

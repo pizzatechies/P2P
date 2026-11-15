@@ -9,7 +9,6 @@ export function PricingPage() {
   const { meta } = useAuth();
   const fees = meta?.fees ?? { p2pBps: 0, fxSpreadBps: 50, withdrawalBps: 0 };
   const limits = meta?.limits ?? { maxTxUsd: 10000, dailyUsd: 25000 };
-  const cash = (meta?.trading.paperStartingCash ?? 100000).toLocaleString("en-US");
   const freeAi = meta?.ai?.freeDailyRequests ?? 25;
 
   const rows: [string, string, string][] = [
@@ -22,7 +21,8 @@ export function PricingPage() {
     ["Connecting accounts", "Free", "Banks, brokerages and Coinbase, read-only"],
     ["AI Hub", "Free", freeAi > 0 ? `${freeAi} free AI requests a day on Aurex's models; unlimited with your own API keys` : "Built-in assistant included; providers bill your own API keys directly"],
     ["AI Autopilot", "Free", "Trades for you within your limits; AI model usage counts toward your allowance"],
-    ["Paper trading", "Free", `$${cash} of practice cash`],
+    ["Demo account & trading academy", "Free", "Virtual money from $1,000 to $1,000,000, six lessons with quizzes and practice missions"],
+    ["Upgrading to a real account", "Free", "Questionnaire and review; trade through your own licensed broker"],
     ["Live trading via Alpaca", "No Aurex fee", "Your Alpaca account's own pricing applies"],
   ];
 

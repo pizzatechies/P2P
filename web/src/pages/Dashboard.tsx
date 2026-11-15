@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { VERIFY_KEY } from "./Auth";
 import { api } from "../api";
 import { Sparkline } from "../components/charts";
 import { Icon } from "../components/icons";
@@ -67,14 +68,18 @@ export function DashboardPage() {
   const security = useLoad(() =>
     api.get<{ totpEnabled: boolean; emailDelivery: boolean; securityHoldUntil: string | null; alerts: { read: boolean; message: string }[] }>("/api/settings/security"),
   );
-  const location = useLocation();
-  const navigate = useNavigate();
-  const arrival = location.state as { verifyEmail?: boolean; devCode?: string | null } | null;
-  const [verifying, setVerifying] = useState<{ devCode: string | null } | null>(arrival?.verifyEmail ? { devCode: arrival.devCode ?? null } : null);
-  const closeVerify = () => {
-    setVerifying(null);
-    if (arrival) navigate(location.pathname, { replace: true, state: null });
-  };
+  // Right after sign-up, ask for the emailed code.
+  const [verifying, setVerifying] = useState<{ devCode: string | null } | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(VERIFY_KEY);
+      if (!raw) return null;
+      sessionStorage.removeItem(VERIFY_KEY);
+      return JSON.parse(raw) as { devCode: string | null };
+    } catch {
+      return null;
+    }
+  });
+  const closeVerify = () => setVerifying(null);
   const unreadAlerts = (security.data?.alerts ?? []).filter((a) => !a.read);
 
   const refreshMoney = () => {
