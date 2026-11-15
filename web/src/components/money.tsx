@@ -350,7 +350,20 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
   );
 }
 
-type Dest = { type: string; name: string; accountNumber: string; bankCode: string; email: string; wallet: "paypal" | "venmo" };
+type Dest = { type: string; name: string; accountNumber: string; bankCode: string; email: string; wallet: "paypal" | "venmo"; firstName: string; lastName: string; country: string };
+
+/** Countries offered for MoneyGram cash pickup (the server maps these to MoneyGram's codes). */
+const PICKUP_COUNTRIES: [string, string][] = [
+  ["BJ", "Benin"], ["BO", "Bolivia"], ["BR", "Brazil"], ["BD", "Bangladesh"], ["BF", "Burkina Faso"], ["CA", "Canada"], ["CM", "Cameroon"], ["CN", "China"],
+  ["CO", "Colombia"], ["CD", "DR Congo"], ["CI", "Côte d'Ivoire"], ["DE", "Germany"], ["DO", "Dominican Republic"], ["EC", "Ecuador"], ["EG", "Egypt"],
+  ["ES", "Spain"], ["ET", "Ethiopia"], ["FR", "France"], ["GB", "United Kingdom"], ["GH", "Ghana"], ["GT", "Guatemala"], ["HN", "Honduras"], ["HT", "Haiti"],
+  ["ID", "Indonesia"], ["IN", "India"], ["IT", "Italy"], ["JM", "Jamaica"], ["JO", "Jordan"], ["KE", "Kenya"], ["LB", "Lebanon"], ["LK", "Sri Lanka"],
+  ["LR", "Liberia"], ["MA", "Morocco"], ["ML", "Mali"], ["MW", "Malawi"], ["MX", "Mexico"], ["MY", "Malaysia"], ["MZ", "Mozambique"], ["NG", "Nigeria"],
+  ["NI", "Nicaragua"], ["NL", "Netherlands"], ["NP", "Nepal"], ["PE", "Peru"], ["PH", "Philippines"], ["PK", "Pakistan"], ["PL", "Poland"], ["PT", "Portugal"],
+  ["RO", "Romania"], ["RW", "Rwanda"], ["SA", "Saudi Arabia"], ["SL", "Sierra Leone"], ["SN", "Senegal"], ["SV", "El Salvador"], ["TG", "Togo"], ["TH", "Thailand"],
+  ["TR", "Türkiye"], ["TZ", "Tanzania"], ["AE", "United Arab Emirates"], ["UA", "Ukraine"], ["UG", "Uganda"], ["US", "United States"], ["VN", "Vietnam"],
+  ["ZA", "South Africa"], ["ZM", "Zambia"], ["ZW", "Zimbabwe"],
+].sort((a, b) => a[1].localeCompare(b[1])) as [string, string][];
 
 export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { user, meta } = useAuth();
@@ -359,7 +372,8 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
   const [rail, setRail] = useState(rails[0]?.id ?? "");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
-  const [dest, setDest] = useState<Dest>({ type: "bank_account", name: "", accountNumber: "", bankCode: "", email: "", wallet: "paypal" });
+  const [dest, setDest] = useState<Dest>({ type: "bank_account", name: "", accountNumber: "", bankCode: "", email: "", wallet: "paypal", firstName: "", lastName: "", country: "" });
+  const [pickup, setPickup] = useState<{ reference: string; amount: string; currency: string; name: string } | null>(null);
   const [reqs, setReqs] = useState<RequirementsValue | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -370,7 +384,10 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
 
   function destination() {
     if (input === "phone") return { type: "mobile_money", name: dest.name, accountNumber: dest.accountNumber };
-    if (input === "email") return { type: "email", name: dest.name, email: dest.email, wallet: dest.wallet };
+    if (input === "email") return { type: "email", name: dest.name, email: dest.email, wallet: selected?.walletOptions?.length ? dest.wallet : undefined };
+    if (input === "cash_pickup") {
+      return { type: "cash_pickup", name: `${dest.firstName} ${dest.lastName}`.trim(), firstName: dest.firstName, lastName: dest.lastName, country: dest.country };
+    }
     if (input === "requirements") {
       return { type: "wise", name: reqs?.details.accountHolderName ?? dest.name, wiseType: reqs?.type, details: reqs?.details };
     }
@@ -382,9 +399,13 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
     setBusy(true);
     setError(null);
     try {
-      await api.post("/api/payments/withdrawals", { rail, amount, currency, idempotencyKey: key, destination: destination() });
-      toast(`Withdrawal of ${money(amount, currency)} sent`);
+      const r = await api.post<{ transfer: { payoutReference: string | null } }>("/api/payments/withdrawals", { rail, amount, currency, idempotencyKey: key, destination: destination() });
       onDone();
+      if (r.transfer.payoutReference) {
+        setPickup({ reference: r.transfer.payoutReference, amount, currency, name: `${dest.firstName} ${dest.lastName}`.trim() });
+        return;
+      }
+      toast(`Withdrawal of ${money(amount, currency)} sent`);
       onClose();
     } catch (err) {
       setError((err as Error).message);
@@ -407,6 +428,22 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
     </Field>
   );
   const blocked = input === "requirements" && !reqs?.valid;
+  if (pickup) {
+    return (
+      <Modal title="Ready for cash pickup" onClose={onClose}>
+        <div className="stack" style={{ textAlign: "center", alignItems: "center" }}>
+          <p className="muted small">{pickup.name} can collect {money(pickup.amount, pickup.currency)} (in local currency) at any MoneyGram location in the country you chose.</p>
+          <div className="stat-label">MoneyGram reference number</div>
+          <div className="stat-value mono" style={{ fontSize: 30, letterSpacing: "0.08em" }}>{pickup.reference}</div>
+          <p className="small">Share it only with the recipient. They'll need it and an ID that matches the name exactly. It's also saved under Deposits &amp; withdrawals.</p>
+          <div className="row" style={{ justifyContent: "center" }}>
+            <button className="btn secondary" onClick={() => navigator.clipboard?.writeText(pickup.reference).then(() => toast("Copied"), () => undefined)}>Copy</button>
+            <button className="btn" onClick={onClose}>Done</button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title="Withdraw" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
@@ -442,19 +479,51 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
 
         {input === "email" && (
           <>
-            <div className="seg" role="radiogroup" aria-label="Send to">
-              {(["paypal", "venmo"] as const).map((w) => (
-                <button type="button" key={w} role="radio" aria-checked={dest.wallet === w} className={dest.wallet === w ? "on" : ""} onClick={() => setDest({ ...dest, wallet: w })}>
-                  {w === "paypal" ? "PayPal" : "Venmo (US, USD)"}
-                </button>
-              ))}
-            </div>
+            {(selected?.walletOptions?.length ?? 0) > 1 && (
+              <div className="seg" role="radiogroup" aria-label="Send to">
+                {selected!.walletOptions!.map((w) => (
+                  <button type="button" key={w} role="radio" aria-checked={dest.wallet === w} className={dest.wallet === w ? "on" : ""} onClick={() => setDest({ ...dest, wallet: w })}>
+                    {w === "paypal" ? "PayPal" : "Venmo (US, USD)"}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="grid grid-2">
               {holder}
-              <Field label={`${dest.wallet === "venmo" ? "Venmo" : "PayPal"} email or phone`}>
-                <input className="input" value={dest.email} onChange={(e) => setDest({ ...dest, email: e.target.value })} required minLength={5} autoComplete="email" />
+              <Field label={selected?.payoutLabel ?? `${dest.wallet === "venmo" ? "Venmo" : "PayPal"} email or phone`}>
+                <input
+                  className="input"
+                  type={selected?.walletOptions?.length ? "text" : "email"}
+                  value={dest.email}
+                  onChange={(e) => setDest({ ...dest, email: e.target.value })}
+                  required
+                  minLength={5}
+                  autoComplete="email"
+                />
               </Field>
             </div>
+          </>
+        )}
+
+        {input === "cash_pickup" && (
+          <>
+            <p className="muted small" style={{ margin: 0 }}>The recipient collects the cash at a MoneyGram location with a reference number and an ID. It can be you or someone else.</p>
+            <div className="grid grid-2">
+              <Field label="Recipient's first name" hint="Exactly as on their ID">
+                <input className="input" value={dest.firstName} onChange={(e) => setDest({ ...dest, firstName: e.target.value })} required maxLength={40} autoComplete="given-name" />
+              </Field>
+              <Field label="Last name">
+                <input className="input" value={dest.lastName} onChange={(e) => setDest({ ...dest, lastName: e.target.value })} required maxLength={40} autoComplete="family-name" />
+              </Field>
+            </div>
+            <Field label="Pickup country">
+              <select className="input" value={dest.country} onChange={(e) => setDest({ ...dest, country: e.target.value })} required>
+                <option value="">Choose…</option>
+                {PICKUP_COUNTRIES.map(([code, name]) => (
+                  <option key={code} value={code}>{name}</option>
+                ))}
+              </select>
+            </Field>
           </>
         )}
 

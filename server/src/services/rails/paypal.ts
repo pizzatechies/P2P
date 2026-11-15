@@ -57,6 +57,7 @@ export function paypalRail(opts: { baseUrl: string; sandbox: boolean; clientId: 
     currencies: CURRENCIES,
     depositInput: "none",
     payoutInput: "email",
+    walletOptions: ["paypal", "venmo"],
 
     async createDeposit(input) {
       const back = (state: string) => {

@@ -232,6 +232,13 @@ function loadRequest(ctx: Ctx, id: string): RequestRow {
   return r;
 }
 
+/** Currency and amount of a payment request addressed to the user (for step-up checks before paying). */
+export function requestAmountFor(ctx: Ctx, userId: string, requestId: string) {
+  const req = loadRequest(ctx, requestId);
+  if (req.payer_id !== userId) throw forbidden("This request isn't addressed to you");
+  return { currency: req.currency, amountMinor: req.amount };
+}
+
 export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
   const req = loadRequest(ctx, requestId);
   if (req.payer_id !== userId) throw forbidden("This request isn't addressed to you");
@@ -331,6 +338,7 @@ interface ExternalRow {
   destination: string | null;
   failure_reason: string | null;
   journal_id: string | null;
+  payout_reference: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -347,7 +355,9 @@ function externalView(r: ExternalRow) {
     fee: fromMinor(r.fee, r.currency),
     status: r.status,
     failureReason: r.failure_reason,
-    destination: dest ? { type: dest.type, name: dest.name, accountLast4: destinationHint(dest), wallet: dest.wallet ?? null } : null,
+    destination: dest ? { type: dest.type, name: dest.name, accountLast4: destinationHint(dest), wallet: dest.wallet ?? null, country: dest.country ?? null } : null,
+    /** What the recipient needs to collect the money (e.g. a MoneyGram reference number). Only shown to the owner. */
+    payoutReference: r.payout_reference ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -400,6 +410,35 @@ export async function refreshExternal(ctx: Ctx, id: string, userId?: string) {
     else if (state === "failed") reverseWithdrawal(ctx, ext.id, "The payout provider rejected the transfer");
   }
   return externalView(loadExternal(ctx, id));
+}
+
+/**
+ * Reconciliation: asks providers about transfers still pending after a couple of minutes, so a
+ * missed webhook or a user who never came back from checkout doesn't leave money in limbo.
+ */
+export function startReconciler(ctx: Ctx, everyMs = 5 * 60_000) {
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const rows = all<{ id: string }>(
+        ctx.db,
+        "SELECT id FROM external_transfers WHERE status = 'pending' AND created_at < ? AND created_at > ? ORDER BY updated_at LIMIT 50",
+        new Date(Date.now() - 2 * 60_000).toISOString(),
+        new Date(Date.now() - 30 * 86_400_000).toISOString(),
+      );
+      for (const r of rows) {
+        await refreshExternal(ctx, r.id).catch((err) => console.warn(`[reconcile] ${r.id}: ${(err as Error).message}`));
+        run(ctx.db, "UPDATE external_transfers SET updated_at = ? WHERE id = ? AND status = 'pending'", nowIso(), r.id);
+      }
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => void tick(), everyMs);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 export function findExternalByProviderRef(ctx: Ctx, rail: string, ref: string) {
@@ -565,6 +604,9 @@ export async function withdraw(
     });
   } catch (err) {
     result = { status: "failed" as const, failureReason: (err as Error).message };
+  }
+  if (result.reference) {
+    run(ctx.db, "UPDATE external_transfers SET payout_reference = ?, updated_at = ? WHERE id = ?", result.reference.slice(0, 64), nowIso(), id);
   }
   if (result.providerRef) {
     try {

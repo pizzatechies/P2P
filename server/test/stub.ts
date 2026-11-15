@@ -15,7 +15,7 @@ export interface Recorded {
   headers: IncomingMessage["headers"];
   body: any;
 }
-export type Handler = (req: Recorded) => { status?: number; body?: unknown } | undefined;
+export type Handler = (req: Recorded) => { status?: number; body?: unknown; text?: string } | undefined;
 
 const servers: Server[] = [];
 
@@ -35,6 +35,10 @@ export async function stub(handler: Handler) {
       const out = handler(rec);
       if (!out) {
         res.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ message: `stub: no route ${req.method} ${req.url}` }));
+        return;
+      }
+      if (out.text !== undefined) {
+        res.writeHead(out.status ?? 200, { "Content-Type": "text/plain" }).end(out.text);
         return;
       }
       res.writeHead(out.status ?? 200, { "Content-Type": "application/json" }).end(out.body === undefined ? "" : JSON.stringify(out.body));

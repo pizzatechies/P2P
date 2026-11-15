@@ -41,6 +41,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [needTotp, setNeedTotp] = useState(false);
+  const [useRecovery, setUseRecovery] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -72,8 +73,27 @@ export function LoginPage() {
           <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </Field>
         {needTotp && (
-          <Field label="Authenticator code" hint="Open your authenticator app and enter the 6-digit code.">
-            <input className="input num" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))} autoFocus required />
+          <Field
+            label={useRecovery ? "Recovery code" : "Authenticator code"}
+            hint={
+              <>
+                {useRecovery ? "Each recovery code works once. Signing in with one pauses withdrawals for 24 hours as a precaution. " : "Open your authenticator app and enter the 6-digit code. "}
+                <button type="button" className="link-btn" onClick={() => { setUseRecovery(!useRecovery); setTotpCode(""); }}>
+                  {useRecovery ? "Use the app instead" : "Lost your phone? Use a recovery code"}
+                </button>
+              </>
+            }
+          >
+            <input
+              className="input num"
+              inputMode={useRecovery ? "text" : "numeric"}
+              autoComplete="one-time-code"
+              maxLength={useRecovery ? 14 : 6}
+              value={totpCode}
+              onChange={(e) => setTotpCode(useRecovery ? e.target.value : e.target.value.replace(/\D/g, ""))}
+              autoFocus
+              required
+            />
           </Field>
         )}
         <ErrorText error={error} />
@@ -123,8 +143,8 @@ export function RegisterPage() {
         <Field label="Email">
           <input className="input" type="email" autoComplete="email" value={form.email} onChange={(e) => set("email")(e.target.value)} required />
         </Field>
-        <Field label="Password" hint="At least 10 characters with a letter and a number.">
-          <input className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => set("password")(e.target.value)} required minLength={10} />
+        <Field label="Password" hint="At least 12 characters with a letter and a number. A few unrelated words works well; common or leaked passwords are refused.">
+          <input className="input" type="password" autoComplete="new-password" value={form.password} onChange={(e) => set("password")(e.target.value)} required minLength={12} />
         </Field>
         <Field label="Main currency">
           <CurrencySelect value={form.defaultCurrency} onChange={set("defaultCurrency")} />

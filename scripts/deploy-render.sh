@@ -50,11 +50,15 @@ if [ -z "$SERVICE" ]; then
   ENV_VARS=$(jq -nc \
     --arg admins "${ADMIN_EMAILS:-}" \
     --arg key "$(openssl rand -hex 32)" \
+    --arg setup "${ADMIN_SETUP_CODE:-$(openssl rand -hex 16)}" \
     --arg app "https://$NAME.onrender.com" \
     --arg rails "${PAYMENT_RAILS:-sandbox}" \
     '[{key: "NODE_ENV", value: "production"}, {key: "DATABASE_PATH", value: "/data/aurex.db"},
       {key: "TRUST_PROXY", value: "true"}, {key: "PAYMENT_RAILS", value: $rails},
-      {key: "MASTER_KEY", value: $key}, {key: "APP_URL", value: $app}, {key: "ADMIN_EMAILS", value: $admins}]')
+      {key: "MASTER_KEY", value: $key}, {key: "APP_URL", value: $app}, {key: "ADMIN_EMAILS", value: $admins},
+      {key: "ADMIN_SETUP_CODE", value: $setup}]')
+  echo "ADMIN_SETUP_CODE: $(echo "$ENV_VARS" | jq -r '.[] | select(.key == "ADMIN_SETUP_CODE") | .value')"
+  echo "  Keep it secret. After signing up with an ADMIN_EMAILS address and turning on 2FA, enter it under Settings -> Admin access."
   for name in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET P2P_FEE_BPS FX_SPREAD_BPS WITHDRAWAL_FEE_BPS MAX_TX_USD \
     DAILY_LIMIT_USD FX_LIVE ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY MISTRAL_API_KEY GROQ_API_KEY XAI_API_KEY \
     DEEPSEEK_API_KEY OPENROUTER_API_KEY TOGETHER_API_KEY PERPLEXITY_API_KEY AI_DEFAULT_MODEL AI_FREE_DAILY_REQUESTS \
@@ -68,7 +72,11 @@ if [ -z "$SERVICE" ]; then
     MTN_MOMO_COLLECTION_USER_ID MTN_MOMO_COLLECTION_API_KEY MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY \
     MTN_MOMO_DISBURSEMENT_USER_ID MTN_MOMO_DISBURSEMENT_API_KEY PAYPAL_ENV PAYPAL_CLIENT_ID \
     PAYPAL_CLIENT_SECRET WISE_ENV WISE_API_TOKEN WISE_PROFILE_ID WISE_FUNDING_CURRENCY COINBASE_CLIENT_ID \
-    COINBASE_CLIENT_SECRET; do
+    COINBASE_CLIENT_SECRET \
+    SKRILL_EMAIL SKRILL_SECRET_WORD SKRILL_API_PASSWORD MONEYGRAM_ENV MONEYGRAM_CLIENT_ID \
+    MONEYGRAM_CLIENT_SECRET MONEYGRAM_PARTNER_ID MONEYGRAM_SEND_CURRENCIES MPESA_CALLBACK_IPS ALLOWED_ORIGINS \
+    SESSION_IDLE_MINUTES SESSION_TTL_HOURS REAUTH_WINDOW_MINUTES STEP_UP_SEND_USD SECURITY_HOLD_HOURS \
+    LOGIN_MAX_ATTEMPTS LOGIN_LOCK_MINUTES PASSWORD_MIN_LENGTH; do
     if [ -n "${!name:-}" ]; then ENV_VARS=$(echo "$ENV_VARS" | jq -c --arg k "$name" --arg v "${!name}" '. + [{key: $k, value: $v}]'); fi
   done
   BODY=$(jq -nc --arg n "$NAME" --arg o "$OWNER_ID" --arg repo "$REPO_URL" --arg branch "$BRANCH" \

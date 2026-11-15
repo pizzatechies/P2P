@@ -127,11 +127,13 @@ export function FeaturesPage() {
       <Section id="money">
         <div className="split">
           <div>
-            <SectionHead eyebrow="Money in & out" title="Top up and cash out the way you already pay" lead="Add money from your phone or your PayPal, and withdraw to mobile money, PayPal, Venmo or a bank account almost anywhere." />
+            <SectionHead eyebrow="Money in & out" title="Top up and cash out the way you already pay" lead="Add money from your phone, PayPal or Skrill, and withdraw to mobile money, PayPal, Venmo, Skrill, a bank account almost anywhere, or cash at a MoneyGram location." />
             <ul className="check-list">
               <Check>M-Pesa: approve a top-up with your PIN, and withdraw straight to M-Pesa</Check>
               <Check>MTN MoMo in Ghana, Uganda, Zambia, Cameroon, Côte d'Ivoire, Rwanda and more</Check>
               <Check>PayPal for top-ups, and payouts to PayPal or Venmo</Check>
+              <Check>Skrill for top-ups and payouts to your Skrill wallet</Check>
+              <Check>Cash pickup at MoneyGram locations in 200+ countries, with a reference number and ID</Check>
               <Check>Bank payouts to 160+ countries through Wise; the form asks for exactly what each country needs</Check>
               <Check>Cards almost anywhere through Stripe; cards, bank transfers and Airtel Money across Africa through Flutterwave</Check>
               <Check>Your wallet is credited only after the provider confirms the full amount</Check>
@@ -146,7 +148,7 @@ export function FeaturesPage() {
               <div className="row between small"><span className="faint">Cancel</span><strong className="gold-text">Send</strong></div>
             </div>
             <div className="rail-chips">
-              {["M-Pesa", "MTN MoMo", "PayPal", "Venmo", "Wise", "Flutterwave", "Stripe"].map((r) => (
+              {["M-Pesa", "MTN MoMo", "PayPal", "Venmo", "Skrill", "MoneyGram", "Wise", "Flutterwave", "Stripe"].map((r) => (
                 <span key={r} className="pill">{r}</span>
               ))}
             </div>

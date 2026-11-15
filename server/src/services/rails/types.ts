@@ -18,7 +18,7 @@ export interface DepositResult {
 }
 
 export interface PayoutDestination {
-  type: "bank_account" | "mobile_money" | "card" | "email" | "wise";
+  type: "bank_account" | "mobile_money" | "card" | "email" | "wise" | "cash_pickup";
   name: string;
   /** Bank account or mobile-money number. */
   accountNumber?: string;
@@ -30,6 +30,9 @@ export interface PayoutDestination {
   /** Wise recipient type (e.g. "iban", "sort_code") and its details, keyed as in Wise's requirements ("address.city"). */
   wiseType?: string;
   details?: Record<string, string>;
+  /** Cash pickup (MoneyGram): the recipient's legal name as on their ID. Country is `country`. */
+  firstName?: string;
+  lastName?: string;
 }
 
 /** A payout form described by the provider (Wise account requirements), rendered generically by the web app. */
@@ -64,6 +67,8 @@ export interface PayoutResult {
   status: "completed" | "pending" | "failed";
   providerRef?: string;
   failureReason?: string;
+  /** Shown to the user: what the recipient needs to collect the money (e.g. a MoneyGram reference number). */
+  reference?: string;
 }
 
 /**
@@ -83,7 +88,11 @@ export interface PaymentRail {
   /** What the deposit form must collect: nothing (hosted checkout) or the payer's phone number. */
   depositInput?: "none" | "phone";
   /** What the withdraw form must collect. "requirements" means a provider-described form (payoutRequirements). */
-  payoutInput?: "bank" | "bank_code" | "phone" | "email" | "requirements";
+  payoutInput?: "bank" | "bank_code" | "phone" | "email" | "requirements" | "cash_pickup";
+  /** For email payouts: the wallets the user can pick from (PayPal offers PayPal or Venmo). */
+  walletOptions?: ("paypal" | "venmo")[];
+  /** Label for the email/phone field, e.g. "Skrill account email". */
+  payoutLabel?: string;
   /** Example phone format for phone inputs. */
   phoneHint?: string;
   createDeposit?(input: DepositInput): Promise<DepositResult>;

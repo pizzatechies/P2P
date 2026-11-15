@@ -1,7 +1,8 @@
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { api } from "../api";
 import { ErrorText } from "../components/ui";
 import { money, timeAgo } from "../format";
+import { Icon } from "../components/icons";
 import { useAuth, useLoad, useToast } from "../state";
 
 interface Overview {
@@ -48,7 +49,15 @@ export function AdminPage() {
           <p className="muted">Ledger health, customer funds and accounts.</p>
         </div>
       </div>
-      <ErrorText error={overview.error} />
+      {overview.error && /two-factor/i.test(overview.error) ? (
+        <div className="banner">
+          <Icon.Shield size={16} />
+          <span className="grow">Admin tools require two-factor authentication. Turn it on in Settings, then come back.</span>
+          <Link className="btn sm" to="/app/settings#two-factor">Turn on 2FA</Link>
+        </div>
+      ) : (
+        <ErrorText error={overview.error} />
+      )}
       {o && (
         <div className="grid grid-3" style={{ marginBottom: 16 }}>
           <div className="card">

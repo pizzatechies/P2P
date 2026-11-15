@@ -5,7 +5,9 @@ import { assertCurrency, fromMinor, toMinor } from "../lib/money.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { amountField, currencyField, idempotencyField, parse } from "../lib/validate.js";
 import { badRequest } from "../lib/errors.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRecentAuth } from "../middleware/auth.js";
+import { toUsdMinor } from "../services/fx.js";
+import { assertNoSecurityHold, assertRecentAuth } from "../services/security.js";
 import { getRail } from "../services/rails/index.js";
 import { quote } from "../services/fx.js";
 import { getBalances } from "../services/ledger.js";
@@ -20,10 +22,11 @@ import {
   listRequests,
   payRequest,
   refreshExternal,
+  requestAmountFor,
   sendMoney,
   withdraw,
 } from "../services/payments.js";
-import { audit, searchUsers } from "../services/users.js";
+import { audit, getUserRow, searchUsers } from "../services/users.js";
 
 const SendBody = z.object({
   to: z.string().trim().min(2).max(200),
@@ -65,7 +68,7 @@ const WithdrawBody = z.object({
   idempotencyKey: idempotencyField,
   destination: z
     .object({
-      type: z.enum(["bank_account", "mobile_money", "card", "email", "wise"]),
+      type: z.enum(["bank_account", "mobile_money", "card", "email", "wise", "cash_pickup"]),
       name: z.string().trim().min(2).max(80),
       accountNumber: z.string().trim().regex(/^[A-Za-z0-9 +-]{4,34}$/, "4-34 letters or digits").optional(),
       bankCode: z.string().trim().max(20).optional(),
@@ -79,10 +82,17 @@ const WithdrawBody = z.object({
       wallet: z.enum(["paypal", "venmo"]).optional(),
       wiseType: z.string().trim().regex(/^[a-z0-9_]{2,40}$/i).optional(),
       details: detailsField.optional(),
+      firstName: z.string().trim().max(40).regex(/^[\p{L}\p{M}' .-]+$/u, "Use the name as written on the ID").optional(),
+      lastName: z.string().trim().max(40).regex(/^[\p{L}\p{M}' .-]+$/u, "Use the name as written on the ID").optional(),
     })
     .superRefine((d, issue) => {
       const need = (ok: unknown, path: string, message: string) => ok || issue.addIssue({ code: "custom", path: [path], message });
       if (d.type === "email") need(d.email, "email", "Enter the email address or phone number");
+      else if (d.type === "cash_pickup") {
+        need(d.firstName, "firstName", "Enter the recipient's first name");
+        need(d.lastName, "lastName", "Enter the recipient's last name");
+        need(d.country, "country", "Choose the pickup country");
+      }
       else if (d.type === "wise") {
         need(d.wiseType, "wiseType", "Choose how to receive the money");
         need(d.details && Object.keys(d.details).length, "details", "Fill in the bank details");
@@ -137,8 +147,20 @@ export function paymentRoutes(ctx: Ctx) {
     res.json({ users: searchUsers(ctx, String(req.query.q ?? ""), req.user!.id) });
   });
 
+  /**
+   * Large sends to other users need a recent password/2FA check and are paused during a security
+   * hold, so a stolen session (or a just-hijacked account) can't move big amounts.
+   */
+  async function stepUpForSend(req: import("express").Request, currency: string, amountMinor: number) {
+    const usdMinor = await toUsdMinor(ctx, currency.toUpperCase(), amountMinor);
+    if (usdMinor < ctx.config.STEP_UP_SEND_USD * 100) return;
+    assertNoSecurityHold(getUserRow(ctx, req.user!.id));
+    assertRecentAuth(ctx, req.reauthAt);
+  }
+
   r.post("/send", moneyLimiter, async (req, res) => {
     const body = parse(SendBody, req.body);
+    await stepUpForSend(req, body.currency, toMinor(body.amount, body.currency));
     const transfer = await sendMoney(ctx, {
       senderId: req.user!.id,
       to: body.to,
@@ -168,6 +190,8 @@ export function paymentRoutes(ctx: Ctx) {
   });
 
   r.post("/requests/:id/pay", moneyLimiter, async (req, res) => {
+    const due = requestAmountFor(ctx, req.user!.id, String(req.params.id));
+    await stepUpForSend(req, due.currency, due.amountMinor);
     const request = await payRequest(ctx, req.user!.id, String(req.params.id));
     audit(ctx, req.user!.id, "payments.request_paid", { requestId: request.id }, req.ip);
     res.json({ request });
@@ -246,7 +270,9 @@ export function paymentRoutes(ctx: Ctx) {
     );
   });
 
-  r.post("/withdrawals", moneyLimiter, async (req, res) => {
+  // Money leaving Aurex always needs a recent password/2FA check and no active security hold.
+  r.post("/withdrawals", moneyLimiter, requireRecentAuth(ctx), async (req, res) => {
+    assertNoSecurityHold(getUserRow(ctx, req.user!.id));
     const body = parse(WithdrawBody, req.body);
     const transfer = await withdraw(ctx, {
       userId: req.user!.id,

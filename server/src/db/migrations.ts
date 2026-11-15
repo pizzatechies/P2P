@@ -330,4 +330,41 @@ export const migrations: string[] = [
   `
   ALTER TABLE linked_accounts ADD COLUMN value_usd REAL;
   `,
+  // 5: Account protection - lockouts, 2FA replay protection, recovery codes, security holds,
+  // session activity and re-authentication, and in-app security alerts.
+  `
+  ALTER TABLE users ADD COLUMN failed_logins INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN lockouts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN locked_until TEXT;
+  ALTER TABLE users ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN security_hold_until TEXT;
+  ALTER TABLE users ADD COLUMN password_changed_at TEXT;
+
+  ALTER TABLE sessions ADD COLUMN last_seen_at TEXT;
+  ALTER TABLE sessions ADD COLUMN reauth_at TEXT;
+
+  -- One-time 2FA recovery codes; only their SHA-256 is stored.
+  CREATE TABLE recovery_codes (
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash  TEXT NOT NULL,
+    used_at    TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, code_hash)
+  );
+
+  CREATE TABLE security_alerts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,
+    message    TEXT NOT NULL,
+    ip         TEXT,
+    created_at TEXT NOT NULL,
+    read_at    TEXT
+  );
+  CREATE INDEX security_alerts_user ON security_alerts(user_id, id);
+  `,
+  // 6: What the recipient needs to collect a payout (e.g. a MoneyGram reference number for cash pickup).
+  `
+  ALTER TABLE external_transfers ADD COLUMN payout_reference TEXT;
+  `,
 ];

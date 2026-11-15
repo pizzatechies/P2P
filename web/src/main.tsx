@@ -21,6 +21,7 @@ import { SecurityPage } from "./site/Security";
 import { SiteLayout } from "./site/SiteLayout";
 import { setupPwa } from "./pwa";
 import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
+import { ReauthProvider } from "./components/reauth";
 import "./styles.css";
 
 try {
@@ -71,6 +72,7 @@ createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
+          <ReauthProvider>
           <Routes>
             <Route element={<SiteLayout />}>
               <Route path="/" element={<HomePage />} />
@@ -96,6 +98,7 @@ createRoot(document.getElementById("root")!).render(
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </ReauthProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

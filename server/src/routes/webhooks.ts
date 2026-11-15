@@ -11,7 +11,8 @@ import {
   reverseWithdrawal,
   settleWithdrawal,
 } from "../services/payments.js";
-import { mpesaCallbackToken } from "../services/rails/index.js";
+import { getRails, mpesaCallbackToken } from "../services/rails/index.js";
+import { skrillOutcome, verifySkrillSignature } from "../services/rails/skrill.js";
 import { verifyStripeSignature } from "../services/rails/stripe.js";
 
 interface StripeEvent {
@@ -135,6 +136,16 @@ export function webhookRoutes(ctx: Ctx) {
    */
   const mpesaToken = () => mpesaCallbackToken(ctx);
   const mpesaAck = { ResultCode: 0, ResultDesc: "Accepted" };
+  // Optional second lock: only Safaricom's published callback IPs (MPESA_CALLBACK_IPS).
+  r.use("/mpesa", (req, res, next) => {
+    const allow = ctx.config.mpesaCallbackIps;
+    const ip = (req.ip ?? "").replace(/^::ffff:/, "");
+    if (allow.size > 0 && !allow.has(ip)) {
+      console.warn(`[mpesa webhook] refused callback from ${ip || "unknown address"}`);
+      return res.status(403).json({ error: { code: "forbidden", message: "Not allowed" } });
+    }
+    next();
+  });
 
   r.post("/mpesa/:token/stk", async (req, res) => {
     if (!safeEqual(String(req.params.token), mpesaToken())) return res.status(404).json({ error: { code: "not_found", message: "Not found" } });
@@ -207,6 +218,30 @@ export function webhookRoutes(ctx: Ctx) {
     }
     if (ext && ext.rail === "paypal") await recheck(ext.id, "paypal");
     res.json({ received: true });
+  });
+
+  /**
+   * Skrill status notification (form-encoded). Its md5sig is checked with the secret word; then the
+   * transaction is re-checked through the query API, or (without an API password) settled from the
+   * verified notification, matching the currency and amount Aurex asked for.
+   */
+  r.post("/skrill", async (req, res) => {
+    const secret = ctx.config.SKRILL_SECRET_WORD;
+    if (!secret || !ctx.config.SKRILL_EMAIL) return res.status(404).json({ error: { code: "not_found", message: "Skrill isn't configured" } });
+    const fields = new URLSearchParams((req.body as Buffer).toString("utf8"));
+    if (!verifySkrillSignature(fields, secret)) return res.status(400).json({ error: { code: "bad_signature", message: "Invalid signature" } });
+    if ((fields.get("pay_to_email") ?? "").toLowerCase() !== ctx.config.SKRILL_EMAIL.toLowerCase()) return res.status(400).json({ error: { code: "bad_request", message: "Wrong merchant" } });
+    const ext = findExternalById(ctx, fields.get("transaction_id") ?? "");
+    if (ext && ext.rail === "skrill" && ext.direction === "deposit") {
+      if (ctx.config.SKRILL_API_PASSWORD && getRails(ctx).get("skrill")?.checkDeposit) await recheck(ext.id, "skrill");
+      else {
+        const outcome = skrillOutcome(fields.get("status"), fields.get("currency"), fields.get("amount"), ext.currency, ext.amount);
+        if (outcome === "completed") completeDeposit(ctx, ext.id);
+        else if (outcome === "failed") failDeposit(ctx, ext.id, "The Skrill payment wasn't completed");
+      }
+      if (fields.get("status") === "-3") console.warn(`[skrill webhook] chargeback reported for ${ext.id}; review it in the admin tools`);
+    }
+    res.send("OK");
   });
 
   return r;

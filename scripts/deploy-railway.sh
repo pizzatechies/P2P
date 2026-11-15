@@ -91,6 +91,13 @@ MASTER_KEY_JSON='{}'
 if [ "$(echo "$EXISTING" | jq -r '.MASTER_KEY // empty')" = "" ]; then
   MASTER_KEY_JSON=$(jq -nc --arg k "$(openssl rand -hex 32)" '{MASTER_KEY: $k}')
 fi
+# Admin rights in production need this code (an email address alone isn't proof). Generated once.
+if [ "$(echo "$EXISTING" | jq -r '.ADMIN_SETUP_CODE // empty')" = "" ]; then
+  SETUP_CODE="${ADMIN_SETUP_CODE:-$(openssl rand -hex 16)}"
+  MASTER_KEY_JSON=$(echo "$MASTER_KEY_JSON" | jq -c --arg c "$SETUP_CODE" '. + {ADMIN_SETUP_CODE: $c}')
+  echo "ADMIN_SETUP_CODE: $SETUP_CODE"
+  echo "  Keep it secret. After signing up with an ADMIN_EMAILS address and turning on 2FA, enter it under Settings -> Admin access."
+fi
 VARS=$(jq -nc \
   --arg app "https://$DOMAIN" \
   --arg admins "${ADMIN_EMAILS:-$(echo "$EXISTING" | jq -r '.ADMIN_EMAILS // ""')}" \
@@ -111,7 +118,11 @@ for name in PAYMENT_RAILS STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET P2P_FEE_BPS FX
   MTN_MOMO_COLLECTION_USER_ID MTN_MOMO_COLLECTION_API_KEY MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY \
   MTN_MOMO_DISBURSEMENT_USER_ID MTN_MOMO_DISBURSEMENT_API_KEY PAYPAL_ENV PAYPAL_CLIENT_ID \
   PAYPAL_CLIENT_SECRET WISE_ENV WISE_API_TOKEN WISE_PROFILE_ID WISE_FUNDING_CURRENCY COINBASE_CLIENT_ID \
-  COINBASE_CLIENT_SECRET; do
+  COINBASE_CLIENT_SECRET \
+  SKRILL_EMAIL SKRILL_SECRET_WORD SKRILL_API_PASSWORD MONEYGRAM_ENV MONEYGRAM_CLIENT_ID \
+  MONEYGRAM_CLIENT_SECRET MONEYGRAM_PARTNER_ID MONEYGRAM_SEND_CURRENCIES MPESA_CALLBACK_IPS ALLOWED_ORIGINS \
+  SESSION_IDLE_MINUTES SESSION_TTL_HOURS REAUTH_WINDOW_MINUTES STEP_UP_SEND_USD SECURITY_HOLD_HOURS \
+  LOGIN_MAX_ATTEMPTS LOGIN_LOCK_MINUTES PASSWORD_MIN_LENGTH; do
   if [ -n "${!name:-}" ]; then VARS=$(echo "$VARS" | jq -c --arg k "$name" --arg v "${!name}" '. + {($k): $v}'); fi
 done
 gql 'mutation($i: VariableCollectionUpsertInput!) { variableCollectionUpsert(input: $i) }' \

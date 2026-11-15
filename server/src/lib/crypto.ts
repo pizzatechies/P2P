@@ -142,12 +142,43 @@ export function totp(secretB32: string, timeMs = Date.now(), step = 30, digits =
 
 /** Accepts the current code and one step either side to tolerate clock drift. */
 export function verifyTotp(secretB32: string, code: string, timeMs = Date.now()): boolean {
+  return matchTotp(secretB32, code, timeMs) !== null;
+}
+
+/**
+ * Like verifyTotp, but returns the time step the code belongs to. Callers store the last step used
+ * and refuse codes at or before it, so an intercepted code can't be replayed.
+ */
+export function matchTotp(secretB32: string, code: string, timeMs = Date.now()): number | null {
   const clean = code.replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(clean)) return false;
+  if (!/^\d{6}$/.test(clean)) return null;
+  const now = Math.floor(timeMs / 1000 / 30);
   for (const drift of [-1, 0, 1]) {
-    if (safeEqual(totp(secretB32, timeMs + drift * 30_000), clean)) return true;
+    if (safeEqual(totp(secretB32, timeMs + drift * 30_000), clean)) return now + drift;
   }
-  return false;
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// 2FA recovery codes: 10 one-time codes like "k7wq-m2xd-9p", stored only as SHA-256.
+// ---------------------------------------------------------------------------
+const RECOVERY_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no 0/o, 1/l/i
+
+export function generateRecoveryCodes(count = 10): string[] {
+  return Array.from({ length: count }, () => {
+    const bytes = randomBytes(10);
+    const chars = [...bytes].map((b) => RECOVERY_ALPHABET[b % RECOVERY_ALPHABET.length]).join("");
+    return `${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 10)}`;
+  });
+}
+
+/** Normalises what a user typed (case, spaces, dashes) before hashing. */
+export function recoveryCodeHash(code: string) {
+  return sha256(`aurex-recovery:${code.toLowerCase().replace(/[^a-z0-9]/g, "")}`);
+}
+
+export function looksLikeRecoveryCode(code: string) {
+  return /^[a-z0-9]{4}-?[a-z0-9]{4}-?[a-z0-9]{2}$/i.test(code.trim()) && /[a-z]/i.test(code);
 }
 
 export function totpUri(secretB32: string, account: string, issuer = "Aurex") {

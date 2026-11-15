@@ -3,10 +3,12 @@ import type { Ctx } from "../../context.js";
 import { badRequest } from "../../lib/errors.js";
 import { CURRENCIES } from "../../lib/money.js";
 import { flutterwaveRail } from "./flutterwave.js";
+import { moneygramRail } from "./moneygram.js";
 import { mpesaRail } from "./mpesa.js";
 import { mtnMomoRail } from "./mtnmomo.js";
 import { paypalRail } from "./paypal.js";
 import { sandboxRail } from "./sandbox.js";
+import { skrillRail } from "./skrill.js";
 import { stripeRail } from "./stripe.js";
 import { wiseRail } from "./wise.js";
 import type { PaymentRail } from "./types.js";
@@ -82,6 +84,30 @@ export function getRails(ctx: Ctx): Map<string, PaymentRail> {
           fundingCurrency: c.WISE_FUNDING_CURRENCY.toUpperCase(),
         }),
       );
+    } else if (id === "skrill" && c.SKRILL_EMAIL && c.SKRILL_SECRET_WORD) {
+      rails.set(
+        id,
+        skrillRail({
+          email: c.SKRILL_EMAIL,
+          secretWord: c.SKRILL_SECRET_WORD,
+          apiPassword: c.SKRILL_API_PASSWORD,
+          payUrl: c.SKRILL_PAY_URL,
+          apiUrl: c.SKRILL_API_URL,
+          appUrl: c.APP_URL,
+        }),
+      );
+    } else if (id === "moneygram" && c.MONEYGRAM_CLIENT_ID && c.MONEYGRAM_CLIENT_SECRET && c.MONEYGRAM_PARTNER_ID) {
+      rails.set(
+        id,
+        moneygramRail({
+          baseUrl: c.MONEYGRAM_BASE_URL ?? (c.MONEYGRAM_ENV === "production" ? "https://api.moneygram.com" : "https://sandboxapi.moneygram.com"),
+          sandbox: c.MONEYGRAM_ENV !== "production",
+          clientId: c.MONEYGRAM_CLIENT_ID,
+          clientSecret: c.MONEYGRAM_CLIENT_SECRET,
+          partnerId: c.MONEYGRAM_PARTNER_ID,
+          sendCurrencies: c.MONEYGRAM_SEND_CURRENCIES.split(",").map((x) => x.trim().toUpperCase()).filter((x) => CURRENCIES[x]),
+        }),
+      );
     } else console.warn(`[rails] unknown or unconfigured payment rail "${id}" ignored`);
   }
   registries.set(ctx.config, rails);
@@ -111,6 +137,8 @@ export function describeRails(ctx: Ctx) {
     depositInput: r.depositInput ?? "none",
     payoutInput: r.payoutInput ?? "bank",
     phoneHint: r.phoneHint ?? null,
+    walletOptions: r.walletOptions ?? null,
+    payoutLabel: r.payoutLabel ?? null,
   }));
 }
 

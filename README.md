@@ -49,6 +49,8 @@ Copy `.env.example` to `server/.env` and fill in what you need. The server loads
 | MTN MoMo direct | `PAYMENT_RAILS=…,mtn-momo`, `MTN_MOMO_*` |
 | PayPal and Venmo | `PAYMENT_RAILS=…,paypal`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` |
 | Bank payouts to 160+ countries | `PAYMENT_RAILS=…,wise`, `WISE_API_TOKEN`, `WISE_PROFILE_ID` |
+| Skrill wallets | `PAYMENT_RAILS=…,skrill`, `SKRILL_EMAIL`, `SKRILL_SECRET_WORD`, `SKRILL_API_PASSWORD` |
+| Cash pickup worldwide | `PAYMENT_RAILS=…,moneygram`, `MONEYGRAM_CLIENT_ID`, `MONEYGRAM_CLIENT_SECRET`, `MONEYGRAM_PARTNER_ID` |
 | Link outside banks, brokerages and crypto | Any of `PLAID_*`, `SALTEDGE_*`, `MONO_*`, `SNAPTRADE_*`, `COINBASE_*` (see [Connections](#connections)) |
 | Live exchange rates | `FX_LIVE=true` |
 
@@ -106,7 +108,7 @@ System accounts: `external` (the outside world), `clearing` (withdrawals in flig
 | `sandbox` | instant | instant | Test money. Account numbers ending in `0000` fail, to demo reversals |
 | `stripe` | Stripe Checkout | – | Wallet credited only from the signed `checkout.session.completed` webhook. Point Stripe at `POST /api/webhooks/stripe` |
 
-Rails included: `sandbox`, `stripe`, `flutterwave`, `mpesa`, `mtn-momo`, `paypal` and `wise` (see [Connections](#connections)). To add another rail, implement the `PaymentRail` interface in `rails/types.ts` and register it in `rails/index.ts`. The ledger and UI don't change.
+Rails included: `sandbox`, `stripe`, `flutterwave`, `mpesa`, `mtn-momo`, `paypal`, `wise`, `skrill` and `moneygram` (see [Connections](#connections)). To add another rail, implement the `PaymentRail` interface in `rails/types.ts` and register it in `rails/index.ts`. The ledger and UI don't change.
 
 ### AI Hub
 
@@ -174,11 +176,15 @@ Coinbase links with OAuth. The `state` carries the link id plus a nonce, and onl
 | `mtn-momo` | Request to Pay: PIN prompt on the phone | Disbursement transfer | The market's currency | `GET …/requesttopay/{id}` and `GET …/transfer/{id}` |
 | `paypal` | PayPal approval, then capture | PayPal (email/phone) or Venmo (US, USD) | USD, EUR, GBP, CAD, AUD, CHF, JPY, MXN | Order and capture lookup; payout batch lookup |
 | `wise` | none | Bank accounts in 160+ countries | 18 of Aurex's currencies | Transfer status lookup |
+| `skrill` | Skrill Quick Checkout (wallet, cards, local methods) | To a Skrill account email | EUR, USD, GBP, CAD, AUD, CHF, JPY, INR, AED, ZAR | Merchant Query Interface; status notification with `md5sig` |
+| `moneygram` | none | Cash pickup in 200+ countries (reference number + ID) | `MONEYGRAM_SEND_CURRENCIES` | Quote → update (compliance screening) → commit; Status API (`RECEIVED` = collected) |
 
 Details:
 
 - **No redirect or webhook moves money on its own.** Aurex asks the provider for the real state first. The exception is M-Pesa B2C, because Safaricom offers no synchronous lookup. Those results are only accepted on a callback URL that contains a secret derived from `MASTER_KEY`, and their conversation ids must match the payout Aurex sent. A B2C queue timeout leaves the payout pending for review rather than guessing.
-- **Idempotency.** MoMo `X-Reference-Id`, Wise `customerTransactionId`, PayPal `PayPal-Request-Id` and M-Pesa `OriginatorConversationID` all derive from Aurex's transfer id, so a retry can't pay twice.
+- **Idempotency.** MoMo `X-Reference-Id`, Wise `customerTransactionId`, PayPal `PayPal-Request-Id`, M-Pesa `OriginatorConversationID`, Skrill `frn_trn_id` and MoneyGram `X-MG-ClientRequestId`/`partnerTransactionId` all derive from Aurex's transfer id, so a retry can't pay twice.
+- **Skrill** deposits are confirmed through the Merchant Query Interface. Without an API password, the status notification is accepted only when its `md5sig` matches the secret word, and only for the amount and currency Aurex asked for. Payouts need the API enabled for the server's IP.
+- **MoneyGram** payouts give the user a reference number, shown once in the app and kept in their transfer history. The recipient collects the cash with it and a matching ID. If it's never collected and MoneyGram refunds it, the user is refunded too.
 - **Deposits to a phone** (M-Pesa, MoMo) ask for the number. The app then waits on an "Approve on your phone" screen and polls `/api/payments/transfers/:id/refresh`.
 - **Wise payouts** use the form Wise describes for each currency (`POST /api/payments/payout-requirements`, refreshed when a field such as the country changes). Aurex creates the recipient, a quote for the exact amount, the transfer, and then funds it from the operator's Wise balance. That balance is in the same currency when the profile holds one, otherwise `WISE_FUNDING_CURRENCY`. If funding fails, the transfer is cancelled and the user is refunded.
 - **Withdrawals** are held in clearing before the provider is called, and refunded automatically if it rejects them.
@@ -196,15 +202,33 @@ Requests that run on the server's own provider keys count against `AI_FREE_DAILY
 
 ### Security
 
-- Passwords use scrypt (N=2¹⁵) and are compared in constant time. Login takes the same time whether or not the user exists.
-- Sessions use random 256-bit tokens in `HttpOnly`, `SameSite=Lax` cookies (`Secure` in production). Only a SHA-256 of the token is stored, so sessions can be revoked.
-- Optional **TOTP two-factor** login works with any authenticator app.
-- **CSRF:** every state-changing request must carry a custom `X-Aurex-CSRF` header, which other origins can't send.
-- Third-party API keys and 2FA secrets are encrypted at rest with AES-256-GCM, using a key derived from `MASTER_KEY`.
-- Helmet security headers include a strict Content-Security-Policy.
-- Rate limits apply per IP (auth, API) and per user (money movement, AI, orders).
-- All input is validated with Zod and all SQL is parameterised. AI Markdown is rendered as React elements, never as raw HTML.
-- An audit log covers logins, money movement, key changes and orders. Users can see their own events under Settings.
+No system can honestly promise to be unhackable. Aurex is built so that a single failure doesn't lose anyone's money: a stolen password, a stolen session, a leaked database file or a forged webhook each run into another layer.
+
+**Accounts**
+- Passwords: scrypt (N=2¹⁵), at least `PASSWORD_MIN_LENGTH` (12) characters. Common, repetitive and personal passwords are refused, and so are passwords found in known breaches. The breach check uses the Have I Been Pwned range API, so only 5 characters of a SHA-1 hash leave the server.
+- Lockout: `LOGIN_MAX_ATTEMPTS` failed passwords or 2FA codes lock the account for `LOGIN_LOCK_MINUTES`. The lock doubles each time, up to 24 hours, and a locked account doesn't even check passwords. Per-IP limits apply on top.
+- Two-factor (TOTP): each code is accepted only once (replay protection). Ten one-time **recovery codes** are issued and stored only as hashes. Signing in with one starts a security hold.
+- Sessions: random 256-bit tokens, stored only as SHA-256. In production the cookie is `__Host-`, `HttpOnly`, `Secure` and `SameSite=Lax`. Sessions end after `SESSION_IDLE_MINUTES` idle or `SESSION_TTL_HOURS` total. **Settings → Security center** lists every device and can sign any of them out. Changing the password signs out all others.
+- Alerts: new-device sign-ins, lockouts, password and 2FA changes, recovery-code use and admin changes appear in the Security center and on the dashboard.
+
+**Money**
+- **Re-authentication:** withdrawals, sends over `STEP_UP_SEND_USD`, saving AI or brokerage keys, connecting live trading, switching on Autopilot and every admin action need the password (and 2FA) within the last `REAUTH_WINDOW_MINUTES`. The app asks with a "Confirm it's you" prompt and then continues.
+- **Security hold:** after a password change, 2FA removal or recovery-code sign-in, withdrawals and large sends pause for `SECURITY_HOLD_HOURS` (24). Someone who just took over an account can't empty it.
+- A double-entry ledger, idempotency keys, per-payment and daily limits, and provider-confirmed deposits and payouts (see [Connections](#connections)). Failed payouts are refunded automatically. A reconciler re-checks pending transfers every 5 minutes.
+
+**Admins**
+- Admin tools require 2FA (`REQUIRE_ADMIN_2FA`). Admins can't turn 2FA off or freeze their own account.
+- In production an `ADMIN_EMAILS` address alone grants nothing, because email addresses aren't verified. The account must also enter `ADMIN_SETUP_CODE` (with 2FA on) under Settings → Admin access. The deploy scripts generate the code and print it once.
+
+**Platform**
+- Headers: strict CSP (`frame-ancestors 'none'`, `object-src 'none'`, no inline scripts), HSTS with preload (2 years), `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, a locked-down `Permissions-Policy`, and `Cache-Control: no-store` on every API response.
+- CSRF protection has two layers. Every state-changing request needs the `X-Aurex-CSRF` header, *and* requests marked `Sec-Fetch-Site: cross-site`, or from an origin other than `APP_URL`/`ALLOWED_ORIGINS`, are refused.
+- Secrets (API keys, 2FA secrets, provider tokens) are encrypted with AES-256-GCM under `MASTER_KEY`. To **rotate** it, set the new key and put the old one in `MASTER_KEY_PREVIOUS`; secrets are re-encrypted at startup. SQLite runs with `secure_delete`, and the container writes the database with `umask 077`.
+- Webhooks are rate-limited and verified per provider. M-Pesa callbacks can be limited to Safaricom's IPs (`MPESA_CALLBACK_IPS`), and the callback secret is redacted from logs.
+- All input is validated with Zod, and all SQL is parameterised. AI output is rendered as React elements, never as raw HTML. An audit log covers sign-ins, money movement and key changes.
+- Supply chain: `npm audit` gates CI, CodeQL (`security-extended`) scans every push and weekly, Dependabot keeps npm, Actions and Docker dependencies patched, and [SECURITY.md](SECURITY.md) and `/.well-known/security.txt` explain how to report a vulnerability.
+
+**Recommended on GitHub** (repository settings, not code): turn on secret scanning with push protection and Dependabot alerts, and protect the default branch (require CI and CodeQL to pass).
 
 ---
 
@@ -283,7 +307,8 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Admin | `GET /admin/overview`, `GET /admin/users`, `POST /admin/users/:id/status` |
 | Connections | `GET /connections/providers`, `GET /connections`, `POST /connections/:provider/start`, `POST /connections/links/:id/complete`, `POST /connections/:id/sync`, `DELETE /connections/:id`, `GET /connections/oauth/:provider/callback` |
 | Payouts | `POST /payments/payout-requirements`, `POST /payments/transfers/:id/refresh` |
-| Webhooks | `POST /webhooks/stripe`, `/flutterwave`, `/plaid`, `/mono`, `/paypal`, `/mtn-momo` (PUT or POST), `/mpesa/<secret>/stk`, `/mpesa/<secret>/b2c/result`, `/mpesa/<secret>/b2c/timeout` |
+| Security | `POST /auth/reauth`, `GET /settings/security`, `POST /settings/security/alerts/read`, `DELETE /settings/sessions/:id`, `POST /settings/sessions/revoke-others`, `POST /settings/2fa/recovery-codes`, `POST /settings/admin/claim` |
+| Webhooks | `POST /webhooks/stripe`, `/flutterwave`, `/plaid`, `/mono`, `/paypal`, `/skrill`, `/mtn-momo` (PUT or POST), `/mpesa/<secret>/stk`, `/mpesa/<secret>/b2c/result`, `/mpesa/<secret>/b2c/timeout` |
 
 ## Tests
 
@@ -291,4 +316,4 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 npm test
 ```
 
-The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal and Wise APIs. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.
+The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.

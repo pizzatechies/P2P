@@ -31,7 +31,7 @@ export function HomePage() {
             <ul className="hero-points">
               <li>Free to open</li>
               <li>{currencies} currencies</li>
-              <li>M-Pesa, MoMo &amp; PayPal</li>
+              <li>M-Pesa, PayPal, Skrill &amp; MoneyGram</li>
               <li>{PROVIDERS.length} AI providers</li>
             </ul>
           </div>
@@ -88,7 +88,7 @@ export function HomePage() {
           <Link to="/features#connections" className="pillar">
             <span className="pillar-ico"><Icon.Link /></span>
             <h3>Connected to all your money</h3>
-            <p>Pay in and cash out with M-Pesa, MTN MoMo, PayPal, Venmo or a bank in 160+ countries, and see your banks, brokerages and Coinbase in one net worth.</p>
+            <p>Pay in and cash out with M-Pesa, MTN MoMo, PayPal, Venmo, Skrill, MoneyGram cash pickup or a bank in 160+ countries, and see your banks, brokerages and Coinbase in one net worth.</p>
             <span className="pillar-link">Connections →</span>
           </Link>
         </div>
@@ -155,7 +155,8 @@ export function HomePage() {
           items={[
             { q: "Is Aurex free?", a: <>Opening an account is free, and sending money to other Aurex users is {sendFee.toLowerCase()}. Currency conversion includes a small, clearly shown spread. See <Link to="/pricing">pricing</Link>.</> },
             { q: "Which AI models can I use?", a: "Claude, GPT, Gemini, Mistral, Llama (via Groq or Together), Grok, DeepSeek, Perplexity, self-hosted models via Ollama, and hundreds more through OpenRouter. A built-in assistant works with no setup at all." },
-            { q: "Can I use M-Pesa, MTN MoMo or PayPal?", a: "Yes, where the Aurex operator has switched them on. Add money with an M-Pesa or MoMo PIN prompt on your phone, or with PayPal, and withdraw to M-Pesa, MoMo, PayPal, Venmo (US) or a bank account in 160+ countries through Wise." },
+            { q: "Can I use M-Pesa, MTN MoMo, PayPal, Skrill or MoneyGram?", a: "Yes, where the Aurex operator has switched them on. Add money with an M-Pesa or MoMo PIN prompt on your phone, PayPal or Skrill, and withdraw to M-Pesa, MoMo, PayPal, Venmo (US), Skrill, a bank account in 160+ countries through Wise, or cash at a MoneyGram location." },
+            { q: "How is my account protected?", a: "Two-factor sign-in with recovery codes, lockouts after repeated wrong guesses, alerts for new devices, a password re-check before money leaves, and a 24-hour pause on withdrawals after any security change, so a stolen password alone can't empty your wallet." },
             { q: "Can I see my other bank and crypto accounts?", a: "Yes. Connections links banks and cards (Plaid, Salt Edge, Mono), brokerages (SnapTrade) and Coinbase, read-only. You approve access on the provider's own page and can disconnect at any time." },
             { q: "Will the AI trade for me?", a: "Only if you want it to. By default the AI analyst suggests trades and waits for you. Switch on AI Autopilot and it trades for you on a schedule, strictly inside limits you set: a maximum per position and in total, trades per day, a minimum confidence, and a daily loss limit that pauses it. You can also have it ask before every trade, and pause it any time." },
             { q: "Can I practise before using real money?", a: "Yes. Every account includes a paper-trading portfolio with virtual cash, so you can try strategies and the AI analyst risk-free." },

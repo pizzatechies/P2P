@@ -4,7 +4,8 @@ import type { Ctx } from "../context.js";
 import { HttpError, notFound } from "../lib/errors.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { parse } from "../lib/validate.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRecentAuth } from "../middleware/auth.js";
+import { assertRecentAuth } from "../services/security.js";
 import { deleteUserKey, saveUserKey } from "../services/keys.js";
 import { analyze, getSignal, listSignals } from "../services/trading/analyst.js";
 import {
@@ -86,13 +87,14 @@ export function tradingRoutes(ctx: Ctx) {
 
   r.put("/broker", (req, res) => {
     const { broker } = parse(z.object({ broker: z.enum(["paper", "alpaca"]) }), req.body);
+    if (broker === "alpaca") assertRecentAuth(ctx, req.reauthAt); // trading with a real brokerage account
     setBroker(ctx, req.user!.id, broker);
     audit(ctx, req.user!.id, "trading.broker_changed", { broker }, req.ip);
     res.json({ settings: tradingSettings(ctx, req.user!.id) });
   });
 
   /** Saves the user's own Alpaca keys after checking them against Alpaca (paper first, then live). */
-  r.put("/alpaca-keys", async (req, res) => {
+  r.put("/alpaca-keys", requireRecentAuth(ctx), async (req, res) => {
     const creds = parse(AlpacaKeysBody, req.body);
     let env: "paper" | "live" | null = null;
     for (const [candidate, base] of [["paper", ALPACA_PAPER], ["live", ALPACA_LIVE]] as const) {
@@ -215,6 +217,8 @@ export function tradingRoutes(ctx: Ctx) {
 
   r.put("/autopilot", async (req, res) => {
     const body = parse(AutopilotBody, req.body);
+    // Letting the AI place trades on its own is a sensitive change: confirm it's really the user.
+    if (body.enabled === true || body.mode === "auto") assertRecentAuth(ctx, req.reauthAt);
     updateAutopilotSettings(ctx, req.user!.id, body, req.ip);
     res.json(await autopilotView(req.user!.id));
   });

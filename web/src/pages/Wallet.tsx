@@ -17,7 +17,8 @@ interface ExternalTransfer {
   fee: string;
   status: string;
   failureReason: string | null;
-  destination: { type: string; name: string; accountLast4: string } | null;
+  destination: { type: string; name: string; accountLast4: string | null } | null;
+  payoutReference: string | null;
   createdAt: string;
 }
 
@@ -128,6 +129,9 @@ export function WalletPage() {
                       : `To ${t.destination?.name ?? "account"}${t.destination?.accountLast4 ? ` ${t.destination.accountLast4.includes("@") ? "" : "••"}${t.destination.accountLast4}` : ""}`}
                   </div>
                   <div className="faint small">{t.rail} · {timeAgo(t.createdAt)}</div>
+                  {t.payoutReference && t.status !== "failed" && (
+                    <div className="small">Pickup reference <strong className="mono">{t.payoutReference}</strong></div>
+                  )}
                   {t.failureReason && <div className="error-text">{t.failureReason}</div>}
                   {t.status === "pending" && t.rail !== "sandbox" && (
                     <button className="btn ghost sm" style={{ marginTop: 4, paddingLeft: 0 }} onClick={() => checkTransfer(t.id)}>

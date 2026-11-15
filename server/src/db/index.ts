@@ -14,6 +14,8 @@ export function openDb(path: string): DB {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec("PRAGMA busy_timeout = 5000;");
+  // Overwrite deleted content (revoked tokens, removed keys) instead of leaving it in free pages.
+  db.exec("PRAGMA secure_delete = ON;");
   if (path !== ":memory:") db.exec("PRAGMA journal_mode = WAL;");
   migrate(db);
   return db;

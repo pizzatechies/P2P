@@ -63,6 +63,10 @@ export function DashboardPage() {
   });
   const providers = useLoad(() => api.get<{ providers: Provider[] }>("/api/ai/providers").then((r) => r.providers));
   const linked = useLoad(() => api.get<ConnectionsOverview>("/api/connections"));
+  const security = useLoad(() =>
+    api.get<{ totpEnabled: boolean; securityHoldUntil: string | null; alerts: { read: boolean; message: string }[] }>("/api/settings/security"),
+  );
+  const unreadAlerts = (security.data?.alerts ?? []).filter((a) => !a.read);
 
   const refreshMoney = () => {
     balances.reload();
@@ -85,6 +89,23 @@ export function DashboardPage() {
       </div>
 
       <InstallCard />
+
+      {unreadAlerts.length > 0 && (
+        <Link to="/app/settings#security" className="banner" style={{ color: "var(--text)" }}>
+          <Icon.Shield size={16} />
+          <span className="grow">
+            <strong>Security alert{unreadAlerts.length > 1 ? `s (${unreadAlerts.length})` : ""}:</strong> {unreadAlerts[0].message}
+          </span>
+          <span className="small">Review</span>
+        </Link>
+      )}
+      {security.data && !security.data.totpEnabled && unreadAlerts.length === 0 && (
+        <Link to="/app/settings#two-factor" className="banner info" style={{ color: "var(--text)" }}>
+          <Icon.Shield size={16} />
+          <span className="grow"><strong>Protect your money:</strong> turn on two-factor authentication so a stolen password isn't enough to get in.</span>
+          <span className="small">Set up</span>
+        </Link>
+      )}
 
       {sandbox && (
         <div className="banner info">

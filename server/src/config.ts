@@ -19,12 +19,44 @@ const EnvSchema = z.object({
   APP_URL: z.string().url().default("http://localhost:5173"),
   /** High-entropy secret used to encrypt stored API keys and 2FA secrets. `openssl rand -hex 32` */
   MASTER_KEY: optionalString,
-  SESSION_TTL_HOURS: z.coerce.number().positive().default(24 * 7),
+  /** Absolute session lifetime. */
+  SESSION_TTL_HOURS: z.coerce.number().positive().default(72),
+  /** Sign out after this many minutes without activity (0 = never). */
+  SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).default(120),
   ADMIN_EMAILS: z.string().default(""),
+  /**
+   * Secret an ADMIN_EMAILS account enters once (Settings → Admin access) to become admin. Without it,
+   * production promotes nobody automatically, so registering an admin's address first gains nothing.
+   */
+  ADMIN_SETUP_CODE: optionalString,
+  /** Admin pages and actions require two-factor authentication. */
+  REQUIRE_ADMIN_2FA: bool.default(true),
   TRUST_PROXY: bool.default(false),
+  /** Extra origins allowed to send state-changing requests (comma-separated), besides APP_URL. */
+  ALLOWED_ORIGINS: z.string().default(""),
+  /** Previous MASTER_KEY values (comma-separated). Secrets are re-encrypted with MASTER_KEY at startup. */
+  MASTER_KEY_PREVIOUS: z.string().default(""),
+
+  // ---- Account protection ----
+  /** Failed sign-ins (password or 2FA) before an account is locked. */
+  LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(50).default(5),
+  /** First lock length; doubles with each further lock, up to 24 hours. */
+  LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  PASSWORD_MIN_LENGTH: z.coerce.number().int().min(8).max(64).default(12),
+  /** Reject passwords found in known breaches (Have I Been Pwned range API; only 5 hash characters leave the server). */
+  PASSWORD_BREACH_CHECK: bool.optional(),
+  PWNED_PASSWORDS_URL: z.string().url().default("https://api.pwnedpasswords.com/range/"),
+  /** How long a password (and 2FA) re-check unlocks sensitive actions such as withdrawals. */
+  REAUTH_WINDOW_MINUTES: z.coerce.number().int().min(1).max(120).default(10),
+  /** Sends to other users at or above this USD value need a re-check (0 = every send). */
+  STEP_UP_SEND_USD: z.coerce.number().min(0).default(1000),
+  /** Withdrawals and large sends pause this long after a password change, 2FA removal or recovery-code sign-in. */
+  SECURITY_HOLD_HOURS: z.coerce.number().min(0).max(720).default(24),
+  /** Only accept M-Pesa callbacks from these IPs (comma-separated, e.g. Safaricom's published list). */
+  MPESA_CALLBACK_IPS: z.string().default(""),
 
   // ---- Payments ----
-  /** Comma-separated list of enabled payment rails: sandbox, stripe, flutterwave, mpesa, mtn-momo, paypal, wise */
+  /** Comma-separated list of enabled payment rails: sandbox, stripe, flutterwave, mpesa, mtn-momo, paypal, wise, skrill, moneygram */
   PAYMENT_RAILS: z.string().default("sandbox"),
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
@@ -129,6 +161,20 @@ const EnvSchema = z.object({
   /** Balance that funds payouts in currencies the profile doesn't hold (Wise converts). */
   WISE_FUNDING_CURRENCY: z.string().length(3).default("USD"),
   WISE_BASE_URL: optionalString,
+  /** Skrill (add "skrill" to PAYMENT_RAILS). Merchant email + secret word for checkout; API/MQI password for status checks and payouts. */
+  SKRILL_EMAIL: optionalString,
+  SKRILL_SECRET_WORD: optionalString,
+  SKRILL_API_PASSWORD: optionalString,
+  SKRILL_PAY_URL: z.string().url().default("https://pay.skrill.com"),
+  SKRILL_API_URL: z.string().url().default("https://www.skrill.com/app"),
+  /** MoneyGram business disbursements (add "moneygram" to PAYMENT_RAILS): cash pickup in 200+ countries. */
+  MONEYGRAM_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  MONEYGRAM_CLIENT_ID: optionalString,
+  MONEYGRAM_CLIENT_SECRET: optionalString,
+  MONEYGRAM_PARTNER_ID: optionalString,
+  /** Currencies your MoneyGram account settles in (payouts are sent from these). */
+  MONEYGRAM_SEND_CURRENCIES: z.string().default("USD"),
+  MONEYGRAM_BASE_URL: optionalString,
   /** Coinbase OAuth app (read-only crypto balances). */
   COINBASE_CLIENT_ID: optionalString,
   COINBASE_CLIENT_SECRET: optionalString,
@@ -152,9 +198,22 @@ export interface Config extends Env {
   rails: string[];
   appOrigin: string;
   freeModels: Set<string>;
+  /** Keys that MASTER_KEY replaced; only used to re-encrypt old secrets at startup. */
+  previousMasterKeys: Buffer[];
+  allowedOrigins: Set<string>;
+  breachCheck: boolean;
+  /** True when ADMIN_EMAILS accounts become admin without entering ADMIN_SETUP_CODE (development only). */
+  adminAutoPromote: boolean;
+  mpesaCallbackIps: Set<string>;
 }
 
 const DEV_MASTER_KEY = "aurex-dev-only-master-key-change-me";
+
+const list = (v: string) =>
+  v
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   const parsed = EnvSchema.safeParse(source);
@@ -189,10 +248,19 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     ],
     paypal: ["PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET", [env.PAYPAL_CLIENT_ID, env.PAYPAL_CLIENT_SECRET]],
     wise: ["WISE_API_TOKEN, WISE_PROFILE_ID", [env.WISE_API_TOKEN, env.WISE_PROFILE_ID]],
+    skrill: ["SKRILL_EMAIL, SKRILL_SECRET_WORD", [env.SKRILL_EMAIL, env.SKRILL_SECRET_WORD]],
+    moneygram: ["MONEYGRAM_CLIENT_ID, MONEYGRAM_CLIENT_SECRET, MONEYGRAM_PARTNER_ID", [env.MONEYGRAM_CLIENT_ID, env.MONEYGRAM_CLIENT_SECRET, env.MONEYGRAM_PARTNER_ID]],
   };
   for (const [rail, [names, values]] of Object.entries(railKeys)) {
     if (rails.includes(rail) && values.some((v) => !v)) throw new Error(`PAYMENT_RAILS includes '${rail}' but ${names} is not set.`);
   }
+  if (isProd && env.ADMIN_EMAILS.trim() && !env.ADMIN_SETUP_CODE) {
+    console.warn(
+      "[config] ADMIN_EMAILS is set but ADMIN_SETUP_CODE is not: nobody will be made admin automatically in production. " +
+        "Set ADMIN_SETUP_CODE (openssl rand -hex 16) and enter it under Settings → Admin access.",
+    );
+  }
+  if (env.ADMIN_SETUP_CODE && env.ADMIN_SETUP_CODE.length < 16) throw new Error("ADMIN_SETUP_CODE must be at least 16 characters.");
   if (isProd && rails.includes("sandbox")) {
     console.warn(
       "[config] WARNING: the 'sandbox' payment rail is enabled in production. It credits wallets without moving real money.",
@@ -218,5 +286,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
         .map((m) => m.trim())
         .filter(Boolean),
     ),
+    previousMasterKeys: list(env.MASTER_KEY_PREVIOUS).map((k) => createHash("sha256").update(k).digest()),
+    allowedOrigins: new Set([new URL(env.APP_URL).origin, ...list(env.ALLOWED_ORIGINS).map((o) => new URL(o).origin)]),
+    breachCheck: env.PASSWORD_BREACH_CHECK ?? env.NODE_ENV !== "test",
+    adminAutoPromote: !env.ADMIN_SETUP_CODE && !isProd,
+    mpesaCallbackIps: new Set(list(env.MPESA_CALLBACK_IPS)),
   };
 }

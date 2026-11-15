@@ -9,7 +9,18 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+/**
+ * Sensitive actions answer 401 "reauth_required" when the password (and 2FA) hasn't been confirmed
+ * recently. The app registers a handler that asks the user to confirm; the request is then retried once.
+ */
+type ReauthHandler = () => Promise<boolean>;
+let reauthHandler: ReauthHandler | null = null;
+let reauthPending: Promise<boolean> | null = null;
+export function setReauthHandler(handler: ReauthHandler | null) {
+  reauthHandler = handler;
+}
+
+async function request<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
   const res = await fetch(url, {
     method,
     credentials: "same-origin",
@@ -24,6 +35,12 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   const data = text ? JSON.parse(text) : {};
   if (!res.ok) {
     const err = data?.error ?? {};
+    if (res.status === 401 && err.code === "reauth_required" && reauthHandler && !retried) {
+      reauthPending ??= reauthHandler().finally(() => {
+        reauthPending = null;
+      });
+      if (await reauthPending) return request<T>(method, url, body, true);
+    }
     throw new ApiError(res.status, err.code ?? "error", err.message ?? `Request failed (${res.status})`, err.details);
   }
   return data as T;

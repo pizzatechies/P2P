@@ -21,8 +21,10 @@ export interface Rail {
   supportsWithdrawal: boolean;
   currencies: string[] | "*";
   depositInput: "none" | "phone";
-  payoutInput: "bank" | "bank_code" | "phone" | "email" | "requirements";
+  payoutInput: "bank" | "bank_code" | "phone" | "email" | "requirements" | "cash_pickup";
   phoneHint: string | null;
+  walletOptions: ("paypal" | "venmo")[] | null;
+  payoutLabel: string | null;
 }
 
 export interface RequirementField {
