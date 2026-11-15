@@ -584,3 +584,28 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .alert-row { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .alert-row:last-child { border-bottom: 0; }
 .alert-row.unread strong { color: var(--text); }
+
+/* Trading academy */
+.progress { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; margin-top: 14px; }
+.progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--brand), #e9c96b); border-radius: inherit; transition: width .4s ease; }
+.lesson-list { display: flex; flex-direction: column; }
+.lesson-item { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border: 0; border-bottom: 1px solid var(--border); background: none; text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+.lesson-item:last-child { border-bottom: 0; }
+.lesson-item:hover { background: var(--surface-2); }
+.lesson-num { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); font-weight: 700; font-size: 14px; }
+.lesson-num.done { background: var(--good-soft); color: var(--good); }
+.mission { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.mission:last-of-type { border-bottom: 0; }
+.mission-check { flex: none; width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid var(--border-strong, var(--border)); display: grid; place-items: center; font-size: 12px; margin-top: 1px; }
+.mission-check.done { background: var(--good); border-color: var(--good); color: #fff; }
+.lesson-body h3 { font-size: 16px; margin-bottom: 6px; }
+.lesson-body p { line-height: 1.6; margin: 0 0 10px; color: var(--text-2); }
+.quiz-q { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 0; }
+.quiz-q legend { padding: 0 4px; }
+.quiz-option { display: flex; gap: 8px; align-items: center; padding: 6px 4px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.quiz-option.right { background: var(--good-soft); }
+.quiz-option.wrong { background: var(--bad-soft); }
+.check-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.check-row:last-child { border-bottom: 0; }
+.ack { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.45; }
+.ack input { margin-top: 3px; }

@@ -12,6 +12,7 @@ const NAV = [
   { to: "/app/payments", label: "Payments", icon: Icon.Send },
   { to: "/app/ai", label: "AI Hub", icon: Icon.Sparkle },
   { to: "/app/trading", label: "Trading", icon: Icon.Chart },
+  { to: "/app/learn", label: "Learn", icon: Icon.Learn },
   { to: "/app/settings", label: "Settings", icon: Icon.Settings },
 ];
 

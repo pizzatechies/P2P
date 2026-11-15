@@ -121,9 +121,10 @@ export function RegisterPage() {
     setBusy(true);
     setError(null);
     try {
-      const { user } = await api.post<{ user: User }>("/api/auth/register", form);
+      const { user, emailVerification } = await api.post<{ user: User; emailVerification: { devCode?: string } | null }>("/api/auth/register", form);
       setUser(user);
-      navigate(next, { replace: true });
+      // Prompt for the emailed code on arrival (in development the code itself comes back too).
+      navigate(next, { replace: true, state: emailVerification ? { verifyEmail: true, devCode: emailVerification.devCode ?? null } : undefined });
     } catch (err) {
       setError((err as Error).message);
     } finally {

@@ -83,6 +83,7 @@ export function AdminPage() {
           </div>
         </div>
       )}
+      {!overview.error && <UpgradeQueue />}
       <div className="card flush">
         <div className="card-head"><h2>Users</h2></div>
         <div className="table-wrap" style={{ padding: "0 8px 8px" }}>
@@ -110,5 +111,77 @@ export function AdminPage() {
         </div>
       </div>
     </>
+  );
+}
+
+interface Application {
+  userId: string;
+  handle: string;
+  email: string;
+  status: string;
+  submittedAt: string | null;
+  legalName: string | null;
+  age: number | null;
+  country: string | null;
+  experience: string | null;
+  objective: string | null;
+  riskTolerance: string | null;
+  annualIncome: string | null;
+  liquidNetWorth: string | null;
+  sourceOfFunds: string | null;
+  assessment: { result: string; warnings: string[] } | null;
+  emailVerified: boolean;
+  twoFactor: boolean;
+  lessonsPassed: number;
+  demoTrades: number;
+}
+
+const human = (v: string | null) => (v ?? "—").replace(/_/g, " ").replace(/^under /, "< ").replace(/^over /, "> ");
+
+/** Real-account applications waiting for a decision. */
+function UpgradeQueue() {
+  const toast = useToast();
+  const list = useLoad(() => api.get<{ applications: Application[] }>("/api/admin/upgrades").then((r) => r.applications));
+  async function review(a: Application, decision: "approve" | "reject") {
+    const note = decision === "reject" ? prompt("Reason shown to the applicant (optional):") ?? undefined : undefined;
+    try {
+      list.setData((await api.post<{ applications: Application[] }>(`/api/admin/upgrades/${a.userId}/review`, { decision, note })).applications);
+      toast(decision === "approve" ? `Approved @${a.handle}` : `Declined @${a.handle}`);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Real-account applications</h2><span className="faint small">{list.data?.length ?? 0} waiting</span></div>
+      {list.data?.length === 0 && <p className="muted small">No applications waiting for review.</p>}
+      <div className="stack">
+        {(list.data ?? []).map((a) => (
+          <div key={a.userId} className="card" style={{ boxShadow: "none", background: "var(--surface-2)" }}>
+            <div className="row between wrap">
+              <div>
+                <strong>{a.legalName}</strong> <span className="faint">@{a.handle} · {a.email}</span>
+                <div className="faint xs">Age {a.age ?? "—"} · {a.country} · submitted {a.submittedAt ? timeAgo(a.submittedAt) : "—"}</div>
+              </div>
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn sm" onClick={() => review(a, "approve")}>Approve</button>
+                <button className="btn ghost sm" onClick={() => review(a, "reject")}>Decline</button>
+              </div>
+            </div>
+            <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>
+              <span className={`pill ${a.emailVerified ? "good" : "bad"}`}>Email {a.emailVerified ? "verified" : "unverified"}</span>
+              <span className={`pill ${a.twoFactor ? "good" : "bad"}`}>2FA {a.twoFactor ? "on" : "off"}</span>
+              <span className="pill">{a.lessonsPassed} lessons</span>
+              <span className="pill">{a.demoTrades} demo trades</span>
+              <span className={`pill ${a.assessment?.result === "warning" ? "warn" : "good"}`}>{a.assessment?.result === "warning" ? "Warnings acknowledged" : "Appropriate"}</span>
+            </div>
+            <div className="small muted" style={{ marginTop: 8 }}>
+              Experience {human(a.experience)} · goal {human(a.objective)} · risk {human(a.riskTolerance)} · income {human(a.annualIncome)} · savings {human(a.liquidNetWorth)} · funds from {human(a.sourceOfFunds)}
+            </div>
+            {a.assessment?.warnings.length ? <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>{a.assessment.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : null}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

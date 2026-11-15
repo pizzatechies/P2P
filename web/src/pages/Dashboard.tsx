@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Sparkline } from "../components/charts";
 import { Icon } from "../components/icons";
@@ -7,6 +7,7 @@ import { ActivityList, ConvertDialog, DepositDialog, RequestDialog, SendDialog }
 import { Delta } from "../components/ui";
 import { money, pct, usd } from "../format";
 import { useInstall } from "../pwa";
+import { VerifyEmailDialog } from "../components/verifyEmail";
 import { useAuth, useLoad } from "../state";
 import type { Activity, Balance, Bar, ConnectionsOverview, PaymentRequest, Provider, Quote, TradingAccount, TradingSettings } from "../types";
 
@@ -64,8 +65,16 @@ export function DashboardPage() {
   const providers = useLoad(() => api.get<{ providers: Provider[] }>("/api/ai/providers").then((r) => r.providers));
   const linked = useLoad(() => api.get<ConnectionsOverview>("/api/connections"));
   const security = useLoad(() =>
-    api.get<{ totpEnabled: boolean; securityHoldUntil: string | null; alerts: { read: boolean; message: string }[] }>("/api/settings/security"),
+    api.get<{ totpEnabled: boolean; emailDelivery: boolean; securityHoldUntil: string | null; alerts: { read: boolean; message: string }[] }>("/api/settings/security"),
   );
+  const location = useLocation();
+  const navigate = useNavigate();
+  const arrival = location.state as { verifyEmail?: boolean; devCode?: string | null } | null;
+  const [verifying, setVerifying] = useState<{ devCode: string | null } | null>(arrival?.verifyEmail ? { devCode: arrival.devCode ?? null } : null);
+  const closeVerify = () => {
+    setVerifying(null);
+    if (arrival) navigate(location.pathname, { replace: true, state: null });
+  };
   const unreadAlerts = (security.data?.alerts ?? []).filter((a) => !a.read);
 
   const refreshMoney = () => {
@@ -89,6 +98,15 @@ export function DashboardPage() {
       </div>
 
       <InstallCard />
+
+      {user && !user.emailVerified && security.data?.emailDelivery && (
+        <div className="banner" style={{ alignItems: "center" }}>
+          <Icon.Mail size={16} />
+          <span className="grow"><strong>Verify your email</strong> to unlock withdrawals and let friends pay you at {user.email}.</span>
+          <button className="btn sm" onClick={() => setVerifying({ devCode: null })}>Verify</button>
+        </div>
+      )}
+      {verifying && <VerifyEmailDialog initialDevCode={verifying.devCode} onClose={closeVerify} />}
 
       {unreadAlerts.length > 0 && (
         <Link to="/app/settings#security" className="banner" style={{ color: "var(--text)" }}>

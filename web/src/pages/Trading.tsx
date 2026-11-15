@@ -53,9 +53,9 @@ export function TradingPage() {
   const aiCapPct = Math.round((meta?.trading.aiMaxPositionPct ?? 0.1) * 100);
 
   async function resetPaper() {
-    if (!confirm("Reset your paper account? Positions are cleared and cash goes back to the starting balance.")) return;
-    await api.post("/api/trading/account/reset");
-    toast("Paper account reset");
+    if (!confirm("Restart your demo account? Positions are cleared and cash goes back to your starting balance. (Pick a different balance on the Learn page.)")) return;
+    await api.post("/api/trading/account/reset", { startingCash: settings?.demoStartingCash });
+    toast("Demo account restarted");
     refreshAll();
   }
 
@@ -67,15 +67,17 @@ export function TradingPage() {
           <p className="muted row wrap" style={{ gap: 6, marginTop: 6 }}>
             {settings && (
               <span className={`pill ${acct?.live ? "bad" : "brand"}`}>
-                {settings.broker === "paper" ? "Paper account" : acct?.live ? "LIVE Alpaca account" : "Alpaca paper account"}
+                {settings.broker === "paper" ? "Demo account · virtual money" : acct?.live ? "REAL account · Alpaca" : "Demo account · Alpaca paper"}
               </span>
             )}
+            {settings?.accountType === "demo" && <Link to="/app/learn" className="small">Learn</Link>}
+            {settings?.accountType === "demo" && !settings.realAccountApproved && <Link to="/app/upgrade" className="small">Upgrade to real</Link>}
             {settings && <span className={`pill ${simulated ? "warn" : "good"}`}>{simulated ? "Simulated market data" : "Live market data"}</span>}
             <Link to="/app/settings#trading" className="small">Broker settings</Link>
           </p>
         </div>
         {settings?.broker === "paper" && (
-          <button className="btn secondary sm" onClick={resetPaper}>Reset paper account</button>
+          <button className="btn secondary sm" onClick={resetPaper}>Restart demo account</button>
         )}
       </div>
 

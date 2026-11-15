@@ -7,6 +7,7 @@ export interface User {
   kycLevel: number;
   defaultCurrency: string;
   totpEnabled: boolean;
+  emailVerified: boolean;
   status: string;
   createdAt: string;
 }
@@ -153,6 +154,9 @@ export interface TradingAccount {
   positions: Position[];
 }
 export interface TradingSettings {
+  accountType: "demo" | "real";
+  realAccountApproved: boolean;
+  demoStartingCash: number;
   broker: "paper" | "alpaca";
   alpacaConnected: boolean;
   alpacaEnv: "paper" | "live" | null;

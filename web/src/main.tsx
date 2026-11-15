@@ -22,6 +22,8 @@ import { SiteLayout } from "./site/SiteLayout";
 import { setupPwa } from "./pwa";
 import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
 import { ReauthProvider } from "./components/reauth";
+import { LearnPage } from "./pages/Learn";
+import { UpgradePage } from "./pages/Upgrade";
 import "./styles.css";
 
 try {
@@ -93,6 +95,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="payments" element={<PaymentsPage />} />
               <Route path="ai" element={<AIHubPage />} />
               <Route path="trading" element={<TradingPage />} />
+              <Route path="learn" element={<LearnPage />} />
+              <Route path="upgrade" element={<UpgradePage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="admin" element={<AdminPage />} />
             </Route>

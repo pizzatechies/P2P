@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useLocation } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../components/icons";
+import { VerifyEmailDialog } from "../components/verifyEmail";
 import { CurrencySelect, ErrorText, Field } from "../components/ui";
 import { timeAgo } from "../format";
 import { useAuth, useLoad, useToast } from "../state";
@@ -235,6 +236,9 @@ const confirm_ = (msg: string) => window.confirm(msg);
 
 interface SecurityOverview {
   totpEnabled: boolean;
+  emailVerified: boolean;
+  emailDelivery: boolean;
+  emailRequired: boolean;
   recoveryCodesLeft: number;
   securityHoldUntil: string | null;
   reauthWindowMinutes: number;
@@ -249,6 +253,7 @@ function SecurityCenter({ data, reload }: { data: SecurityOverview | null; reloa
   const toast = useToast();
   const { user, setUser } = useAuth();
   const [adminCode, setAdminCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const unread = (data?.alerts ?? []).filter((a) => !a.read).length;
 
@@ -297,6 +302,20 @@ function SecurityCenter({ data, reload }: { data: SecurityOverview | null; reloa
           <span>Withdrawals and large sends are paused until {new Date(data.securityHoldUntil).toLocaleString()} after a recent security change. This protects you if someone else made it.</span>
         </div>
       )}
+
+      <div className="session-row" style={{ borderBottom: 0, paddingTop: 0 }}>
+        <Icon.Mail size={18} />
+        <div className="grow">
+          <div style={{ fontWeight: 600 }}>
+            {user?.email} <span className={`pill ${data.emailVerified ? "good" : "warn"}`} style={{ marginLeft: 4 }}>{data.emailVerified ? "Verified" : "Not verified"}</span>
+          </div>
+          {!data.emailVerified && (
+            <div className="faint xs">{data.emailDelivery ? "Needed for withdrawals, being paid by email and real trading accounts." : "Email delivery isn't set up on this server yet."}</div>
+          )}
+        </div>
+        {!data.emailVerified && data.emailDelivery && <button className="btn sm" onClick={() => setVerifying(true)}>Verify</button>}
+      </div>
+      {verifying && <VerifyEmailDialog onClose={() => { setVerifying(false); reload(); }} />}
 
       <div className="grid grid-3">
         <div><div className="stat-label">Signed-in devices</div><div className="stat-value" style={{ fontSize: 22 }}>{data.sessions.length}</div></div>
