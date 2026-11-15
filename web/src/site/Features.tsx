@@ -104,22 +104,52 @@ export function FeaturesPage() {
       <Section id="connections" tone="warm">
         <div className="split reverse">
           <div>
-            <SectionHead eyebrow="Connections" title="All your money, wherever it lives" lead="Link banks, brokerages and mobile wallets from around the world and see every balance, and your net worth, next to your Aurex wallet." />
+            <SectionHead eyebrow="Connections" title="All your money, wherever it lives" lead="Link banks, brokerages and crypto from around the world and see every balance, and your net worth, next to your Aurex wallet." />
             <ul className="check-list">
               <Check>Banks and cards across North America, the UK and Europe, through Plaid</Check>
               <Check>Banks in dozens more countries through Salt Edge, and African banks through Mono</Check>
               <Check>Brokerages such as Schwab, Fidelity, Robinhood and Interactive Brokers, through SnapTrade</Check>
-              <Check>Card, bank and mobile-money deposits and withdrawals across Africa, through Flutterwave</Check>
-              <Check>Read-only and revocable: you sign in at your bank, Aurex never sees the password</Check>
+              <Check>Crypto and cash at Coinbase, valued in your currency</Check>
+              <Check>Read-only and revocable: you sign in at the provider, and Aurex never sees your password</Check>
             </ul>
             <p className="faint small">Available providers depend on your country and on what the Aurex operator has enabled.</p>
           </div>
           <div className="feature-visual">
             <div className="fv-title"><Icon.Link size={16} /> Connections</div>
-            <div className="fv-field"><span className="faint xs">Net worth across linked accounts</span><strong className="num">$27,411.32</strong></div>
-            {[["Demo Bank Zambia", "ZK 43,510.75"], ["Nairobi Demo Bank", "KSh 162,420.00"], ["Demo Brokerage", "$24,510.33"]].map(([n, v]) => (
+            <div className="fv-field"><span className="faint xs">Net worth across linked accounts</span><strong className="num">$32,411.32</strong></div>
+            {[["Demo Bank Zambia", "ZK 43,510.75"], ["Nairobi Demo Bank", "KSh 162,420.00"], ["Demo Brokerage", "$24,510.33"], ["Coinbase · BTC", "0.05 BTC ≈ $5,000"]].map(([n, v]) => (
               <div key={n} className="row between small" style={{ padding: "6px 2px", borderBottom: "1px solid var(--border)" }}><span>{n}</span><strong className="num">{v}</strong></div>
             ))}
+          </div>
+        </div>
+      </Section>
+
+      <Section id="money">
+        <div className="split">
+          <div>
+            <SectionHead eyebrow="Money in & out" title="Top up and cash out the way you already pay" lead="Add money from your phone or your PayPal, and withdraw to mobile money, PayPal, Venmo or a bank account almost anywhere." />
+            <ul className="check-list">
+              <Check>M-Pesa: approve a top-up with your PIN, and withdraw straight to M-Pesa</Check>
+              <Check>MTN MoMo in Ghana, Uganda, Zambia, Cameroon, Côte d'Ivoire, Rwanda and more</Check>
+              <Check>PayPal for top-ups, and payouts to PayPal or Venmo</Check>
+              <Check>Bank payouts to 160+ countries through Wise; the form asks for exactly what each country needs</Check>
+              <Check>Cards almost anywhere through Stripe; cards, bank transfers and Airtel Money across Africa through Flutterwave</Check>
+              <Check>Your wallet is credited only after the provider confirms the full amount</Check>
+            </ul>
+          </div>
+          <div className="feature-visual">
+            <div className="fv-title"><Icon.Phone size={16} /> Approve on your phone</div>
+            <div className="stk-card" role="img" aria-label="Example M-Pesa prompt: pay KSh 2,500 to Aurex, enter your PIN">
+              <div className="small" style={{ fontWeight: 650 }}>M-PESA</div>
+              <p className="small" style={{ marginTop: 6 }}>Do you want to pay <strong>KSh 2,500</strong> to <strong>AUREX</strong>?</p>
+              <div className="pin" aria-hidden="true"><span /><span /><span /><span /></div>
+              <div className="row between small"><span className="faint">Cancel</span><strong className="gold-text">Send</strong></div>
+            </div>
+            <div className="rail-chips">
+              {["M-Pesa", "MTN MoMo", "PayPal", "Venmo", "Wise", "Flutterwave", "Stripe"].map((r) => (
+                <span key={r} className="pill">{r}</span>
+              ))}
+            </div>
           </div>
         </div>
       </Section>

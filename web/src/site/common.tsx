@@ -138,3 +138,6 @@ export function ProductPreview() {
 }
 
 export const PROVIDERS = ["Claude", "GPT", "Gemini", "Mistral", "Llama", "Grok", "DeepSeek", "OpenRouter", "Together", "Perplexity", "Ollama"];
+/** Ways money moves in and out of Aurex, and the services that link outside accounts. */
+export const MONEY_PARTNERS = ["M-Pesa", "MTN MoMo", "PayPal", "Venmo", "Wise", "Flutterwave", "Stripe"];
+export const LINK_PARTNERS = ["Plaid", "Salt Edge", "Mono", "SnapTrade", "Coinbase"];

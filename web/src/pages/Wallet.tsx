@@ -66,6 +66,18 @@ export function WalletPage() {
     loadActivity();
   };
 
+  async function checkTransfer(id: string) {
+    try {
+      const { transfer } = await api.post<{ transfer: ExternalTransfer }>(`/api/payments/transfers/${encodeURIComponent(id)}/refresh`);
+      if (transfer.status === "completed") toast(transfer.direction === "deposit" ? `${money(transfer.amount, transfer.currency)} added to your wallet` : "Withdrawal completed");
+      else if (transfer.status === "failed") toast(transfer.direction === "deposit" ? "The payment didn't go through. No money was added." : "The withdrawal failed and your money was returned.", "error");
+      else toast("Still waiting for the provider to confirm.");
+      refresh();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+
   return (
     <>
       <div className="page-head">
@@ -111,10 +123,17 @@ export function WalletPage() {
                 </span>
                 <div className="grow">
                   <div style={{ fontWeight: 600 }}>
-                    {t.direction === "deposit" ? "Deposit" : `To ${t.destination?.name ?? "account"} ••${t.destination?.accountLast4 ?? ""}`}
+                    {t.direction === "deposit"
+                      ? "Deposit"
+                      : `To ${t.destination?.name ?? "account"}${t.destination?.accountLast4 ? ` ${t.destination.accountLast4.includes("@") ? "" : "••"}${t.destination.accountLast4}` : ""}`}
                   </div>
                   <div className="faint small">{t.rail} · {timeAgo(t.createdAt)}</div>
                   {t.failureReason && <div className="error-text">{t.failureReason}</div>}
+                  {t.status === "pending" && t.rail !== "sandbox" && (
+                    <button className="btn ghost sm" style={{ marginTop: 4, paddingLeft: 0 }} onClick={() => checkTransfer(t.id)}>
+                      Check status
+                    </button>
+                  )}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="num" style={{ fontWeight: 600 }}>{money(t.amount, t.currency)}</div>

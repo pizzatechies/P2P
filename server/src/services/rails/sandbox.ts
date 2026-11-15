@@ -13,11 +13,13 @@ export const sandboxRail: PaymentRail = {
   supportsDeposit: true,
   supportsWithdrawal: true,
   currencies: "*",
+  depositInput: "none",
+  payoutInput: "bank",
   async createDeposit(input) {
     return { status: "completed", providerRef: `sbx_dep_${input.externalId}` };
   },
   async createPayout(input) {
-    if (input.destination.accountNumber.endsWith("0000")) {
+    if ((input.destination.accountNumber ?? input.destination.email ?? "").endsWith("0000")) {
       return { status: "failed", failureReason: "Sandbox: destination account rejected the payout" };
     }
     return { status: "completed", providerRef: `sbx_pay_${input.externalId}` };

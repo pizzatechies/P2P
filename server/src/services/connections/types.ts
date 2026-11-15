@@ -51,11 +51,13 @@ export interface LinkedRow {
 export interface AccountSnapshot {
   externalId: string;
   name: string;
-  kind: "bank" | "savings" | "card" | "credit" | "loan" | "investment" | "wallet" | "other";
+  kind: "bank" | "savings" | "card" | "credit" | "loan" | "investment" | "wallet" | "crypto" | "other";
   mask?: string | null;
   currency?: string | null;
   balance?: number | null;
   available?: number | null;
+  /** Value in USD for assets Aurex has no exchange rate for (crypto), so net worth can include them. */
+  valueUsd?: number | null;
 }
 
 /** Result of finishing a link: the connection's identity and secret at the aggregator. */
@@ -78,7 +80,8 @@ export interface Aggregator {
   start(ctx: Ctx, user: UserRow, link: PendingLink, returnUrl: string): Promise<{ redirectUrl: string; meta?: Record<string, unknown> }>;
   /** Returns "pending" when the provider confirms asynchronously (webhook) rather than on the redirect. */
   complete(ctx: Ctx, user: UserRow, link: PendingLink, params: Record<string, string>): Promise<CompletedLink | "pending">;
-  accounts(ctx: Ctx, user: UserRow, conn: LinkedRow, secret: string | null): Promise<AccountSnapshot[]>;
+  /** saveSecret persists a rotated credential (e.g. a single-use OAuth refresh token) immediately. */
+  accounts(ctx: Ctx, user: UserRow, conn: LinkedRow, secret: string | null, saveSecret: (secret: string) => void): Promise<AccountSnapshot[]>;
   disconnect?(ctx: Ctx, user: UserRow, conn: LinkedRow, secret: string | null): Promise<void>;
 }
 

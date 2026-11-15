@@ -50,7 +50,9 @@ describe("connections hub", () => {
     expect(byId.sandbox.configured).toBe(true);
     expect(byId.plaid.configured).toBe(false);
     expect(byId.flutterwave.kind).toBe("rail");
-    expect(byId.mpesa.kind).toBe("planned");
+    expect(byId.mpesa.kind).toBe("rail");
+    expect(byId.mpesa.configured).toBe(false);
+    expect(byId.coinbase.kind).toBe("aggregator");
     expect((await A.post("/api/connections/plaid/start")).body.error.code).toBe("provider_not_configured");
 
     const start = await A.post("/api/connections/sandbox/start");

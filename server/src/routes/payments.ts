@@ -4,7 +4,9 @@ import type { Ctx } from "../context.js";
 import { assertCurrency, fromMinor, toMinor } from "../lib/money.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { amountField, currencyField, idempotencyField, parse } from "../lib/validate.js";
+import { badRequest } from "../lib/errors.js";
 import { requireAuth } from "../middleware/auth.js";
+import { getRail } from "../services/rails/index.js";
 import { quote } from "../services/fx.js";
 import { getBalances } from "../services/ledger.js";
 import {
@@ -49,20 +51,52 @@ const DepositBody = z.object({
   rail: z.string().min(2).max(30),
   amount: amountField,
   currency: currencyField,
+  phone: z.string().trim().max(20).optional(),
 });
+
+const detailsField = z
+  .record(z.string().regex(/^[A-Za-z][A-Za-z0-9_.]{0,59}$/), z.string().trim().max(140))
+  .refine((d) => Object.keys(d).length <= 40, "Too many fields");
 
 const WithdrawBody = z.object({
   rail: z.string().min(2).max(30),
   amount: amountField,
   currency: currencyField,
   idempotencyKey: idempotencyField,
-  destination: z.object({
-    type: z.enum(["bank_account", "mobile_money", "card"]),
-    name: z.string().trim().min(2).max(80),
-    accountNumber: z.string().trim().regex(/^[A-Za-z0-9 +-]{4,34}$/, "4-34 letters or digits"),
-    bankCode: z.string().trim().max(20).optional(),
-    country: z.string().trim().length(2).optional(),
-  }),
+  destination: z
+    .object({
+      type: z.enum(["bank_account", "mobile_money", "card", "email", "wise"]),
+      name: z.string().trim().min(2).max(80),
+      accountNumber: z.string().trim().regex(/^[A-Za-z0-9 +-]{4,34}$/, "4-34 letters or digits").optional(),
+      bankCode: z.string().trim().max(20).optional(),
+      country: z.string().trim().length(2).optional(),
+      email: z
+        .string()
+        .trim()
+        .max(120)
+        .regex(/^([^\s@]+@[^\s@]+\.[^\s@]{2,}|\+?[\d\s-]{7,20})$/, "Enter an email address or phone number")
+        .optional(),
+      wallet: z.enum(["paypal", "venmo"]).optional(),
+      wiseType: z.string().trim().regex(/^[a-z0-9_]{2,40}$/i).optional(),
+      details: detailsField.optional(),
+    })
+    .superRefine((d, issue) => {
+      const need = (ok: unknown, path: string, message: string) => ok || issue.addIssue({ code: "custom", path: [path], message });
+      if (d.type === "email") need(d.email, "email", "Enter the email address or phone number");
+      else if (d.type === "wise") {
+        need(d.wiseType, "wiseType", "Choose how to receive the money");
+        need(d.details && Object.keys(d.details).length, "details", "Fill in the bank details");
+      } else need(d.accountNumber, "accountNumber", "Enter the account or phone number");
+    }),
+});
+
+const RequirementsBody = z.object({
+  rail: z.string().min(2).max(30),
+  currency: currencyField,
+  amount: amountField,
+  quoteId: z.string().trim().regex(/^[A-Za-z0-9-]{1,64}$/).optional(),
+  type: z.string().trim().regex(/^[a-z0-9_]{2,40}$/i).optional(),
+  details: detailsField.optional(),
 });
 
 export function paymentRoutes(ctx: Ctx) {
@@ -72,6 +106,12 @@ export function paymentRoutes(ctx: Ctx) {
     name: "money",
     windowMs: 60_000,
     max: ctx.config.isTest ? 10_000 : 30,
+    key: (req) => req.user!.id,
+  });
+  const requirementsLimiter = rateLimit({
+    name: "payout-requirements",
+    windowMs: 60_000,
+    max: ctx.config.isTest ? 10_000 : 40,
     key: (req) => req.user!.id,
   });
 
@@ -183,9 +223,27 @@ export function paymentRoutes(ctx: Ctx) {
       rail: body.rail,
       currency: body.currency,
       amountMinor: toMinor(body.amount, body.currency),
+      phone: body.phone,
     });
     audit(ctx, req.user!.id, "payments.deposit", { id: result.transfer.id, rail: body.rail }, req.ip);
     res.status(201).json(result);
+  });
+
+  /** Fields a provider needs for a payout (e.g. Wise bank details for a country), refreshed as the user fills them in. */
+  r.post("/payout-requirements", requirementsLimiter, async (req, res) => {
+    const body = parse(RequirementsBody, req.body);
+    const currency = body.currency.toUpperCase();
+    const rail = getRail(ctx, body.rail, "withdrawal", currency);
+    if (!rail.payoutRequirements) throw badRequest(`${rail.name} doesn't need extra details`);
+    res.json(
+      await rail.payoutRequirements({
+        currency,
+        amount: toMinor(body.amount, currency),
+        quoteId: body.quoteId,
+        type: body.type,
+        details: body.details,
+      }),
+    );
   });
 
   r.post("/withdrawals", moneyLimiter, async (req, res) => {

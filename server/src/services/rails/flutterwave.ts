@@ -37,6 +37,8 @@ export function flutterwaveRail(opts: { secretKey: string; appUrl: string; baseU
     supportsDeposit: true,
     supportsWithdrawal: true,
     currencies: CURRENCIES,
+    depositInput: "none",
+    payoutInput: "bank_code",
 
     async createDeposit(input) {
       const redirect = new URL("/app/wallet", opts.appUrl);
@@ -76,6 +78,7 @@ export function flutterwaveRail(opts: { secretKey: string; appUrl: string; baseU
 
     async createPayout(input) {
       const d = input.destination;
+      if (!d.accountNumber) return { status: "failed", failureReason: "Enter the account or mobile-money number" };
       if (!d.bankCode) {
         return { status: "failed", failureReason: "Flutterwave needs the bank or mobile-network code (e.g. MPS for M-Pesa, MTN for MTN MoMo)" };
       }

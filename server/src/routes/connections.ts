@@ -11,8 +11,29 @@ import { completeLink, disconnect, overview, startLink, syncConnection } from ".
 
 const CompleteBody = z.object({ params: z.record(z.string().max(64), z.string().max(2000)).default({}) });
 
+/** Providers whose OAuth apps need one fixed redirect URI (the link id travels in `state`). */
+const OAUTH_PROVIDERS = new Set(["coinbase"]);
+
 export function connectionRoutes(ctx: Ctx) {
   const r = Router();
+
+  /**
+   * OAuth redirect target. It only forwards the code to the signed-in app page, which finishes the
+   * link for the current user; completeLink() checks the link belongs to them and the state nonce.
+   */
+  r.get("/oauth/:provider/callback", (req, res) => {
+    const provider = String(req.params.provider);
+    if (!OAUTH_PROVIDERS.has(provider)) throw notFound("Unknown provider");
+    const pick = (k: string) => (typeof req.query[k] === "string" ? String(req.query[k]).slice(0, 2000) : "");
+    const state = pick("state");
+    const linkId = state.split(".")[0];
+    const target = new URL("/app/connections", ctx.config.APP_URL);
+    target.searchParams.set("callback", provider);
+    if (/^lnk_[A-Za-z0-9_-]{6,64}$/.test(linkId)) target.searchParams.set("link", linkId);
+    for (const k of ["code", "state", "error"]) if (pick(k)) target.searchParams.set(k, pick(k));
+    res.redirect(302, target.toString());
+  });
+
   r.use(requireAuth);
   const limiter = rateLimit({ name: "connections", windowMs: 60_000, max: ctx.config.isTest ? 10_000 : 20, key: (req) => req.user!.id });
 

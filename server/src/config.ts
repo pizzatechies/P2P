@@ -24,7 +24,7 @@ const EnvSchema = z.object({
   TRUST_PROXY: bool.default(false),
 
   // ---- Payments ----
-  /** Comma-separated list of enabled payment rails: sandbox, stripe */
+  /** Comma-separated list of enabled payment rails: sandbox, stripe, flutterwave, mpesa, mtn-momo, paypal, wise */
   PAYMENT_RAILS: z.string().default("sandbox"),
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
@@ -88,6 +88,52 @@ const EnvSchema = z.object({
   FLUTTERWAVE_SECRET_KEY: optionalString,
   FLUTTERWAVE_WEBHOOK_HASH: optionalString,
   FLUTTERWAVE_BASE_URL: z.string().url().default("https://api.flutterwave.com/v3"),
+  /** M-Pesa direct via Safaricom Daraja (add "mpesa" to PAYMENT_RAILS). */
+  MPESA_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  MPESA_CONSUMER_KEY: optionalString,
+  MPESA_CONSUMER_SECRET: optionalString,
+  /** Paybill or till "store number" that receives STK Push payments. */
+  MPESA_SHORTCODE: optionalString,
+  MPESA_PASSKEY: optionalString,
+  /** CustomerPayBillOnline (paybill) or CustomerBuyGoodsOnline (till). */
+  MPESA_TRANSACTION_TYPE: z.enum(["CustomerPayBillOnline", "CustomerBuyGoodsOnline"]).default("CustomerPayBillOnline"),
+  /** Till number for buy-goods, when it differs from the store number. Defaults to MPESA_SHORTCODE. */
+  MPESA_PARTY_B: optionalString,
+  /** B2C payouts: shortcode, initiator and its encrypted SecurityCredential from the Daraja portal. */
+  MPESA_B2C_SHORTCODE: optionalString,
+  MPESA_INITIATOR_NAME: optionalString,
+  MPESA_SECURITY_CREDENTIAL: optionalString,
+  MPESA_BASE_URL: optionalString,
+  /** MTN MoMo direct (add "mtn-momo" to PAYMENT_RAILS). Collections and disbursements use separate keys. */
+  MTN_MOMO_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  /** X-Target-Environment: sandbox, or the market, e.g. mtnzambia, mtnuganda, mtnghana. */
+  MTN_MOMO_TARGET_ENVIRONMENT: z.string().default("sandbox"),
+  /** Currency of that market (sandbox only accepts EUR). */
+  MTN_MOMO_CURRENCY: z.string().length(3).default("EUR"),
+  MTN_MOMO_COLLECTION_SUBSCRIPTION_KEY: optionalString,
+  MTN_MOMO_COLLECTION_USER_ID: optionalString,
+  MTN_MOMO_COLLECTION_API_KEY: optionalString,
+  MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY: optionalString,
+  MTN_MOMO_DISBURSEMENT_USER_ID: optionalString,
+  MTN_MOMO_DISBURSEMENT_API_KEY: optionalString,
+  MTN_MOMO_BASE_URL: optionalString,
+  /** PayPal and Venmo (add "paypal" to PAYMENT_RAILS). */
+  PAYPAL_ENV: z.enum(["sandbox", "live"]).default("sandbox"),
+  PAYPAL_CLIENT_ID: optionalString,
+  PAYPAL_CLIENT_SECRET: optionalString,
+  PAYPAL_BASE_URL: optionalString,
+  /** Wise payouts (add "wise" to PAYMENT_RAILS). A token for the business profile that funds payouts. */
+  WISE_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  WISE_API_TOKEN: optionalString,
+  WISE_PROFILE_ID: optionalString,
+  /** Balance that funds payouts in currencies the profile doesn't hold (Wise converts). */
+  WISE_FUNDING_CURRENCY: z.string().length(3).default("USD"),
+  WISE_BASE_URL: optionalString,
+  /** Coinbase OAuth app (read-only crypto balances). */
+  COINBASE_CLIENT_ID: optionalString,
+  COINBASE_CLIENT_SECRET: optionalString,
+  COINBASE_OAUTH_URL: z.string().url().default("https://login.coinbase.com"),
+  COINBASE_API_URL: z.string().url().default("https://api.coinbase.com"),
 
   // ---- Free AI allowance (applies only when server-provided keys are used) ----
   /** Requests per user per UTC day on the server's AI keys. 0 = unlimited. Users' own keys are never limited. */
@@ -134,6 +180,18 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   }
   if (rails.includes("flutterwave") && !env.FLUTTERWAVE_SECRET_KEY) {
     throw new Error("PAYMENT_RAILS includes 'flutterwave' but FLUTTERWAVE_SECRET_KEY is not set.");
+  }
+  const railKeys: Record<string, [string, (string | undefined)[]]> = {
+    mpesa: ["MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET", [env.MPESA_CONSUMER_KEY, env.MPESA_CONSUMER_SECRET]],
+    "mtn-momo": [
+      "MTN_MOMO_COLLECTION_* or MTN_MOMO_DISBURSEMENT_* keys",
+      [env.MTN_MOMO_COLLECTION_SUBSCRIPTION_KEY ?? env.MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY],
+    ],
+    paypal: ["PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET", [env.PAYPAL_CLIENT_ID, env.PAYPAL_CLIENT_SECRET]],
+    wise: ["WISE_API_TOKEN, WISE_PROFILE_ID", [env.WISE_API_TOKEN, env.WISE_PROFILE_ID]],
+  };
+  for (const [rail, [names, values]] of Object.entries(railKeys)) {
+    if (rails.includes(rail) && values.some((v) => !v)) throw new Error(`PAYMENT_RAILS includes '${rail}' but ${names} is not set.`);
   }
   if (isProd && rails.includes("sandbox")) {
     console.warn(

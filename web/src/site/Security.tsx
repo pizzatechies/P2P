@@ -40,6 +40,17 @@ export function SecurityPage() {
       ],
     },
     {
+      icon: <Icon.Link />,
+      title: "Connected accounts & payment partners",
+      items: [
+        "Linked banks, brokerages and Coinbase are read-only: you approve access on the provider's own page",
+        "Access tokens are encrypted, and disconnecting revokes them at the provider",
+        "Money is credited only after Aurex confirms the amount with the payment provider, never on a redirect or notification alone",
+        "M-Pesa and MTN MoMo payments are approved with your own PIN on your own phone",
+        "Withdrawals that a provider rejects are refunded to your wallet automatically",
+      ],
+    },
+    {
       icon: <Icon.Chart />,
       title: "AI & trading safeguards",
       items: [

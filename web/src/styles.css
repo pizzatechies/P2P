@@ -395,6 +395,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .section-head .lead { margin-top: 14px; font-size: 17px; }
 
 .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.pillars.four { grid-template-columns: repeat(2, 1fr); }
 .pillar { display: flex; flex-direction: column; gap: 10px; padding: 26px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s; }
 .pillar:hover { text-decoration: none; border-color: var(--brand); transform: translateY(-2px); box-shadow: 0 14px 40px rgb(60 45 10 / 0.08); }
 .pillar p { color: var(--text-2); font-size: 15px; }
@@ -491,7 +492,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 @media (max-width: 1000px) {
   .hero-grid, .split, .pricing-layout { grid-template-columns: 1fr; gap: 36px; }
   .split.reverse > :first-child { order: 0; }
-  .pillars, .steps { grid-template-columns: 1fr; }
+  .pillars, .pillars.four, .steps { grid-template-columns: 1fr; }
   .stat-band, .mini-grid { grid-template-columns: repeat(2, 1fr); }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .site-nav { display: none; }
@@ -560,3 +561,17 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .bank-choice { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px; }
 .bank-choice.on { border-color: var(--brand); background: var(--brand-soft); }
 .bank-choice input { accent-color: var(--brand); }
+
+/* Waiting for a payment approved on the phone (M-Pesa STK Push, MTN MoMo). */
+.phone-pulse {
+  display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
+  background: var(--brand-soft); color: var(--brand-text); animation: phone-pulse 1.6s ease-in-out infinite;
+}
+@keyframes phone-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.35); } 50% { box-shadow: 0 0 0 12px rgba(212, 175, 55, 0); } }
+@media (prefers-reduced-motion: reduce) { .phone-pulse { animation: none; } }
+
+/* Website: an M-Pesa style PIN prompt, for the "Money in & out" section. */
+.stk-card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: var(--surface); max-width: 280px; margin: 4px auto 0; box-shadow: var(--shadow); }
+.stk-card .pin { display: flex; gap: 8px; justify-content: center; margin: 12px 0; }
+.stk-card .pin span { width: 12px; height: 12px; border-radius: 50%; background: var(--brand); }
+.rail-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; justify-content: center; }

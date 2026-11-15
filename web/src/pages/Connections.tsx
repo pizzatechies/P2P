@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../components/icons";
 import { Empty, ErrorText } from "../components/ui";
-import { money, timeAgo } from "../format";
+import { holding, money, timeAgo, usd } from "../format";
 import { useAuth, useLoad, useToast } from "../state";
 import type { ConnectionsOverview, ConnectorInfo, LinkedConnection } from "../types";
 
@@ -16,14 +16,15 @@ const CATEGORIES: { id: "all" | ConnectorInfo["category"]; label: string }[] = [
 ];
 
 const KIND_LABEL: Record<string, string> = {
-  bank: "Current", savings: "Savings", card: "Card", credit: "Credit", loan: "Loan", investment: "Investments", wallet: "Wallet", other: "Account",
+  bank: "Current", savings: "Savings", card: "Card", credit: "Credit", loan: "Loan", investment: "Investments", wallet: "Wallet", crypto: "Crypto", other: "Account",
 };
 
 const COUNTRY_NAMES: Record<string, string> = {
   US: "United States", CA: "Canada", GB: "United Kingdom", IE: "Ireland", FR: "France", ES: "Spain", NL: "Netherlands", DE: "Germany",
   IT: "Italy", PL: "Poland", DK: "Denmark", NO: "Norway", SE: "Sweden", EE: "Estonia", LT: "Lithuania", LV: "Latvia", PT: "Portugal",
   BE: "Belgium", AT: "Austria", AU: "Australia", NG: "Nigeria", GH: "Ghana", KE: "Kenya", ZA: "South Africa", UG: "Uganda", TZ: "Tanzania",
-  ZM: "Zambia", RW: "Rwanda", CM: "Cameroon", CI: "Côte d'Ivoire", SN: "Senegal",
+  ZM: "Zambia", RW: "Rwanda", CM: "Cameroon", CI: "Côte d'Ivoire", SN: "Senegal", BJ: "Benin", CG: "Congo", SZ: "Eswatini",
+  GN: "Guinea", LR: "Liberia",
 };
 
 /** Link accounts held elsewhere (banks, brokerages, wallets) and see them all in one place. */
@@ -154,12 +155,12 @@ export function ConnectionsPage() {
           <div className="stat-value" style={{ fontSize: 32 }}>{ov ? money(ov.netWorth, ov.baseCurrency) : "—"}</div>
           <div className="row wrap" style={{ marginTop: 8, gap: 6 }}>
             {(ov?.totals ?? []).map((t) => (
-              <span key={t.currency} className="pill num">{money(t.total, t.currency)}</span>
+              <span key={t.currency} className="pill num">{holding(t.total, t.currency)}</span>
             ))}
           </div>
           <div className="stat-sub">
             {accountCount} account{accountCount === 1 ? "" : "s"} at {ov?.connections.length ?? 0} institution{ov?.connections.length === 1 ? "" : "s"} · converted to {ov?.baseCurrency} at mid-market rates
-            {ov?.unconvertedAccounts ? ` · ${ov.unconvertedAccounts} account(s) in other currencies not included` : ""}
+            {ov?.unconvertedAccounts ? ` · ${ov.unconvertedAccounts} account(s) without a price not included` : ""}
           </div>
         </div>
         <div className="card">
@@ -187,7 +188,7 @@ export function ConnectionsPage() {
               <div>
                 <h2 className="row wrap" style={{ gap: 8 }}>
                   {c.institution ?? c.providerName}
-                  <span className="pill">{c.providerName}</span>
+                  {c.institution && c.institution !== c.providerName && <span className="pill">{c.providerName}</span>}
                   {c.status === "error" && <span className="pill bad">Needs attention</span>}
                 </h2>
                 <div className="faint xs" style={{ marginTop: 4 }}>
@@ -209,8 +210,11 @@ export function ConnectionsPage() {
                     <tr key={a.id}>
                       <td style={{ fontWeight: 560 }}>{a.name}{a.mask && <span className="faint small"> ••{a.mask}</span>}</td>
                       <td className="muted small">{KIND_LABEL[a.kind] ?? a.kind}</td>
-                      <td className={`r num ${a.balance !== null && a.balance < 0 ? "bad" : ""}`}>{a.balance === null || !a.currency ? "—" : money(a.balance, a.currency)}</td>
-                      <td className="r num muted hide-sm">{a.available === null || !a.currency ? "—" : money(a.available, a.currency)}</td>
+                      <td className={`r num ${a.balance !== null && a.balance < 0 ? "bad" : ""}`}>
+                        {a.balance === null || !a.currency ? "—" : holding(a.balance, a.currency)}
+                        {a.valueUsd !== null && a.kind === "crypto" && <div className="faint xs">≈ {usd(a.valueUsd)}</div>}
+                      </td>
+                      <td className="r num muted hide-sm">{a.available === null || !a.currency ? "—" : holding(a.available, a.currency)}</td>
                     </tr>
                   ))}
                   {c.accounts.length === 0 && <tr><td colSpan={4} className="faint small">No accounts returned yet. Try Refresh in a minute.</td></tr>}

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, idempotencyKey } from "../api";
 import { money, timeAgo } from "../format";
 import { useAuth, useToast } from "../state";
-import type { Activity, Profile } from "../types";
+import type { Activity, Profile, Rail } from "../types";
 import { Icon } from "./icons";
+import { RequirementsForm, type RequirementsValue } from "./requirements";
 import { AmountInput, Empty, ErrorText, Field, Modal, StatusPill } from "./ui";
 
 /** Recipient field with live user search by handle, name or email. */
@@ -173,6 +174,36 @@ export function RequestDialog({ onClose, onDone }: { onClose: () => void; onDone
   );
 }
 
+const PHONE_KEY = "aurex-last-phone";
+const remembered = () => {
+  try {
+    return localStorage.getItem(PHONE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+};
+const remember = (phone: string) => {
+  try {
+    localStorage.setItem(PHONE_KEY, phone);
+  } catch {
+    /* storage unavailable */
+  }
+};
+
+/** Keeps the currency valid for the chosen method (e.g. M-Pesa is KES only). */
+function useRailCurrency(rail: Rail | undefined, currency: string, setCurrency: (c: string) => void) {
+  useEffect(() => {
+    if (rail && rail.currencies !== "*" && !rail.currencies.includes(currency)) setCurrency(rail.currencies[0]);
+  }, [rail, currency, setCurrency]);
+}
+
+interface PendingDeposit {
+  id: string;
+  instructions: string;
+  amount: string;
+  currency: string;
+}
+
 export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { user, meta } = useAuth();
   const toast = useToast();
@@ -180,18 +211,72 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
   const [rail, setRail] = useState(rails[0]?.id ?? "");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
+  const [phone, setPhone] = useState(remembered);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState<PendingDeposit | null>(null);
+  const [slow, setSlow] = useState(false);
   const selected = rails.find((r) => r.id === rail);
+  useRailCurrency(selected, currency, setCurrency);
+
+  // While the user approves on their phone, ask the provider (through Aurex) every few seconds.
+  useEffect(() => {
+    if (!waiting) return;
+    let tries = 0;
+    let stopped = false;
+    setSlow(false);
+    const tick = async () => {
+      if (stopped) return;
+      tries++;
+      try {
+        const { transfer } = await api.post<{ transfer: { status: string; failureReason: string | null } }>(`/api/payments/transfers/${waiting.id}/refresh`);
+        if (stopped) return;
+        if (transfer.status === "completed") {
+          toast(`Added ${money(waiting.amount, waiting.currency)} to your wallet`);
+          onDone();
+          onClose();
+          return;
+        }
+        if (transfer.status === "failed") {
+          setWaiting(null);
+          setError(`The payment wasn't completed${transfer.failureReason ? `: ${transfer.failureReason}` : ""}. No money was taken.`);
+          onDone();
+          return;
+        }
+      } catch {
+        /* keep trying */
+      }
+      if (tries >= 30) setSlow(true);
+      else timer = setTimeout(tick, 4000);
+    };
+    let timer = setTimeout(tick, 4000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<{ transfer: { status: string }; redirectUrl: string | null }>("/api/payments/deposits", { rail, amount, currency });
+      const needsPhone = selected?.depositInput === "phone";
+      const r = await api.post<{ transfer: { id: string; status: string }; redirectUrl: string | null; instructions: string | null }>("/api/payments/deposits", {
+        rail,
+        amount,
+        currency,
+        ...(needsPhone ? { phone } : {}),
+      });
+      if (needsPhone) remember(phone);
       if (r.redirectUrl) {
         window.location.href = r.redirectUrl;
+        return;
+      }
+      if (r.transfer.status === "pending") {
+        setWaiting({ id: r.transfer.id, instructions: r.instructions ?? "Finish the payment with your provider.", amount, currency });
+        onDone();
         return;
       }
       toast(`Added ${money(amount, currency)} to your wallet`);
@@ -211,10 +296,30 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
       </Modal>
     );
   }
+  if (waiting) {
+    return (
+      <Modal title="Approve on your phone" onClose={onClose}>
+        <div className="stack" style={{ alignItems: "center", textAlign: "center" }}>
+          <span className="phone-pulse" aria-hidden="true"><Icon.Phone size={28} /></span>
+          <div className="stat-value num">{money(waiting.amount, waiting.currency)}</div>
+          <p>{waiting.instructions}</p>
+          {slow ? (
+            <p className="muted small">Still waiting. You can close this window; your wallet updates as soon as the payment is confirmed.</p>
+          ) : (
+            <p className="muted small"><span className="spinner" /> Waiting for confirmation…</p>
+          )}
+          <div className="row" style={{ justifyContent: "center" }}>
+            {slow && <button className="btn secondary" onClick={() => setWaiting({ ...waiting })}>Check again</button>}
+            <button className="btn ghost" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title="Add money" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <Field label="Method">
+        <Field label="Method" hint={selected?.description}>
           <select className="input" value={rail} onChange={(e) => setRail(e.target.value)}>
             {rails.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
@@ -231,12 +336,21 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
             currencies={selected && selected.currencies !== "*" ? selected.currencies : undefined}
           />
         </Field>
+        {selected?.depositInput === "phone" && (
+          <Field label={`${selected.name} number`} hint={selected.phoneHint ? `e.g. ${selected.phoneHint}` : undefined}>
+            <input className="input num" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required minLength={9} />
+          </Field>
+        )}
         <ErrorText error={error} />
-        <button className="btn block lg" disabled={busy || !amount}>{busy ? "Processing…" : "Add money"}</button>
+        <button className="btn block lg" disabled={busy || !amount}>
+          {busy ? "Processing…" : selected?.depositInput === "phone" ? "Send payment prompt" : "Add money"}
+        </button>
       </form>
     </Modal>
   );
 }
+
+type Dest = { type: string; name: string; accountNumber: string; bankCode: string; email: string; wallet: "paypal" | "venmo" };
 
 export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { user, meta } = useAuth();
@@ -245,24 +359,30 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
   const [rail, setRail] = useState(rails[0]?.id ?? "");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
-  const [dest, setDest] = useState({ type: "bank_account", name: "", accountNumber: "", bankCode: "" });
+  const [dest, setDest] = useState<Dest>({ type: "bank_account", name: "", accountNumber: "", bankCode: "", email: "", wallet: "paypal" });
+  const [reqs, setReqs] = useState<RequirementsValue | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [key] = useState(idempotencyKey);
   const selected = rails.find((r) => r.id === rail);
+  const input = selected?.payoutInput ?? "bank";
+  useRailCurrency(selected, currency, setCurrency);
+
+  function destination() {
+    if (input === "phone") return { type: "mobile_money", name: dest.name, accountNumber: dest.accountNumber };
+    if (input === "email") return { type: "email", name: dest.name, email: dest.email, wallet: dest.wallet };
+    if (input === "requirements") {
+      return { type: "wise", name: reqs?.details.accountHolderName ?? dest.name, wiseType: reqs?.type, details: reqs?.details };
+    }
+    return { type: dest.type, name: dest.name, accountNumber: dest.accountNumber, bankCode: dest.bankCode || undefined };
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api.post("/api/payments/withdrawals", {
-        rail,
-        amount,
-        currency,
-        idempotencyKey: key,
-        destination: { ...dest, bankCode: dest.bankCode || undefined },
-      });
+      await api.post("/api/payments/withdrawals", { rail, amount, currency, idempotencyKey: key, destination: destination() });
       toast(`Withdrawal of ${money(amount, currency)} sent`);
       onDone();
       onClose();
@@ -281,47 +401,92 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
       </Modal>
     );
   }
+  const holder = (
+    <Field label="Account holder">
+      <input className="input" value={dest.name} onChange={(e) => setDest({ ...dest, name: e.target.value })} required minLength={2} autoComplete="name" />
+    </Field>
+  );
+  const blocked = input === "requirements" && !reqs?.valid;
   return (
     <Modal title="Withdraw" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
-        <Field label="Method">
+        <Field label="Method" hint={selected?.description}>
           <select className="input" value={rail} onChange={(e) => setRail(e.target.value)}>
             {rails.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
         </Field>
-        {selected?.simulated && (
+        {selected?.simulated && rail === "sandbox" && (
           <div className="banner">Sandbox payouts are simulated. Account numbers ending in 0000 fail on purpose, so you can see a reversal.</div>
         )}
+        {selected?.simulated && rail !== "sandbox" && <div className="banner">{selected.name} is in test mode. No real money moves.</div>}
         <Field label="Amount">
-          <AmountInput amount={amount} currency={currency} onAmount={setAmount} onCurrency={setCurrency} />
+          <AmountInput
+            amount={amount}
+            currency={currency}
+            onAmount={setAmount}
+            onCurrency={setCurrency}
+            currencies={selected && selected.currencies !== "*" ? selected.currencies : undefined}
+          />
         </Field>
-        <div className="grid grid-2">
-          <Field label="Send to">
-            <select className="input" value={dest.type} onChange={(e) => setDest({ ...dest, type: e.target.value })}>
-              <option value="bank_account">Bank account</option>
-              <option value="mobile_money">Mobile money</option>
-              <option value="card">Debit card</option>
-            </select>
-          </Field>
-          <Field label="Account holder">
-            <input className="input" value={dest.name} onChange={(e) => setDest({ ...dest, name: e.target.value })} required minLength={2} />
-          </Field>
-        </div>
-        <div className="grid grid-2">
-          <Field label={dest.type === "mobile_money" ? "Phone number" : "Account number"}>
-            <input className="input num" value={dest.accountNumber} onChange={(e) => setDest({ ...dest, accountNumber: e.target.value })} required minLength={4} />
-          </Field>
-          <Field
-            label={dest.type === "mobile_money" ? `Network code${rail === "flutterwave" ? "" : " (optional)"}` : `Bank code${rail === "flutterwave" ? "" : " (optional)"}`}
-            hint={rail === "flutterwave" ? (dest.type === "mobile_money" ? "e.g. MPS for M-Pesa, MTN for MTN MoMo" : "Your bank's code from Flutterwave's bank list") : undefined}
-          >
-            <input className="input" value={dest.bankCode} onChange={(e) => setDest({ ...dest, bankCode: e.target.value.toUpperCase() })} required={rail === "flutterwave"} />
-          </Field>
-        </div>
+
+        {input === "phone" && (
+          <div className="grid grid-2">
+            {holder}
+            <Field label={`${selected?.name ?? "Mobile money"} number`} hint={selected?.phoneHint ? `e.g. ${selected.phoneHint}` : undefined}>
+              <input className="input num" type="tel" inputMode="tel" value={dest.accountNumber} onChange={(e) => setDest({ ...dest, accountNumber: e.target.value })} required minLength={9} />
+            </Field>
+          </div>
+        )}
+
+        {input === "email" && (
+          <>
+            <div className="seg" role="radiogroup" aria-label="Send to">
+              {(["paypal", "venmo"] as const).map((w) => (
+                <button type="button" key={w} role="radio" aria-checked={dest.wallet === w} className={dest.wallet === w ? "on" : ""} onClick={() => setDest({ ...dest, wallet: w })}>
+                  {w === "paypal" ? "PayPal" : "Venmo (US, USD)"}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-2">
+              {holder}
+              <Field label={`${dest.wallet === "venmo" ? "Venmo" : "PayPal"} email or phone`}>
+                <input className="input" value={dest.email} onChange={(e) => setDest({ ...dest, email: e.target.value })} required minLength={5} autoComplete="email" />
+              </Field>
+            </div>
+          </>
+        )}
+
+        {input === "requirements" && <RequirementsForm rail={rail} currency={currency} amount={amount} onChange={setReqs} />}
+
+        {(input === "bank" || input === "bank_code") && (
+          <>
+            <div className="grid grid-2">
+              <Field label="Send to">
+                <select className="input" value={dest.type} onChange={(e) => setDest({ ...dest, type: e.target.value })}>
+                  <option value="bank_account">Bank account</option>
+                  <option value="mobile_money">Mobile money</option>
+                  {input === "bank" && <option value="card">Debit card</option>}
+                </select>
+              </Field>
+              {holder}
+            </div>
+            <div className="grid grid-2">
+              <Field label={dest.type === "mobile_money" ? "Phone number" : "Account number"}>
+                <input className="input num" value={dest.accountNumber} onChange={(e) => setDest({ ...dest, accountNumber: e.target.value })} required minLength={4} />
+              </Field>
+              <Field
+                label={`${dest.type === "mobile_money" ? "Network code" : "Bank code"}${input === "bank_code" ? "" : " (optional)"}`}
+                hint={input === "bank_code" ? (dest.type === "mobile_money" ? "e.g. MPS for M-Pesa, MTN for MTN MoMo" : "Your bank's code from Flutterwave's bank list") : undefined}
+              >
+                <input className="input" value={dest.bankCode} onChange={(e) => setDest({ ...dest, bankCode: e.target.value.toUpperCase() })} required={input === "bank_code"} />
+              </Field>
+            </div>
+          </>
+        )}
         <ErrorText error={error} />
-        <button className="btn block lg" disabled={busy || !amount}>{busy ? "Sending…" : "Withdraw"}</button>
+        <button className="btn block lg" disabled={busy || !amount || blocked}>{busy ? "Sending…" : "Withdraw"}</button>
       </form>
     </Modal>
   );

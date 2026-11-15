@@ -35,5 +35,6 @@ export const Icon = {
   Stop: ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="6" y="6" width="12" height="12" rx="2" /></svg>),
   Columns: ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></svg>),
   Link: ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></svg>),
+  Phone: ({ size, ...p }: P) => (<svg {...base(size)} {...p}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18h2" /></svg>),
   Admin: ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" /><circle cx="12" cy="7" r="4" /></svg>),
 };

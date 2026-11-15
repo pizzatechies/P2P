@@ -20,6 +20,28 @@ export interface Rail {
   supportsDeposit: boolean;
   supportsWithdrawal: boolean;
   currencies: string[] | "*";
+  depositInput: "none" | "phone";
+  payoutInput: "bank" | "bank_code" | "phone" | "email" | "requirements";
+  phoneHint: string | null;
+}
+
+export interface RequirementField {
+  key: string;
+  name: string;
+  type: string;
+  required: boolean;
+  refreshRequirementsOnChange: boolean;
+  example?: string | null;
+  minLength?: number | null;
+  maxLength?: number | null;
+  validationRegexp?: string | null;
+  valuesAllowed?: { key: string; name: string }[] | null;
+}
+
+export interface RequirementGroup {
+  type: string;
+  title: string;
+  fields: { name: string; group: RequirementField[] }[];
 }
 
 export interface Meta {
@@ -233,6 +255,8 @@ export interface LinkedAccount {
   currency: string | null;
   balance: number | null;
   available: number | null;
+  /** USD value for holdings without an exchange rate (crypto). */
+  valueUsd: number | null;
   updatedAt: string;
 }
 

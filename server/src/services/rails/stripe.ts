@@ -39,6 +39,7 @@ export function stripeRail(opts: { secretKey: string; appUrl: string }): Payment
     // Payouts to third parties need Stripe Connect; add a Connect-based rail for that.
     supportsWithdrawal: false,
     currencies: ["USD", "EUR", "GBP", "CAD", "AUD", "CHF", "JPY", "INR", "AED", "BRL", "MXN", "ZAR", "KES", "NGN"],
+    depositInput: "none",
     async createDeposit(input) {
       const body = formEncode({
         mode: "payment",

@@ -4,14 +4,19 @@ import { ConnectorError } from "./types.js";
 export async function jsonRequest<T>(
   provider: string,
   url: string,
-  init: { method?: string; headers?: Record<string, string>; body?: unknown; timeoutMs?: number } = {},
+  init: { method?: string; headers?: Record<string, string>; body?: unknown; form?: Record<string, string>; timeoutMs?: number } = {},
 ): Promise<T> {
   let res: Response;
   try {
+    const form = init.form ? new URLSearchParams(init.form).toString() : undefined;
     res = await fetch(url, {
-      method: init.method ?? "GET",
-      headers: { Accept: "application/json", ...(init.body !== undefined ? { "Content-Type": "application/json" } : {}), ...init.headers },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      method: init.method ?? (form ? "POST" : "GET"),
+      headers: {
+        Accept: "application/json",
+        ...(form ? { "Content-Type": "application/x-www-form-urlencoded" } : init.body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...init.headers,
+      },
+      body: form ?? (init.body !== undefined ? JSON.stringify(init.body) : undefined),
       signal: AbortSignal.timeout(init.timeoutMs ?? 20_000),
     });
   } catch (err) {
@@ -25,9 +30,9 @@ export async function jsonRequest<T>(
     body = { message: text.slice(0, 200) };
   }
   if (!res.ok) {
-    const b = body as { message?: string; error?: { message?: string; class?: string } | string; error_message?: string };
+    const b = body as { message?: string; error?: { message?: string; class?: string } | string; error_message?: string; error_description?: string };
     const detail =
-      b.error_message ?? (typeof b.error === "string" ? b.error : b.error?.message) ?? b.message ?? `HTTP ${res.status}`;
+      b.error_message ?? b.error_description ?? (typeof b.error === "string" ? b.error : b.error?.message) ?? b.message ?? `HTTP ${res.status}`;
     throw new ConnectorError(`${provider}: ${detail}`, provider, res.status);
   }
   return body as T;

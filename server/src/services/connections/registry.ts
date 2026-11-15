@@ -1,5 +1,6 @@
 import type { Ctx } from "../../context.js";
 import { getRails } from "../rails/index.js";
+import { coinbaseAggregator } from "./coinbase.js";
 import { monoAggregator } from "./mono.js";
 import { plaidAggregator } from "./plaid.js";
 import { saltEdgeAggregator } from "./saltedge.js";
@@ -8,7 +9,7 @@ import { snapTradeAggregator } from "./snaptrade.js";
 import type { Aggregator, ConnectorInfo } from "./types.js";
 
 /** Aggregators: link accounts held elsewhere and read their balances. */
-const AGGREGATORS: Aggregator[] = [plaidAggregator, saltEdgeAggregator, monoAggregator, snapTradeAggregator, sandboxAggregator];
+const AGGREGATORS: Aggregator[] = [plaidAggregator, saltEdgeAggregator, monoAggregator, snapTradeAggregator, coinbaseAggregator, sandboxAggregator];
 
 export function getAggregator(id: string) {
   return AGGREGATORS.find((a) => a.info.id === id);
@@ -16,6 +17,34 @@ export function getAggregator(id: string) {
 
 /** Payment rails: move money in and out of Aurex wallets (see services/rails). */
 const RAILS: ConnectorInfo[] = [
+  {
+    id: "mpesa",
+    name: "M-Pesa",
+    category: "payments",
+    kind: "rail",
+    coverage: "Safaricom M-Pesa in Kenya, direct through the Daraja API",
+    regions: ["Africa"],
+    countries: ["KE"],
+    capabilities: ["deposits", "payouts"],
+    description: "Add money with an M-Pesa PIN prompt (STK Push) and withdraw straight to M-Pesa (B2C).",
+    envKeys: ["MPESA_CONSUMER_KEY", "MPESA_CONSUMER_SECRET", "MPESA_SHORTCODE", "MPESA_PASSKEY", "MPESA_INITIATOR_NAME", "MPESA_SECURITY_CREDENTIAL", "PAYMENT_RAILS=…,mpesa"],
+    signupUrl: "https://developer.safaricom.co.ke/",
+    docsUrl: "https://developer.safaricom.co.ke/APIs",
+  },
+  {
+    id: "mtn-momo",
+    name: "MTN MoMo",
+    category: "payments",
+    kind: "rail",
+    coverage: "MTN Mobile Money in Ghana, Uganda, Zambia, Cameroon, Côte d'Ivoire, Rwanda and more",
+    regions: ["Africa"],
+    countries: ["GH", "UG", "ZM", "CM", "CI", "RW", "BJ", "CG", "SZ", "GN", "LR", "ZA"],
+    capabilities: ["deposits", "payouts"],
+    description: "Add money with a MoMo PIN prompt (Request to Pay) and withdraw to MoMo wallets (Disbursements). One market per server.",
+    envKeys: ["MTN_MOMO_TARGET_ENVIRONMENT", "MTN_MOMO_CURRENCY", "MTN_MOMO_COLLECTION_*", "MTN_MOMO_DISBURSEMENT_*", "PAYMENT_RAILS=…,mtn-momo"],
+    signupUrl: "https://momodeveloper.mtn.com/",
+    docsUrl: "https://momodeveloper.mtn.com/api-documentation",
+  },
   {
     id: "flutterwave",
     name: "Flutterwave",
@@ -29,6 +58,34 @@ const RAILS: ConnectorInfo[] = [
     envKeys: ["FLUTTERWAVE_SECRET_KEY", "FLUTTERWAVE_WEBHOOK_HASH", "PAYMENT_RAILS=…,flutterwave"],
     signupUrl: "https://app.flutterwave.com/register",
     docsUrl: "https://developer.flutterwave.com/",
+  },
+  {
+    id: "paypal",
+    name: "PayPal & Venmo",
+    category: "payments",
+    kind: "rail",
+    coverage: "PayPal in 200+ markets; Venmo in the US",
+    regions: ["Global"],
+    countries: [],
+    capabilities: ["deposits", "payouts"],
+    description: "Add money with PayPal (balance, bank or card) and withdraw to a PayPal or Venmo account.",
+    envKeys: ["PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_ENV", "PAYMENT_RAILS=…,paypal"],
+    signupUrl: "https://developer.paypal.com/",
+    docsUrl: "https://developer.paypal.com/docs/api/orders/v2/",
+  },
+  {
+    id: "wise",
+    name: "Wise",
+    category: "payments",
+    kind: "rail",
+    coverage: "Bank payouts to 160+ countries in 40+ currencies",
+    regions: ["Global"],
+    countries: [],
+    capabilities: ["payouts"],
+    description: "Withdraw to bank accounts worldwide. The form asks for exactly the details each country needs.",
+    envKeys: ["WISE_API_TOKEN", "WISE_PROFILE_ID", "WISE_ENV", "PAYMENT_RAILS=…,wise"],
+    signupUrl: "https://wise.com/business/",
+    docsUrl: "https://docs.wise.com/api-reference",
   },
   {
     id: "stripe",
@@ -46,20 +103,10 @@ const RAILS: ConnectorInfo[] = [
   },
 ];
 
-/** Widely requested platforms without an integration yet, shown so the roadmap is visible. */
-const PLANNED: ConnectorInfo[] = [
-  { id: "mpesa", name: "M-Pesa (direct)", category: "payments", kind: "planned", coverage: "Safaricom M-Pesa in Kenya via the Daraja API", regions: ["Africa"], countries: ["KE"], capabilities: ["deposits", "payouts"], description: "Direct STK Push deposits and B2C payouts. Available today through Flutterwave.", envKeys: [] },
-  { id: "mtn-momo", name: "MTN MoMo (direct)", category: "payments", kind: "planned", coverage: "MTN Mobile Money in 15+ African markets", regions: ["Africa"], countries: ["GH", "UG", "ZM", "CM", "CI", "RW"], capabilities: ["deposits", "payouts"], description: "Direct collections and disbursements. Available today through Flutterwave.", envKeys: [] },
-  { id: "wise", name: "Wise", category: "payments", kind: "planned", coverage: "International transfers to 160+ countries", regions: ["Global"], countries: [], capabilities: ["payouts"], description: "Cross-border payouts through the Wise Platform (requires a Wise partnership).", envKeys: [] },
-  { id: "paypal", name: "PayPal", category: "payments", kind: "planned", coverage: "PayPal and Venmo wallets", regions: ["Global"], countries: [], capabilities: ["deposits", "payouts"], description: "Deposits and payouts with PayPal.", envKeys: [] },
-  { id: "coinbase", name: "Coinbase", category: "crypto", kind: "planned", coverage: "Crypto balances and transfers", regions: ["Global"], countries: [], capabilities: ["balances"], description: "Read crypto balances from Coinbase.", envKeys: [] },
-];
-
 export function catalogue(ctx: Ctx) {
   const rails = getRails(ctx);
   return [
     ...AGGREGATORS.filter((a) => a.info.id !== "sandbox" || a.configured(ctx)).map((a) => ({ ...a.info, configured: a.configured(ctx) })),
     ...RAILS.map((r) => ({ ...r, configured: rails.has(r.id) })),
-    ...PLANNED.map((p) => ({ ...p, configured: false })),
   ];
 }

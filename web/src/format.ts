@@ -16,6 +16,14 @@ export function money(amount: string | number, currency: string, opts: { signed?
 
 export const usd = (n: number, signed = false) => money(n, "USD", { signed });
 
+const FIAT: Set<string> = new Set(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("currency") : []);
+
+/** Formats any holding: currencies as money, crypto and other assets with up to 8 decimals and their code. */
+export function holding(amount: string | number, code: string) {
+  if (FIAT.has(code) || (FIAT.size === 0 && /^[A-Z]{3}$/.test(code))) return money(amount, code);
+  return `${Number(amount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${code}`;
+}
+
 export function compactUsd(n: number) {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", notation: Math.abs(n) >= 100_000 ? "compact" : "standard", maximumFractionDigits: Math.abs(n) >= 100_000 ? 1 : 2 }).format(n);
 }

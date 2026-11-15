@@ -347,10 +347,22 @@ function externalView(r: ExternalRow) {
     fee: fromMinor(r.fee, r.currency),
     status: r.status,
     failureReason: r.failure_reason,
-    destination: dest ? { type: dest.type, name: dest.name, accountLast4: dest.accountNumber.slice(-4) } : null,
+    destination: dest ? { type: dest.type, name: dest.name, accountLast4: destinationHint(dest), wallet: dest.wallet ?? null } : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+/** The last few characters of where a payout went, safe to show in lists. */
+function destinationHint(dest: PayoutDestination): string | null {
+  const detail = Object.entries(dest.details ?? {}).find(([k]) => /^(iban|accountnumber|email|phonenumber)$/i.test(k))?.[1];
+  const raw = dest.accountNumber ?? dest.email ?? detail ?? null;
+  if (!raw) return null;
+  if (raw.includes("@")) {
+    const [user, domain] = raw.split("@");
+    return `${user.slice(0, 1)}•••@${domain}`;
+  }
+  return raw.replace(/\s+/g, "").slice(-4);
 }
 
 function loadExternal(ctx: Ctx, id: string): ExternalRow {
@@ -402,7 +414,7 @@ export function listExternal(ctx: Ctx, userId: string) {
   ).map(externalView);
 }
 
-export async function deposit(ctx: Ctx, input: { userId: string; rail: string; currency: string; amountMinor: number }) {
+export async function deposit(ctx: Ctx, input: { userId: string; rail: string; currency: string; amountMinor: number; phone?: string }) {
   const currency = assertCurrency(input.currency).code;
   if (input.amountMinor <= 0) throw badRequest("Amount must be greater than zero");
   const rail = getRail(ctx, input.rail, "deposit", currency);
@@ -429,7 +441,7 @@ export async function deposit(ctx: Ctx, input: { userId: string; rail: string; c
 
   let result;
   try {
-    result = await rail.createDeposit!({ externalId: id, userId: user.id, email: user.email, currency, amount: input.amountMinor });
+    result = await rail.createDeposit!({ externalId: id, userId: user.id, email: user.email, currency, amount: input.amountMinor, phone: input.phone });
   } catch (err) {
     run(
       ctx.db,
@@ -444,7 +456,7 @@ export async function deposit(ctx: Ctx, input: { userId: string; rail: string; c
     run(ctx.db, "UPDATE external_transfers SET provider_ref = ?, updated_at = ? WHERE id = ?", result.providerRef, nowIso(), id);
   }
   if (result.status === "completed") completeDeposit(ctx, id);
-  return { transfer: externalView(loadExternal(ctx, id)), redirectUrl: result.redirectUrl ?? null };
+  return { transfer: externalView(loadExternal(ctx, id)), redirectUrl: result.redirectUrl ?? null, instructions: result.instructions ?? null };
 }
 
 /** Credits the wallet for a confirmed deposit. Idempotent: safe to call again for webhook retries. */
@@ -555,7 +567,12 @@ export async function withdraw(
     result = { status: "failed" as const, failureReason: (err as Error).message };
   }
   if (result.providerRef) {
-    run(ctx.db, "UPDATE external_transfers SET provider_ref = ?, updated_at = ? WHERE id = ?", result.providerRef, nowIso(), id);
+    try {
+      run(ctx.db, "UPDATE external_transfers SET provider_ref = ?, updated_at = ? WHERE id = ?", result.providerRef, nowIso(), id);
+    } catch (err) {
+      // Never let bookkeeping stop the settle/refund below: held funds must always resolve.
+      console.error(`[payments] couldn't record provider reference for ${id}: ${(err as Error).message}`);
+    }
   }
   if (result.status === "completed") settleWithdrawal(ctx, id);
   else if (result.status === "failed") reverseWithdrawal(ctx, id, result.failureReason ?? "Payout failed");

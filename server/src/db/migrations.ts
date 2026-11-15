@@ -326,4 +326,8 @@ export const migrations: string[] = [
     PRIMARY KEY (user_id, provider)
   );
   `,
+  // 4: USD value for linked holdings Aurex can't price itself (e.g. crypto from Coinbase).
+  `
+  ALTER TABLE linked_accounts ADD COLUMN value_usd REAL;
+  `,
 ];

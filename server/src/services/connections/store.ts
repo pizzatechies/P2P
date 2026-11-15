@@ -136,7 +136,18 @@ export async function retryPendingLink(ctx: Ctx, row: LinkedRow, params: Record<
 // ---------------------------------------------------------------------------
 // Sync, disconnect, overview
 // ---------------------------------------------------------------------------
-export async function syncConnection(ctx: Ctx, userId: string, connectionId: string) {
+/** One sync per connection at a time: some providers issue single-use refresh tokens. */
+const syncing = new Map<string, Promise<number>>();
+
+export function syncConnection(ctx: Ctx, userId: string, connectionId: string): Promise<number> {
+  const running = syncing.get(connectionId);
+  if (running) return running;
+  const job = runSync(ctx, userId, connectionId).finally(() => syncing.delete(connectionId));
+  syncing.set(connectionId, job);
+  return job;
+}
+
+async function runSync(ctx: Ctx, userId: string, connectionId: string) {
   const row = loadOwned(ctx, userId, connectionId);
   if (row.status === "pending") throw badRequest("This connection isn't finished yet");
   const agg = getAggregator(row.provider);
@@ -144,7 +155,9 @@ export async function syncConnection(ctx: Ctx, userId: string, connectionId: str
   const secret = row.secret_enc ? decryptSecret(row.secret_enc, ctx.config.masterKey) : null;
   let accounts: AccountSnapshot[];
   try {
-    accounts = await agg.accounts(ctx, getUserRow(ctx, userId), row, secret);
+    const saveSecret = (next: string) =>
+      run(ctx.db, "UPDATE linked_connections SET secret_enc = ?, updated_at = ? WHERE id = ?", encryptSecret(next, ctx.config.masterKey), nowIso(), row.id);
+    accounts = await agg.accounts(ctx, getUserRow(ctx, userId), row, secret, saveSecret);
   } catch (err) {
     const e = friendly(err);
     run(ctx.db, "UPDATE linked_connections SET status = 'error', error = ?, updated_at = ? WHERE id = ?", e.message.slice(0, 300), nowIso(), row.id);
@@ -157,10 +170,11 @@ export async function syncConnection(ctx: Ctx, userId: string, connectionId: str
       keep.add(a.externalId);
       run(
         ctx.db,
-        `INSERT INTO linked_accounts (id, connection_id, user_id, external_id, name, kind, mask, currency, balance, available, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO linked_accounts (id, connection_id, user_id, external_id, name, kind, mask, currency, balance, available, value_usd, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (connection_id, external_id) DO UPDATE SET name = excluded.name, kind = excluded.kind, mask = excluded.mask,
-           currency = excluded.currency, balance = excluded.balance, available = excluded.available, updated_at = excluded.updated_at`,
+           currency = excluded.currency, balance = excluded.balance, available = excluded.available, value_usd = excluded.value_usd,
+           updated_at = excluded.updated_at`,
         newId("lac"),
         row.id,
         userId,
@@ -171,6 +185,7 @@ export async function syncConnection(ctx: Ctx, userId: string, connectionId: str
         a.currency?.toUpperCase() ?? null,
         a.balance ?? null,
         a.available ?? null,
+        a.valueUsd ?? null,
         now,
       );
     }
@@ -199,7 +214,7 @@ export async function overview(ctx: Ctx, userId: string) {
   const conns = all<LinkedRow>(ctx.db, "SELECT * FROM linked_connections WHERE user_id = ? ORDER BY created_at", userId);
   const accounts = all<{
     id: string; connection_id: string; name: string; kind: string; mask: string | null; currency: string | null;
-    balance: number | null; available: number | null; updated_at: string;
+    balance: number | null; available: number | null; value_usd: number | null; updated_at: string;
   }>(ctx.db, "SELECT * FROM linked_accounts WHERE user_id = ? ORDER BY name", userId);
 
   // Net worth in the user's main currency, at mid-market rates (informational).
@@ -208,23 +223,27 @@ export async function overview(ctx: Ctx, userId: string) {
   const totals = new Map<string, number>();
   let netWorth = 0;
   let unconverted = 0;
+  const toBase = (amount: number, currency: string) => {
+    const minor = Math.round(amount * 10 ** CURRENCIES[currency].decimals);
+    const sign = minor < 0 ? -1 : 1;
+    const converted = currency === base ? Math.abs(minor) : convertMinor(Math.abs(minor), currency, base, midRate(rates, currency, base));
+    return (sign * converted) / 10 ** CURRENCIES[base].decimals;
+  };
   for (const a of accounts) {
     if (a.balance === null || !a.currency) continue;
     totals.set(a.currency, (totals.get(a.currency) ?? 0) + a.balance);
-    if (rates.rates[a.currency] && CURRENCIES[a.currency] && CURRENCIES[base]) {
-      const dec = CURRENCIES[a.currency].decimals;
-      const minor = Math.round(a.balance * 10 ** dec);
-      const sign = minor < 0 ? -1 : 1;
-      const converted = a.currency === base ? Math.abs(minor) : convertMinor(Math.abs(minor), a.currency, base, midRate(rates, a.currency, base));
-      netWorth += (sign * converted) / 10 ** CURRENCIES[base].decimals;
-    } else unconverted++;
+    if (!CURRENCIES[base]) unconverted++;
+    else if (rates.rates[a.currency] && CURRENCIES[a.currency]) netWorth += toBase(a.balance, a.currency);
+    // Assets Aurex can't price (crypto) count at the USD value the provider reported.
+    else if (a.value_usd !== null && rates.rates.USD) netWorth += toBase(a.value_usd, "USD");
+    else unconverted++;
   }
 
   return {
     baseCurrency: base,
     netWorth: Math.round(netWorth * 100) / 100,
     unconvertedAccounts: unconverted,
-    totals: [...totals.entries()].map(([currency, total]) => ({ currency, total: Math.round(total * 100) / 100 })),
+    totals: [...totals.entries()].map(([currency, total]) => ({ currency, total: CURRENCIES[currency] ? Math.round(total * 100) / 100 : total })),
     connections: conns
       .filter((c) => c.status !== "pending")
       .map((c) => ({
@@ -239,7 +258,17 @@ export async function overview(ctx: Ctx, userId: string) {
         createdAt: c.created_at,
         accounts: accounts
           .filter((a) => a.connection_id === c.id)
-          .map((a) => ({ id: a.id, name: a.name, kind: a.kind, mask: a.mask, currency: a.currency, balance: a.balance, available: a.available, updatedAt: a.updated_at })),
+          .map((a) => ({
+            id: a.id,
+            name: a.name,
+            kind: a.kind,
+            mask: a.mask,
+            currency: a.currency,
+            balance: a.balance,
+            available: a.available,
+            valueUsd: a.value_usd,
+            updatedAt: a.updated_at,
+          })),
       })),
     pending: conns.filter((c) => c.status === "pending").map((c) => ({ id: c.id, provider: c.provider, createdAt: c.created_at })),
   };

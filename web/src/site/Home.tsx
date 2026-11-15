@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Icon } from "../components/icons";
 import { useAuth } from "../state";
-import { CtaBand, Faq, PrimaryCta, ProductPreview, PROVIDERS, Section, SectionHead, usePageTitle } from "./common";
+import { CtaBand, Faq, LINK_PARTNERS, MONEY_PARTNERS, PrimaryCta, ProductPreview, PROVIDERS, Section, SectionHead, usePageTitle } from "./common";
 import { DemoVideo } from "./Demo";
 
 export function HomePage() {
@@ -20,8 +20,9 @@ export function HomePage() {
               Money, AI and markets, <span className="gold-text">all in one place.</span>
             </h1>
             <p className="lead">
-              Send and request money in {currencies} currencies, chat with every major AI model from one screen, and trade
-              stocks with an AI analyst that explains its reasoning and waits for your go-ahead.
+              Send and request money in {currencies} currencies, pay in and out with M-Pesa, MTN MoMo, PayPal or a bank in 160+
+              countries, chat with every major AI model from one screen, and trade stocks with an AI analyst that waits for
+              your go-ahead.
             </p>
             <div className="row wrap">
               <PrimaryCta />
@@ -30,8 +31,8 @@ export function HomePage() {
             <ul className="hero-points">
               <li>Free to open</li>
               <li>{currencies} currencies</li>
+              <li>M-Pesa, MoMo &amp; PayPal</li>
               <li>{PROVIDERS.length} AI providers</li>
-              <li>Two-factor sign-in</li>
             </ul>
           </div>
           <ProductPreview />
@@ -40,8 +41,14 @@ export function HomePage() {
 
       <div className="provider-band">
         <div className="site-container provider-inner">
-          <span className="faint small">Works with</span>
+          <span className="faint small">AI from</span>
           {PROVIDERS.map((p) => (
+            <span key={p} className="provider-name">{p}</span>
+          ))}
+        </div>
+        <div className="site-container provider-inner" style={{ paddingTop: 0 }}>
+          <span className="faint small">Money through</span>
+          {[...MONEY_PARTNERS, ...LINK_PARTNERS].map((p) => (
             <span key={p} className="provider-name">{p}</span>
           ))}
         </div>
@@ -58,8 +65,8 @@ export function HomePage() {
       </Section>
 
       <Section>
-        <SectionHead center eyebrow="One app, three superpowers" title="Everything you do with money online" lead="Stop juggling a payments app, an AI subscription and a brokerage. Aurex brings them together with one account and one standard of care." />
-        <div className="pillars">
+        <SectionHead center eyebrow="One app, four superpowers" title="Everything you do with money online" lead="Stop juggling a payments app, an AI subscription, a brokerage and a spreadsheet of accounts. Aurex brings them together with one account and one standard of care." />
+        <div className="pillars four">
           <Link to="/features#payments" className="pillar">
             <span className="pillar-ico"><Icon.Send /></span>
             <h3>Peer-to-peer payments</h3>
@@ -78,6 +85,12 @@ export function HomePage() {
             <p>An analyst that reads the charts, sizes the trade and sets a stop-loss, and an autopilot that can trade for you within your limits.</p>
             <span className="pillar-link">Trading →</span>
           </Link>
+          <Link to="/features#connections" className="pillar">
+            <span className="pillar-ico"><Icon.Link /></span>
+            <h3>Connected to all your money</h3>
+            <p>Pay in and cash out with M-Pesa, MTN MoMo, PayPal, Venmo or a bank in 160+ countries, and see your banks, brokerages and Coinbase in one net worth.</p>
+            <span className="pillar-link">Connections →</span>
+          </Link>
         </div>
       </Section>
 
@@ -92,7 +105,7 @@ export function HomePage() {
           <li>
             <span className="step-n">2</span>
             <h3>Add money or connect</h3>
-            <p>Top up your wallet, add your favourite AI provider, and get $100k of practice cash for trading.</p>
+            <p>Top up with M-Pesa, MoMo, PayPal or card, link your bank or brokerage, and get $100k of practice cash for trading.</p>
           </li>
           <li>
             <span className="step-n">3</span>
@@ -142,6 +155,8 @@ export function HomePage() {
           items={[
             { q: "Is Aurex free?", a: <>Opening an account is free, and sending money to other Aurex users is {sendFee.toLowerCase()}. Currency conversion includes a small, clearly shown spread. See <Link to="/pricing">pricing</Link>.</> },
             { q: "Which AI models can I use?", a: "Claude, GPT, Gemini, Mistral, Llama (via Groq or Together), Grok, DeepSeek, Perplexity, self-hosted models via Ollama, and hundreds more through OpenRouter. A built-in assistant works with no setup at all." },
+            { q: "Can I use M-Pesa, MTN MoMo or PayPal?", a: "Yes, where the Aurex operator has switched them on. Add money with an M-Pesa or MoMo PIN prompt on your phone, or with PayPal, and withdraw to M-Pesa, MoMo, PayPal, Venmo (US) or a bank account in 160+ countries through Wise." },
+            { q: "Can I see my other bank and crypto accounts?", a: "Yes. Connections links banks and cards (Plaid, Salt Edge, Mono), brokerages (SnapTrade) and Coinbase, read-only. You approve access on the provider's own page and can disconnect at any time." },
             { q: "Will the AI trade for me?", a: "Only if you want it to. By default the AI analyst suggests trades and waits for you. Switch on AI Autopilot and it trades for you on a schedule, strictly inside limits you set: a maximum per position and in total, trades per day, a minimum confidence, and a daily loss limit that pauses it. You can also have it ask before every trade, and pause it any time." },
             { q: "Can I practise before using real money?", a: "Yes. Every account includes a paper-trading portfolio with virtual cash, so you can try strategies and the AI analyst risk-free." },
             { q: "Is my money real right now?", a: "Aurex is currently in sandbox mode: deposits and withdrawals use test money while licensed payment partners are being connected. Transfers between users work exactly as they will with real funds." },
