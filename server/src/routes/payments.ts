@@ -7,6 +7,7 @@ import { amountField, currencyField, idempotencyField, parse } from "../lib/vali
 import { badRequest } from "../lib/errors.js";
 import { requireAuth, requireRecentAuth } from "../middleware/auth.js";
 import { toUsdMinor } from "../services/fx.js";
+import { assertEmailVerified } from "../services/email.js";
 import { assertNoSecurityHold, assertRecentAuth } from "../services/security.js";
 import { getRail } from "../services/rails/index.js";
 import { quote } from "../services/fx.js";
@@ -272,7 +273,9 @@ export function paymentRoutes(ctx: Ctx) {
 
   // Money leaving Aurex always needs a recent password/2FA check and no active security hold.
   r.post("/withdrawals", moneyLimiter, requireRecentAuth(ctx), async (req, res) => {
-    assertNoSecurityHold(getUserRow(ctx, req.user!.id));
+    const me = getUserRow(ctx, req.user!.id);
+    assertEmailVerified(ctx, me, "withdraw");
+    assertNoSecurityHold(me);
     const body = parse(WithdrawBody, req.body);
     const transfer = await withdraw(ctx, {
       userId: req.user!.id,

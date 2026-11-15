@@ -5,11 +5,17 @@ import { alpacaBroker } from "./brokers/alpaca.js";
 import { ensureTradingAccount, paperBroker } from "./brokers/paper.js";
 import type { Broker, OrderInput } from "./brokers/types.js";
 import { alpacaCredentials, marketFor, normalizeSymbol, type MarketData } from "./market.js";
+import { assertLiveApproved, liveApproved } from "../upgrade.js";
 
 export function tradingSettings(ctx: Ctx, userId: string) {
   const acct = ensureTradingAccount(ctx, userId);
   const creds = alpacaCredentials(ctx, userId);
+  const live = acct.broker === "alpaca" && creds?.env === "live";
   return {
+    /** "demo" covers both the built-in paper account and Alpaca paper accounts. */
+    accountType: live ? ("real" as const) : ("demo" as const),
+    realAccountApproved: liveApproved(ctx, userId),
+    demoStartingCash: acct.starting_cents / 100,
     broker: acct.broker,
     alpacaConnected: !!creds,
     alpacaEnv: creds?.env ?? null,
@@ -23,8 +29,8 @@ export function brokerFor(ctx: Ctx, userId: string): { broker: Broker; market: M
   const market = marketFor(ctx, userId);
   if (acct.broker === "alpaca") {
     const creds = alpacaCredentials(ctx, userId);
-    if (!creds) {
-      // Keys were removed: fall back to paper rather than failing every request.
+    if (!creds || (creds.env === "live" && (!ctx.config.ALLOW_LIVE_TRADING || !liveApproved(ctx, userId)))) {
+      // Keys removed, live trading switched off, or real-account approval revoked: back to the demo account.
       run(ctx.db, "UPDATE trading_accounts SET broker = 'paper' WHERE user_id = ?", userId);
     } else {
       return { broker: alpacaBroker(ctx, userId, creds), market };
@@ -41,6 +47,7 @@ export function setBroker(ctx: Ctx, userId: string, broker: "paper" | "alpaca") 
     if (creds.env === "live" && !ctx.config.ALLOW_LIVE_TRADING) {
       throw new HttpError(403, "live_trading_disabled", "Live trading is disabled on this server");
     }
+    if (creds.env === "live") assertLiveApproved(ctx, userId);
   }
   run(ctx.db, "UPDATE trading_accounts SET broker = ? WHERE user_id = ?", broker, userId);
 }

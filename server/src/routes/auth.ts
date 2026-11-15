@@ -17,6 +17,7 @@ import {
   recordFailedAttempt,
   recordSuccessfulAttempt,
 } from "../services/security.js";
+import { sendVerificationCode, verifyEmailCode } from "../services/email.js";
 import { audit, authenticate, createSession, destroySession, getUserRow, registerUser, toAuthUser } from "../services/users.js";
 
 // Full strength rules (length, common and breached passwords) are checked in the service.
@@ -44,6 +45,7 @@ export function authRoutes(ctx: Ctx) {
   const r = Router();
   const limiter = rateLimit({ name: "auth", windowMs: 15 * 60_000, max: ctx.config.isTest ? 1000 : 20 });
   const signupLimiter = rateLimit({ name: "signup", windowMs: 60 * 60_000, max: ctx.config.isTest ? 1000 : 10 });
+  const emailLimiter = rateLimit({ name: "email-verify", windowMs: 60 * 60_000, max: ctx.config.isTest ? 1000 : 20, key: (req) => req.user?.id ?? req.ip ?? "" });
   const reauthLimiter = rateLimit({ name: "reauth", windowMs: 15 * 60_000, max: ctx.config.isTest ? 1000 : 15, key: (req) => req.user?.id ?? req.ip ?? "" });
 
   r.post("/register", signupLimiter, limiter, async (req, res) => {
@@ -53,7 +55,8 @@ export function authRoutes(ctx: Ctx) {
     const session = createSession(ctx, user.id, { ip: req.ip, userAgent: ua });
     audit(ctx, user.id, "auth.register", { ua }, req.ip);
     setSessionCookie(ctx, res, session.token, session.expiresAt);
-    res.status(201).json({ user: toAuthUser(user) });
+    const emailVerification = ctx.config.emailDelivery === "none" ? null : await sendVerificationCode(ctx, user).catch(() => null);
+    res.status(201).json({ user: toAuthUser(user), emailVerification });
   });
 
   r.post("/login", limiter, async (req, res) => {
@@ -97,6 +100,18 @@ export function authRoutes(ctx: Ctx) {
     markReauthenticated(ctx, req.sessionId!);
     audit(ctx, user.id, "auth.reauth", {}, req.ip);
     res.json({ ok: true, until: reauthValidUntil(ctx, new Date().toISOString()) });
+  });
+
+  /** Sends (or re-sends) the 6-digit email verification code. */
+  r.post("/email/send", requireAuth, emailLimiter, async (req, res) => {
+    res.json(await sendVerificationCode(ctx, getUserRow(ctx, req.user!.id)));
+  });
+
+  r.post("/email/verify", requireAuth, emailLimiter, (req, res) => {
+    const { code } = parse(z.object({ code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code") }), req.body);
+    verifyEmailCode(ctx, req.user!.id, code);
+    audit(ctx, req.user!.id, "security.email_verified", {}, req.ip);
+    res.json({ user: toAuthUser(getUserRow(ctx, req.user!.id)) });
   });
 
   r.post("/logout", (req, res) => {

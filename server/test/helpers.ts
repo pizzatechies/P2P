@@ -10,6 +10,8 @@ export function makeApp(env: Record<string, string> = {}) {
     MASTER_KEY: "test-master-key-0123456789abcdef0123456789",
     APP_URL: "http://localhost:5173",
     PAYMENT_RAILS: "sandbox",
+    // Most suites test other things; the email suite turns verification on.
+    REQUIRE_EMAIL_VERIFICATION: "false",
     ...env,
   });
   return createApp(config, openDb(":memory:"));

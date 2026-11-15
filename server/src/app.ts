@@ -14,6 +14,7 @@ import { adminRoutes } from "./routes/admin.js";
 import { aiRoutes } from "./routes/ai.js";
 import { authRoutes } from "./routes/auth.js";
 import { connectionRoutes } from "./routes/connections.js";
+import { learnRoutes } from "./routes/learn.js";
 import { metaRoutes } from "./routes/meta.js";
 import { paymentRoutes } from "./routes/payments.js";
 import { publicRoutes } from "./routes/public.js";
@@ -136,6 +137,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   app.use("/api/connections", connectionRoutes(ctx));
   app.use("/api/ai", aiRoutes(ctx));
   app.use("/api/trading", tradingRoutes(ctx));
+  app.use("/api/learn", learnRoutes(ctx));
   app.use("/api/admin", adminRoutes(ctx));
 
   app.use("/api", (_req, _res, next) => next(new HttpError(404, "not_found", "No such endpoint")));

@@ -254,8 +254,9 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
   };
 }
 
-export function resetPaperAccount(ctx: Ctx, userId: string) {
-  const cents = toCents(ctx.config.PAPER_STARTING_CASH);
+/** Starts the demo account over with a fresh virtual balance (default PAPER_STARTING_CASH). */
+export function resetPaperAccount(ctx: Ctx, userId: string, startingCash = ctx.config.PAPER_STARTING_CASH) {
+  const cents = toCents(startingCash);
   tx(ctx.db, () => {
     ensureTradingAccount(ctx, userId);
     run(ctx.db, "DELETE FROM positions WHERE user_id = ?", userId);

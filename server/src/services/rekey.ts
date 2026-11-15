@@ -8,6 +8,7 @@ const ENCRYPTED: { table: string; column: string; keys: string[] }[] = [
   { table: "user_api_keys", column: "key_enc", keys: ["user_id", "provider"] },
   { table: "linked_connections", column: "secret_enc", keys: ["id"] },
   { table: "provider_customers", column: "secret_enc", keys: ["user_id", "provider"] },
+  { table: "live_applications", column: "data_enc", keys: ["user_id"] },
 ];
 
 /**

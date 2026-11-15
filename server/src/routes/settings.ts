@@ -71,6 +71,9 @@ export function settingsRoutes(ctx: Ctx) {
     const user = getUserRow(ctx, req.user!.id);
     res.json({
       totpEnabled: user.totp_enabled === 1,
+      emailVerified: Boolean(user.email_verified_at),
+      emailDelivery: ctx.config.emailDelivery !== "none",
+      emailRequired: ctx.config.requireEmailVerification,
       recoveryCodesLeft: user.totp_enabled ? recoveryCodesLeft(ctx, user.id) : 0,
       securityHoldUntil: securityHoldUntil(user),
       reauthUntil: reauthValidUntil(ctx, req.reauthAt),

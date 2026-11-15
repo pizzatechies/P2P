@@ -6,6 +6,7 @@ import { rateLimit } from "../lib/rateLimit.js";
 import { parse } from "../lib/validate.js";
 import { requireAuth, requireRecentAuth } from "../middleware/auth.js";
 import { assertRecentAuth } from "../services/security.js";
+import { assertLiveApproved, saveApplication, submitApplication, upgradeOverview } from "../services/upgrade.js";
 import { deleteUserKey, saveUserKey } from "../services/keys.js";
 import { analyze, getSignal, listSignals } from "../services/trading/analyst.js";
 import {
@@ -45,6 +46,28 @@ const AnalyzeBody = z.object({
   model: z.string().max(200).optional(),
 });
 
+const band = z.enum(["under_10k", "10k_50k", "50k_100k", "100k_250k", "over_250k"]);
+const ApplicationBody = z.object({
+  legalName: z.string().trim().min(2).max(100).regex(/^[\p{L}\p{M}' .-]+$/u, "Use your name as on your ID"),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").refine((d) => !Number.isNaN(Date.parse(d)), "Check your date of birth"),
+  country: z.string().trim().length(2).transform((c) => c.toUpperCase()),
+  employment: z.enum(["employed", "self_employed", "student", "retired", "unemployed"]),
+  annualIncome: band,
+  liquidNetWorth: band,
+  sourceOfFunds: z.enum(["salary", "savings", "business", "investments", "inheritance", "other"]),
+  experience: z.enum(["none", "under_1y", "1_3y", "over_3y"]),
+  objective: z.enum(["growth", "income", "speculation", "preservation"]),
+  riskTolerance: z.enum(["low", "medium", "high"]),
+  timeHorizon: z.enum(["under_1y", "1_5y", "over_5y"]),
+});
+const AcknowledgeBody = z.object({
+  riskOfLoss: z.boolean(),
+  notAdvice: z.boolean(),
+  ownAccount: z.boolean(),
+  accurate: z.boolean(),
+  understandsWarnings: z.boolean().optional(),
+});
+
 const AutopilotBody = z.object({
   enabled: z.boolean().optional(),
   acknowledge: z.boolean().optional(),
@@ -79,10 +102,31 @@ export function tradingRoutes(ctx: Ctx) {
     res.json({ settings, account: await broker.account() });
   });
 
+  /** Starts the demo account over, optionally with a different virtual balance ($1,000 to $1,000,000). */
   r.post("/account/reset", (req, res) => {
-    resetPaperAccount(ctx, req.user!.id);
-    audit(ctx, req.user!.id, "trading.paper_reset", {}, req.ip);
-    res.json({ ok: true });
+    const { startingCash } = parse(z.object({ startingCash: z.coerce.number().min(1000).max(1_000_000).optional() }), req.body ?? {});
+    resetPaperAccount(ctx, req.user!.id, startingCash);
+    audit(ctx, req.user!.id, "trading.paper_reset", { startingCash: startingCash ?? ctx.config.PAPER_STARTING_CASH }, req.ip);
+    res.json({ ok: true, settings: tradingSettings(ctx, req.user!.id) });
+  });
+
+  // ---- Upgrade from demo to a real account ----
+  r.get("/upgrade", (req, res) => {
+    res.json(upgradeOverview(ctx, req.user!.id));
+  });
+
+  r.put("/upgrade", (req, res) => {
+    const data = parse(ApplicationBody, req.body);
+    const out = saveApplication(ctx, req.user!.id, data);
+    audit(ctx, req.user!.id, "upgrade.saved", {}, req.ip);
+    res.json(out);
+  });
+
+  r.post("/upgrade/submit", requireRecentAuth(ctx), (req, res) => {
+    const ack = parse(AcknowledgeBody, req.body);
+    const out = submitApplication(ctx, req.user!.id, ack, req.ip);
+    audit(ctx, req.user!.id, "upgrade.submitted", { status: out.status }, req.ip);
+    res.json(out);
   });
 
   r.put("/broker", (req, res) => {
@@ -110,6 +154,7 @@ export function tradingRoutes(ctx: Ctx) {
     if (env === "live" && !ctx.config.ALLOW_LIVE_TRADING) {
       throw new HttpError(403, "live_trading_disabled", "These are live-account keys, and live trading is disabled on this server. Use paper keys.");
     }
+    if (env === "live") assertLiveApproved(ctx, req.user!.id);
     saveUserKey(ctx, req.user!.id, "alpaca", JSON.stringify(creds), { env });
     audit(ctx, req.user!.id, "trading.alpaca_connected", { env }, req.ip);
     res.json({ settings: tradingSettings(ctx, req.user!.id) });

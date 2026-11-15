@@ -367,4 +367,42 @@ export const migrations: string[] = [
   `
   ALTER TABLE external_transfers ADD COLUMN payout_reference TEXT;
   `,
+  // 7: Email verification, the trading academy and real-account upgrades.
+  `
+  ALTER TABLE users ADD COLUMN email_verified_at TEXT;
+
+  -- One pending email code per user; only its hash is stored.
+  CREATE TABLE email_codes (
+    user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    code_hash  TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    sent_at    TEXT NOT NULL
+  );
+
+  -- Passed lesson quizzes.
+  CREATE TABLE learning_progress (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_id      TEXT NOT NULL,
+    score        REAL NOT NULL,
+    completed_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, item_id)
+  );
+
+  -- Applications to upgrade from a demo to a real (live brokerage) account.
+  -- Personal details are encrypted with MASTER_KEY (AES-256-GCM).
+  CREATE TABLE live_applications (
+    user_id       TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    status        TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected')),
+    data_enc      TEXT,
+    assessment    TEXT,
+    submitted_at  TEXT,
+    reviewed_at   TEXT,
+    reviewer_id   TEXT,
+    review_note   TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+  );
+  CREATE INDEX live_applications_status ON live_applications(status, submitted_at);
+  `,
 ];

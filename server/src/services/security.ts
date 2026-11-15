@@ -2,13 +2,18 @@ import type { Ctx } from "../context.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { decryptSecret, generateRecoveryCodes, looksLikeRecoveryCode, matchTotp, recoveryCodeHash, safeEqual } from "../lib/crypto.js";
 import { HttpError } from "../lib/errors.js";
+import { emailAlert } from "./email.js";
 import type { UserRow } from "./users.js";
+
+/** Alerts important enough to also email (to verified addresses). */
+const EMAILED = new Set(["new_device", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "admin", "security_hold"]);
 
 // ---------------------------------------------------------------------------
 // Security alerts: shown in the app (dashboard banner, Settings → Security).
 // ---------------------------------------------------------------------------
 export function addAlert(ctx: Ctx, userId: string, kind: string, message: string, ip?: string | null) {
   run(ctx.db, "INSERT INTO security_alerts (user_id, kind, message, ip, created_at) VALUES (?, ?, ?, ?, ?)", userId, kind, message, ip ?? null, nowIso());
+  if (EMAILED.has(kind)) void emailAlert(ctx, userId, message).catch(() => undefined);
 }
 
 export function listAlerts(ctx: Ctx, userId: string, limit = 20) {

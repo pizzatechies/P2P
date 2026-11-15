@@ -37,6 +37,23 @@ const EnvSchema = z.object({
   /** Previous MASTER_KEY values (comma-separated). Secrets are re-encrypted with MASTER_KEY at startup. */
   MASTER_KEY_PREVIOUS: z.string().default(""),
 
+  // ---- Email (verification codes and security alerts) ----
+  /** Resend API key. Without it, codes are only logged in development, and nothing is sent in production. */
+  RESEND_API_KEY: optionalString,
+  RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
+  /** Sender, e.g. "Aurex <no-reply@yourdomain.com>" (a domain verified with Resend). */
+  EMAIL_FROM: optionalString,
+  /** Require a verified email for withdrawals, being paid by email, admin access and real accounts. Defaults on when email can be delivered. */
+  REQUIRE_EMAIL_VERIFICATION: bool.optional(),
+
+  // ---- Real (live) trading accounts ----
+  /** Approve upgrade applications automatically instead of waiting for an admin. */
+  LIVE_UPGRADE_AUTO_APPROVE: bool.default(false),
+  /** Countries where real accounts may be opened (ISO codes, comma-separated). Empty = any. */
+  LIVE_COUNTRIES: z.string().default(""),
+  /** Demo trades a user must complete before applying for a real account. */
+  LIVE_MIN_PRACTICE_TRADES: z.coerce.number().int().min(0).max(100).default(3),
+
   // ---- Account protection ----
   /** Failed sign-ins (password or 2FA) before an account is locked. */
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(50).default(5),
@@ -205,6 +222,11 @@ export interface Config extends Env {
   /** True when ADMIN_EMAILS accounts become admin without entering ADMIN_SETUP_CODE (development only). */
   adminAutoPromote: boolean;
   mpesaCallbackIps: Set<string>;
+  /** How verification and alert emails go out: Resend, the server log (development), or not at all. */
+  emailDelivery: "resend" | "console" | "none";
+  requireEmailVerification: boolean;
+  emailFrom: string;
+  liveCountries: Set<string>;
 }
 
 const DEV_MASTER_KEY = "aurex-dev-only-master-key-change-me";
@@ -254,6 +276,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   for (const [rail, [names, values]] of Object.entries(railKeys)) {
     if (rails.includes(rail) && values.some((v) => !v)) throw new Error(`PAYMENT_RAILS includes '${rail}' but ${names} is not set.`);
   }
+  const emailDelivery: Config["emailDelivery"] = env.RESEND_API_KEY ? "resend" : isProd ? "none" : "console";
+  if (isProd && emailDelivery === "none") {
+    console.warn("[config] No email provider (RESEND_API_KEY): users can't verify their email, so withdrawals, pay-by-email and real accounts stay locked.");
+  }
   if (isProd && env.ADMIN_EMAILS.trim() && !env.ADMIN_SETUP_CODE) {
     console.warn(
       "[config] ADMIN_EMAILS is set but ADMIN_SETUP_CODE is not: nobody will be made admin automatically in production. " +
@@ -291,5 +317,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     breachCheck: env.PASSWORD_BREACH_CHECK ?? env.NODE_ENV !== "test",
     adminAutoPromote: !env.ADMIN_SETUP_CODE && !isProd,
     mpesaCallbackIps: new Set(list(env.MPESA_CALLBACK_IPS)),
+    emailDelivery,
+    requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION ?? emailDelivery !== "none",
+    emailFrom: env.EMAIL_FROM ?? `Aurex <no-reply@${new URL(env.APP_URL).hostname}>`,
+    liveCountries: new Set(list(env.LIVE_COUNTRIES).map((c) => c.toUpperCase())),
   };
 }

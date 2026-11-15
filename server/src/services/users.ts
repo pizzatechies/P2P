@@ -13,6 +13,7 @@ import {
   verifyPassword,
 } from "../lib/crypto.js";
 import { assertStrongPassword } from "../lib/password.js";
+import { assertEmailVerified } from "./email.js";
 import {
   addAlert,
   assertNotLocked,
@@ -45,6 +46,7 @@ export interface UserRow {
   totp_last_step: number;
   security_hold_until: string | null;
   password_changed_at: string | null;
+  email_verified_at: string | null;
 }
 
 export interface AuthUser {
@@ -56,6 +58,7 @@ export interface AuthUser {
   kycLevel: number;
   defaultCurrency: string;
   totpEnabled: boolean;
+  emailVerified: boolean;
   status: "active" | "frozen";
   createdAt: string;
 }
@@ -70,6 +73,7 @@ export function toAuthUser(u: UserRow): AuthUser {
     kycLevel: u.kyc_level,
     defaultCurrency: u.default_currency,
     totpEnabled: u.totp_enabled === 1,
+    emailVerified: Boolean(u.email_verified_at),
     status: u.status,
     createdAt: u.created_at,
   };
@@ -138,7 +142,10 @@ export function findUserByIdentifier(ctx: Ctx, identifier: string): UserRow | un
   if (!raw) return undefined;
   if (raw.startsWith("usr_")) return one<UserRow>(ctx.db, "SELECT * FROM users WHERE id = ?", raw);
   if (raw.includes("@") && !raw.startsWith("@")) {
-    return one<UserRow>(ctx.db, "SELECT * FROM users WHERE email = ?", raw.toLowerCase());
+    // Paying by email only finds verified addresses, so nobody can intercept money by registering
+    // someone else's email first.
+    const verifiedOnly = ctx.config.requireEmailVerification ? " AND email_verified_at IS NOT NULL" : "";
+    return one<UserRow>(ctx.db, `SELECT * FROM users WHERE email = ?${verifiedOnly}`, raw.toLowerCase());
   }
   return one<UserRow>(ctx.db, "SELECT * FROM users WHERE handle = ?", raw.replace(/^@/, "").toLowerCase());
 }
@@ -150,12 +157,14 @@ export function searchUsers(ctx: Ctx, query: string, excludeId: string) {
   return all<UserRow>(
     ctx.db,
     `SELECT id, handle, display_name FROM users
-     WHERE id <> ? AND status = 'active' AND (handle LIKE ? ESCAPE '\\' OR lower(display_name) LIKE ? ESCAPE '\\' OR email = ?)
+     WHERE id <> ? AND status = 'active' AND (handle LIKE ? ESCAPE '\\' OR lower(display_name) LIKE ? ESCAPE '\\'
+       OR (email = ? AND (email_verified_at IS NOT NULL OR ? = 0)))
      ORDER BY handle LIMIT 8`,
     excludeId,
     like,
     like,
     q,
+    ctx.config.requireEmailVerification ? 1 : 0,
   ).map(publicProfile);
 }
 
@@ -216,6 +225,7 @@ export function claimAdmin(ctx: Ctx, userId: string, code: string) {
   const expected = ctx.config.ADMIN_SETUP_CODE;
   if (!expected || !ctx.config.adminEmails.has(user.email.toLowerCase())) throw new HttpError(403, "forbidden", "This account can't claim admin access");
   if (!safeCompare(code.trim(), expected)) throw badRequest("That setup code is not valid");
+  assertEmailVerified(ctx, user, "become an admin");
   if (ctx.config.REQUIRE_ADMIN_2FA && !user.totp_enabled) throw new HttpError(403, "admin_2fa_required", "Turn on two-factor authentication first");
   run(ctx.db, "UPDATE users SET role = 'admin' WHERE id = ?", user.id);
   return getUserRow(ctx, user.id);
