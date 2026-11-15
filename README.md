@@ -269,7 +269,13 @@ npm run build:site
 
 `.github/workflows/pages.yml` publishes it to `https://<owner>.github.io/<repo>/` on every push. One-time setup: **Settings → Pages → Source: GitHub Actions**. Set the repository variable `AUREX_APP_URL` to the live app's URL so the sign-up buttons point at it; until then they read "Launching soon". GitHub Pages can't run the app itself (accounts, payments, AI, trading), which needs a server such as Railway.
 
-### Render (one command)
+### Render (one click)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pizzatechies/P2P)
+
+The button reads `render.yaml`: a Docker web service on the Starter plan in Frankfurt with a 1 GB disk at `/data`. It generates `MASTER_KEY` and `ADMIN_SETUP_CODE`, and asks only for `ADMIN_EMAILS`. `APP_URL` defaults to the service's own address.
+
+Or from the command line with an API key:
 
 ```bash
 RENDER_API_KEY=<api key> ADMIN_EMAILS=you@example.com ./scripts/deploy-render.sh
