@@ -12,7 +12,7 @@ export function AboutPage() {
           <div>
             <span className="eyebrow">About Aurex</span>
             <h1>The gold standard for <span className="gold-text">everyday money.</span></h1>
-            <p className="lead">Aurex brings together the three things people increasingly do with money online (paying each other, getting answers, and investing) in one calm, trustworthy place.</p>
+            <p className="lead">Aurex brings together what people increasingly do with money online (paying each other, getting answers from AI, and learning to invest) in one calm, trustworthy place.</p>
           </div>
         </div>
       </section>
@@ -34,7 +34,7 @@ export function AboutPage() {
           {[
             ["Every cent accounted for", "Money is recorded with the rigour of a bank ledger, not a spreadsheet."],
             ["You stay in control", "AI suggests, explains and sizes, but the decision is always yours."],
-            ["Open to every AI", "Use the best model for each job instead of being locked into one."],
+            ["Learn before you risk", "Everyone starts with a demo account and a free academy; real money comes when you're ready."],
             ["Built for everyone", "From dollars to cedis and kwacha, Aurex is designed to work wherever you are."],
           ].map(([t, d]) => (
             <div key={t} className="mini">

@@ -614,3 +614,10 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .check-row:last-child { border-bottom: 0; }
 .ack { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.45; }
 .ack input { margin-top: 3px; }
+
+/* Website: Learn → Practise → Go live */
+.journey { list-style: none; counter-reset: step; padding: 0; margin: 0 0 18px; display: grid; gap: 12px; }
+.journey li { counter-increment: step; display: grid; grid-template-columns: 34px 1fr; column-gap: 12px; align-items: start; }
+.journey li::before { content: counter(step); grid-row: span 2; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-text); font-weight: 700; font-size: 14px; }
+.journey li strong { font-size: 16px; }
+.journey li span { color: var(--text-2); font-size: 14px; line-height: 1.5; }

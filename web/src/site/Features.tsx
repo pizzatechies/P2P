@@ -102,7 +102,39 @@ export function FeaturesPage() {
         </div>
       </Section>
 
-      <Section id="connections" tone="warm">
+      <Section id="learn" tone="warm">
+        <div className="split reverse">
+          <div>
+            <SectionHead eyebrow="Learn to trade" title="A demo account and an academy, built in" lead="Learn the essentials, practise with virtual money, and upgrade to a real account only when you've shown you're ready." />
+            <ul className="check-list">
+              <Check>Demo account with $1,000 to $1,000,000 of virtual money; restart it whenever you like</Check>
+              <Check>Six short lessons: how markets work, market and limit orders, risk and stop-losses, reading charts, trading with AI, and going live</Check>
+              <Check>Each lesson ends with a quiz (80% to pass), with explanations for every answer</Check>
+              <Check>Practice missions tick off as you trade: your first buy, a limit order, a sale, three different stocks and more</Check>
+              <Check>Upgrade to a real account: verified email, two-factor sign-in, the academy, a few demo trades and a short questionnaire</Check>
+              <Check>Real trades go through a licensed broker in your name; Aurex never holds your investments</Check>
+            </ul>
+          </div>
+          <div className="feature-visual">
+            <div className="fv-title"><Icon.Rocket size={16} /> Upgrade to a real account</div>
+            {[
+              ["Verify your email address", true],
+              ["Turn on two-factor authentication", true],
+              ["Pass all 6 academy quizzes", true],
+              ["Make 3 trades in your demo account", true],
+              ["Complete your profile and questionnaire", false],
+            ].map(([t, done]) => (
+              <div key={String(t)} className="row small" style={{ gap: 10, padding: "8px 2px", borderBottom: "1px solid var(--border)" }}>
+                <span className={`mission-check ${done ? "done" : ""}`} aria-hidden="true">{done ? "✓" : ""}</span>
+                <span>{t}</span>
+              </div>
+            ))}
+            <p className="faint xs" style={{ margin: "10px 0 0" }}>Applications are reviewed before real-money trading is unlocked.</p>
+          </div>
+        </div>
+      </Section>
+
+      <Section id="connections">
         <div className="split reverse">
           <div>
             <SectionHead eyebrow="Connections" title="All your money, wherever it lives" lead="Link banks, brokerages and crypto from around the world and see every balance, and your net worth, next to your Aurex wallet." />

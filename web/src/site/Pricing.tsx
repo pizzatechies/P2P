@@ -46,7 +46,7 @@ export function PricingPage() {
               <Check>Wallets in {meta?.currencies.length ?? 19} currencies</Check>
               <Check>Send & request money {fees.p2pBps === 0 ? "with no fee" : ""}</Check>
               <Check>AI Hub with every major provider</Check>
-              <Check>AI analyst and paper trading</Check>
+              <Check>AI analyst, demo trading account and academy</Check>
               <Check>Two-factor sign-in and activity log</Check>
             </ul>
             <PrimaryCta>Create free account</PrimaryCta>

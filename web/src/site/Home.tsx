@@ -20,9 +20,9 @@ export function HomePage() {
               Money, AI and markets, <span className="gold-text">all in one place.</span>
             </h1>
             <p className="lead">
-              Send and request money in {currencies} currencies, pay in and out with M-Pesa, MTN MoMo, PayPal or a bank in 160+
-              countries, chat with every major AI model from one screen, and trade stocks with an AI analyst that waits for
-              your go-ahead.
+              Send and request money in {currencies} currencies, pay in and out with M-Pesa, MTN MoMo, PayPal, Skrill or a bank in
+              160+ countries, chat with every major AI model, and learn to trade in a free demo account before you ever risk real
+              money.
             </p>
             <div className="row wrap">
               <PrimaryCta />
@@ -32,6 +32,7 @@ export function HomePage() {
               <li>Free to open</li>
               <li>{currencies} currencies</li>
               <li>M-Pesa, PayPal, Skrill &amp; MoneyGram</li>
+              <li>Free demo trading account</li>
               <li>{PROVIDERS.length} AI providers</li>
             </ul>
           </div>
@@ -55,7 +56,7 @@ export function HomePage() {
       </div>
 
       <Section id="demo">
-        <SectionHead center eyebrow="Watch the demo" title="Aurex in 48 seconds" lead="Sign up, send money, share a pay link, ask an AI and switch on Autopilot, all in one tour." />
+        <SectionHead center eyebrow="Watch the demo" title="Aurex in 55 seconds" lead="Sign up, top up with M-Pesa, send money, link your bank, ask an AI, learn to trade and lock down your account, all in one tour." />
         <div className="demo-home">
           <DemoVideo />
           <p style={{ textAlign: "center", marginTop: 14 }}>
@@ -100,17 +101,17 @@ export function HomePage() {
           <li>
             <span className="step-n">1</span>
             <h3>Create your account</h3>
-            <p>Pick a handle, choose your main currency and switch on two-factor sign-in.</p>
+            <p>Pick a handle and your main currency, confirm your email, and switch on two-factor sign-in.</p>
           </li>
           <li>
             <span className="step-n">2</span>
             <h3>Add money or connect</h3>
-            <p>Top up with M-Pesa, MoMo, PayPal or card, link your bank or brokerage, and get $100k of practice cash for trading.</p>
+            <p>Top up with M-Pesa, MoMo, PayPal, Skrill or card, link your bank, brokerage or Coinbase, and open your demo trading account.</p>
           </li>
           <li>
             <span className="step-n">3</span>
-            <h3>Send, ask, invest</h3>
-            <p>Pay friends instantly, get answers from any model, and act on AI trade ideas you approve.</p>
+            <h3>Send, ask, learn, invest</h3>
+            <p>Pay friends instantly, get answers from any model, learn the basics, then upgrade to a real account when you're ready.</p>
           </li>
         </ol>
       </Section>
@@ -124,14 +125,53 @@ export function HomePage() {
         </div>
       </Section>
 
+      <Section id="learn" tone="warm">
+        <div className="split reverse">
+          <div>
+            <SectionHead
+              eyebrow="Learn to trade"
+              title="Practise first. Go live when you're ready."
+              lead="Every account comes with a demo account of virtual money and a free academy. Learn the essentials, practise with real market behaviour, and only then open a real account."
+            />
+            <ol className="journey">
+              <li><strong>Learn</strong><span>Six short lessons with quizzes: markets, order types, risk, charts, AI and going live.</span></li>
+              <li><strong>Practise</strong><span>Trade a demo account with $1,000 to $1,000,000 of virtual money and complete practice missions.</span></li>
+              <li><strong>Go live</strong><span>A short questionnaire and review, then trade through your own licensed broker.</span></li>
+            </ol>
+            <Link className="btn secondary" to="/features#learn">Explore the academy</Link>
+          </div>
+          <div className="feature-visual" aria-hidden="true">
+            <div className="fv-title"><Icon.Learn size={16} /> Trading academy</div>
+            <div className="fv-field"><span className="faint xs">Your progress</span><strong className="num">67%</strong></div>
+            <div className="progress" style={{ marginTop: 0, marginBottom: 10 }}><span style={{ width: "67%" }} /></div>
+            {[
+              ["How the stock market works", "Passed 100%"],
+              ["Market and limit orders", "Passed 80%"],
+              ["Risk, position size and stop-losses", "Passed 100%"],
+              ["Reading a price chart", "Start"],
+            ].map(([t, s]) => (
+              <div key={t} className="row between small" style={{ padding: "7px 2px", borderBottom: "1px solid var(--border)" }}>
+                <span>{t}</span>
+                <span className={`pill ${s === "Start" ? "" : "good"}`}>{s}</span>
+              </div>
+            ))}
+            <div className="row between small" style={{ padding: "10px 2px 0" }}>
+              <span className="faint">Demo account</span>
+              <strong className="num">$10,482.16</strong>
+            </div>
+          </div>
+        </div>
+      </Section>
+
       <Section tone="warm">
         <div className="split">
           <div>
             <SectionHead eyebrow="Built to be trusted" title="Accounted for to the cent" lead="Every payment is recorded in a double-entry ledger, the same principle banks use, so balances always add up and nothing is ever lost or created by mistake." />
             <ul className="check-list">
-              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Two-factor sign-in and encrypted API keys</span></li>
-              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Retries can never pay twice</span></li>
-              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Daily limits and a full activity log</span></li>
+              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Two-factor sign-in with recovery codes, and verified email addresses</span></li>
+              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Your password is checked again before money leaves your account</span></li>
+              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Retries can never pay twice; deposits are confirmed with the provider</span></li>
+              <li className="check"><span className="check-dot" aria-hidden="true">✓</span><span>Daily limits, device list and alerts for every security change</span></li>
             </ul>
             <Link className="btn secondary" to="/security">How we protect you</Link>
           </div>

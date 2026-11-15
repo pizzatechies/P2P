@@ -6,14 +6,16 @@ const BASE = import.meta.env.BASE_URL;
 
 export const CHAPTERS: { t: number; label: string }[] = [
   { t: 0, label: "Welcome to Aurex" },
-  { t: 6, label: "Create an account" },
-  { t: 10, label: "Add money" },
-  { t: 12, label: "Send money by @handle" },
-  { t: 16, label: "Share a pay link" },
-  { t: 20, label: "Ask any AI model" },
-  { t: 28, label: "Charts and the AI analyst" },
-  { t: 34, label: "AI Autopilot" },
-  { t: 44, label: "Wrap-up" },
+  { t: 5, label: "Create an account and verify your email" },
+  { t: 10, label: "Add money with M-Pesa" },
+  { t: 18, label: "Send money by @handle" },
+  { t: 20, label: "Link your bank" },
+  { t: 25, label: "Ask any AI model" },
+  { t: 31, label: "Learn to trade" },
+  { t: 37, label: "Practise in a demo account" },
+  { t: 42, label: "Security built in" },
+  { t: 49, label: "Upgrade to a real account" },
+  { t: 52, label: "Wrap-up" },
 ];
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -44,11 +46,11 @@ export function DemoVideo({ withChapters }: { withChapters?: boolean }) {
           controls
           playsInline
           preload="none"
-          poster={`${BASE}demo/poster.jpg`}
-          aria-label="Aurex product demo, 48 seconds, with on-screen captions"
+          poster={`${BASE}demo/tour-poster.jpg`}
+          aria-label="Aurex product tour, 55 seconds, with on-screen captions"
         >
-          <source src={`${BASE}demo/aurex-demo.mp4`} type="video/mp4" />
-          Your browser can't play this video. <a href={`${BASE}demo/aurex-demo.mp4`}>Download the demo (MP4)</a>.
+          <source src={`${BASE}demo/aurex-tour.mp4`} type="video/mp4" />
+          Your browser can't play this video. <a href={`${BASE}demo/aurex-tour.mp4`}>Download the tour (MP4)</a>.
         </video>
       </div>
       {withChapters && (
@@ -75,14 +77,14 @@ export function DemoPage() {
         <div className="site-container">
           <span className="eyebrow">Demo</span>
           <h1>See Aurex <span className="gold-text">in action.</span></h1>
-          <p className="lead">A 48-second tour: open an account, move money, share a pay link, ask an AI, read the AI analyst, and switch on Autopilot. Captions are on screen, so no sound is needed.</p>
+          <p className="lead">A 55-second tour: open an account and verify your email, top up with M-Pesa, send money, link a bank, ask an AI, take a lesson, practise in a demo account, turn on two-factor sign-in and see how to upgrade to a real account. Captions are on screen, so no sound is needed.</p>
         </div>
       </section>
       <Section>
         <DemoVideo withChapters />
         <p className="faint small" style={{ marginTop: 16 }}>
-          Recorded in the real app. The demo uses test money, simulated market prices and the built-in offline AI assistant; connected
-          AI providers give model-written answers. Trading signals are educational and not financial advice. See <Link to="/security#disclosures">disclosures</Link>.
+          Recorded in the real app. The demo uses test money, a test M-Pesa connection, a demo bank, simulated market prices and the built-in offline AI
+          assistant; connected AI providers give model-written answers. Trading signals are educational and not financial advice. See <Link to="/security#disclosures">disclosures</Link>.
         </p>
       </Section>
       <CtaBand title="Ready to try it yourself?" />

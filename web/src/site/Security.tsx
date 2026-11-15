@@ -13,6 +13,7 @@ export function SecurityPage() {
       title: "Your account",
       items: [
         "Passwords are hashed with scrypt; common, reused-from-breach and too-short passwords are refused",
+        "Email addresses are verified with a one-time code, so nobody can receive money sent to your email by registering it first",
         "Repeated wrong passwords or codes lock the account, for longer each time",
         "Two-factor sign-in with any authenticator app; every code works only once, with backup recovery codes",
         "See every signed-in device and sign any of them out; idle sessions end automatically",
@@ -53,6 +54,16 @@ export function SecurityPage() {
         "Money is credited only after Aurex confirms the amount with the payment provider, never on a redirect or notification alone",
         "M-Pesa and MTN MoMo payments are approved with your own PIN on your own phone",
         "Withdrawals that a provider rejects are refunded to your wallet automatically",
+      ],
+    },
+    {
+      icon: <Icon.Learn />,
+      title: "Real trading accounts",
+      items: [
+        "Everyone starts in a demo account with virtual money; real money needs an approved upgrade",
+        "Upgrading requires a verified email, two-factor sign-in, the academy quizzes and practice trades",
+        "Your profile and questionnaire answers are encrypted, and applications are reviewed before live trading unlocks",
+        "Live brokerage keys are refused until you're approved, and trading stops at once if approval is withdrawn",
       ],
     },
     {
@@ -115,7 +126,7 @@ export function SecurityPage() {
         <div className="disclosures">
           <p><strong>Sandbox mode.</strong> Aurex is currently operating in sandbox mode. Deposits and withdrawals use test money and no real funds are moved until licensed payment partners are connected. Do not treat sandbox balances as real money.</p>
           <p><strong>Not financial advice.</strong> AI-generated trading signals, analysis and chat responses are provided for educational purposes as decision aids. They are not personalised investment, legal or tax advice. Past performance does not guarantee future results.</p>
-          <p><strong>Investment risk.</strong> Investing in securities involves risk, including the possible loss of principal. Paper-trading results do not reflect real trading costs, liquidity or emotions. Live brokerage, where enabled, is provided by your own account with a third-party broker.</p>
+          <p><strong>Investment risk.</strong> Investing in securities involves risk, including the possible loss of principal. Demo-account results do not reflect real trading costs, liquidity or emotions. Live brokerage, where enabled, is provided by your own account with a third-party broker.</p>
           <p><strong>Third-party AI providers.</strong> When you connect your own API key, your prompts are sent to that provider and processed under its terms and privacy policy.</p>
         </div>
       </Section>
