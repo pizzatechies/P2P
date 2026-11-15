@@ -297,3 +297,12 @@ describe("MASTER_KEY rotation", () => {
     expect(encryptSecret("x", second.ctx.config.masterKey)).toMatch(/^v1\./);
   });
 });
+
+describe("hosting", () => {
+  it("uses the platform's public URL when APP_URL isn't set", () => {
+    const base = { NODE_ENV: "test", DATABASE_PATH: ":memory:" } as const;
+    expect(loadConfig({ ...base, RENDER_EXTERNAL_URL: "https://aurex-x1.onrender.com" }).APP_URL).toBe("https://aurex-x1.onrender.com");
+    expect(loadConfig({ ...base, RAILWAY_PUBLIC_DOMAIN: "aurex.up.railway.app" }).APP_URL).toBe("https://aurex.up.railway.app");
+    expect(loadConfig({ ...base, APP_URL: "https://pay.example.com", RENDER_EXTERNAL_URL: "https://x.onrender.com" }).APP_URL).toBe("https://pay.example.com");
+  });
+});

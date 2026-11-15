@@ -1,4 +1,5 @@
-# Render Blueprint for Aurex: Dashboard -> New -> Blueprint -> pick this repository.
+# Render Blueprint for Aurex. One click: https://render.com/deploy?repo=https://github.com/pizzatechies/P2P
+# (or Dashboard -> New -> Blueprint -> pick this repository).
 # Or deploy from the command line with scripts/deploy-render.sh.
 services:
   - type: web
@@ -23,8 +24,7 @@ services:
         value: sandbox
       - key: MASTER_KEY
         generateValue: true
-      - key: APP_URL          # set to the service URL, e.g. https://aurex.onrender.com
-        sync: false
+      # APP_URL defaults to the service's own URL (RENDER_EXTERNAL_URL); set it only for a custom domain.
       - key: ADMIN_EMAILS
         sync: false
       - key: ADMIN_SETUP_CODE   # enter it under Settings -> Admin access (with 2FA on) to become admin

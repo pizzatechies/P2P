@@ -237,8 +237,16 @@ const list = (v: string) =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+/** The public URL hosting platforms provide automatically, used when APP_URL isn't set. */
+function platformUrl(source: NodeJS.ProcessEnv) {
+  if (source.RENDER_EXTERNAL_URL?.trim()) return source.RENDER_EXTERNAL_URL.trim();
+  if (source.RAILWAY_PUBLIC_DOMAIN?.trim()) return `https://${source.RAILWAY_PUBLIC_DOMAIN.trim()}`;
+  return undefined;
+}
+
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = EnvSchema.safeParse(source);
+  const fallbackUrl = source.APP_URL?.trim() ? undefined : platformUrl(source);
+  const parsed = EnvSchema.safeParse(fallbackUrl ? { ...source, APP_URL: fallbackUrl } : source);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");
     throw new Error(`Invalid environment configuration:\n${issues}`);
