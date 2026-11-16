@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The installer moved to deploy/server/install.sh (shared by AWS, Azure and any Ubuntu server).
+# The installer moved to deploy/server/install.sh (it also works on Lightsail or any Ubuntu server).
 # This wrapper keeps older CloudFormation templates and instructions working.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

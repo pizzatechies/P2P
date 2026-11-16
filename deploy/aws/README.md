@@ -1,14 +1,14 @@
 # Hosting Aurex on Amazon Web Services (AWS)
 
-Everything needed to run Aurex on AWS. The server setup is shared with the Azure kit and lives in
-[`deploy/server`](../server):
+Everything needed to run Aurex on AWS. The server setup lives in [`deploy/server`](../server), so it
+also works on Lightsail or any Ubuntu server:
 
 | File | What it does |
 |---|---|
 | `aurex.cloudformation.yml` (this folder) | One-stack setup: server, static IP, firewall, IAM role, backup bucket and (optionally) the DNS record. It runs the installer on first boot. |
 | `../server/install.sh` | Installs Docker, writes the settings file, generates the secrets, builds the app and starts it. Run it again at any time to update. |
 | `../server/docker-compose.yml` | Runs three containers: the app, **Caddy** (free HTTPS certificates that renew automatically) and **Litestream** (streams every database change to S3). |
-| `../server/Caddyfile`, `../server/litestream-s3.yml` | Settings for those two containers. |
+| `../server/Caddyfile`, `../server/litestream.yml` | Settings for those two containers. |
 
 ## How it fits together
 
@@ -111,8 +111,10 @@ If the address doesn't load after 15 minutes, open **ConnectToServer** and run `
    prints your address and where the admin setup code is.
 
 `install.sh` also works on **Amazon Lightsail** (a $12/month 2 GB Ubuntu instance) or any Ubuntu VPS.
-Without an IAM role, either skip `BACKUP_BUCKET`/`PARAM_PREFIX`, or add AWS keys as
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` lines in `deploy/server/.env`.
+Without an IAM role, leave out `PARAM_PREFIX` (the secrets then live only in `.env`, so keep a copy of
+`MASTER_KEY` somewhere safe). For backups, add `AWS_ACCESS_KEY_ID=...` and `AWS_SECRET_ACCESS_KEY=...`
+lines for a user that can only use the bucket to `deploy/server/.env.litestream`, then re-run
+`install.sh`. Only the backup container reads that file; the app never sees the keys.
 
 ---
 

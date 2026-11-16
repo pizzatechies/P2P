@@ -273,12 +273,6 @@ npm run build:site
 
 See **[deploy/aws/README.md](deploy/aws/README.md)**. It sets up one EC2 server with Caddy (automatic HTTPS) and Litestream (continuous backups to S3), keeps secrets in Parameter Store, and gives you a browser terminal through Session Manager. It costs about $18/month. The installer (`deploy/server/install.sh`) also works on Lightsail or any Ubuntu server.
 
-### Azure (one VM, Deploy to Azure button)
-
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fpizzatechies%2FP2P%2Frefs%2Fheads%2Fclaude%2Fgifted-ritchie-8xzdk9%2Fdeploy%2Fazure%2Fazuredeploy.json)
-
-See **[deploy/azure/README.md](deploy/azure/README.md)**. It sets up one Ubuntu VM with the same Caddy + Litestream setup, backs the database up to Blob Storage (reachable only from the server's network), keeps secrets in Key Vault, and turns on Secure Boot. The default size (B2ats v2) is covered by a new Azure account's 12 months of free services.
-
 ### Render (one click)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pizzatechies/P2P)

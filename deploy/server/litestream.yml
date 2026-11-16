@@ -1,5 +1,5 @@
-# Continuous SQLite backup to S3. Credentials come from the server's IAM role (EC2) or the
-# standard AWS environment variables. Keeps 30 days of point-in-time history.
+# Continuous SQLite backup to S3. Credentials come from the server's IAM role (EC2) or from
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in .env.litestream. Keeps 30 days of point-in-time history.
 dbs:
   - path: /data/aurex.db
     replicas:
