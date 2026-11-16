@@ -15,7 +15,6 @@ const routes = {
   security: "Security · Aurex",
   about: "About · Aurex",
   demo: "Demo · Aurex",
-  hosting: "Hosting · Aurex",
 };
 for (const [route, title] of Object.entries(routes)) {
   mkdirSync(join(dist, route), { recursive: true });

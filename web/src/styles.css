@@ -466,19 +466,6 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .security-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
 .security-card { border: 1px solid var(--border); border-radius: 16px; padding: 26px; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
 .security-card .check-list { margin: 0; }
-.host-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
-.host-card { border: 1px solid var(--border); border-radius: 16px; padding: 26px; background: var(--surface); display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.host-card.featured { border: 2px solid var(--brand); box-shadow: 0 18px 50px rgb(60 45 10 / 0.10); }
-.host-card .check-list { margin: 0; }
-.host-top { display: flex; align-items: center; gap: 14px; }
-.host-top h3 { margin: 0 0 4px; }
-.host-cmd { display: block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 13px; overflow-x: auto; white-space: nowrap; }
-.host-cost { font-size: 14px; color: var(--text-2); border-top: 1px solid var(--border); padding-top: 14px; margin-top: auto; }
-.host-cost strong { color: var(--text); }
-.host-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.compare-table td, .compare-table th { white-space: normal; min-width: 130px; vertical-align: top; }
-.compare-table td:first-child, .compare-table th:first-child { min-width: 120px; }
-.footnote { font-size: 13px; color: var(--text-3); margin-top: 14px; max-width: 860px; }
 .disclosures { max-width: 820px; display: flex; flex-direction: column; gap: 14px; color: var(--text-2); font-size: 15px; }
 .disclosures strong { color: var(--text); }
 
@@ -524,7 +511,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .page-hero h1 { font-size: 34px; }
   .section-head h2 { font-size: 28px; }
   .site-section { padding: 56px 0; }
-  .stat-band, .stat-band.two, .mini-grid, .security-grid, .host-grid { grid-template-columns: 1fr; }
+  .stat-band, .stat-band.two, .mini-grid, .security-grid { grid-template-columns: 1fr; }
   .pv-chat { margin-left: 0; }
   .pv-signal { margin-right: 0; }
   .hide-sm { display: none; }

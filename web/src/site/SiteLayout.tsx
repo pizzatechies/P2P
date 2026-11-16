@@ -11,7 +11,6 @@ const LINKS = [
   { to: "/demo", label: "Demo" },
   { to: "/pricing", label: "Pricing" },
   { to: "/security", label: "Security" },
-  { to: "/hosting", label: "Hosting" },
   { to: "/about", label: "About" },
 ];
 
@@ -86,8 +85,6 @@ export function SiteLayout() {
               <Link to="/features#ai">AI Hub</Link>
               <Link to="/features#trading">AI trading</Link>
               <Link to="/pricing">Pricing</Link>
-              <Link to="/hosting">Host your own</Link>
-              <Link to="/hosting#azure">Deploy on Azure</Link>
             </div>
             <div>
               <h4>Trust</h4>

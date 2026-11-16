@@ -5,7 +5,6 @@ import { AboutPage } from "./site/About";
 import { DemoPage } from "./site/Demo";
 import { FeaturesPage } from "./site/Features";
 import { HomePage } from "./site/Home";
-import { HostingPage } from "./site/Hosting";
 import { PricingPage } from "./site/Pricing";
 import { SecurityPage } from "./site/Security";
 import { SiteLayout } from "./site/SiteLayout";
@@ -30,7 +29,6 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/security" element={<SecurityPage />} />
-              <Route path="/hosting" element={<HostingPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/demo" element={<DemoPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
