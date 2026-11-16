@@ -62,7 +62,7 @@ Parameters:
   PaymentRails:
     Type: String
     Default: sandbox
-    Description: Payment methods to enable. "sandbox" uses test money; add real providers later in /opt/aurex/src/deploy/aws/.env.
+    Description: Payment methods to enable. "sandbox" uses test money; add real providers later in /opt/aurex/src/deploy/server/.env.
   RepositoryUrl:
     Type: String
     Default: https://github.com/pizzatechies/P2P.git
@@ -223,7 +223,7 @@ Resources:
           git clone --depth 1 --branch '${Branch}' '${RepositoryUrl}' /opt/aurex/src
           cd /opt/aurex/src
           ADMIN_EMAIL='${AdminEmail}' DOMAIN="$DOMAIN" BACKUP_BUCKET='${BackupBucket}' AWS_REGION='${AWS::Region}' \
-            PARAM_PREFIX='/aurex/${AWS::StackName}' PAYMENT_RAILS='${PaymentRails}' ./deploy/aws/install.sh
+            PARAM_PREFIX='/aurex/${AWS::StackName}' PAYMENT_RAILS='${PaymentRails}' ./deploy/server/install.sh
 
   IpAssociation:
     Type: AWS::EC2::EIPAssociation

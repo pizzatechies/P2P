@@ -10,5 +10,7 @@ dbs:
         # Only for S3-compatible storage (Cloudflare R2, Backblaze B2, MinIO); leave empty for AWS S3.
         endpoint: ${LITESTREAM_ENDPOINT}
         force-path-style: ${LITESTREAM_FORCE_PATH_STYLE}
+        # Uploads changes every 10s: at most 10s of writes at risk, and few enough requests to stay cheap.
+        sync-interval: 10s
         retention: 720h
         snapshot-interval: 24h

@@ -1,5 +1,6 @@
-# Aurex on one AWS server: the app, Caddy for automatic HTTPS, and Litestream for continuous
-# backups of the database to S3. Started by install.sh; settings come from .env next to this file.
+# Aurex on one server (AWS, Azure or any VPS): the app, Caddy for automatic HTTPS, and Litestream for
+# continuous backups of the database to S3 or Azure Blob Storage. Started by install.sh; settings come
+# from .env next to this file.
 name: aurex
 
 services:
@@ -41,21 +42,27 @@ services:
       - caddy-config:/config
     logging: *logs
 
-  # Streams every database change to S3 (point-in-time restore). Enabled with COMPOSE_PROFILES=backup.
+  # Streams every database change to S3 or Azure Blob Storage (point-in-time restore).
+  # Enabled with COMPOSE_PROFILES=backup; BACKUP_TARGET picks litestream-s3.yml or litestream-azure.yml.
   litestream:
     image: litestream/litestream:0.3.13
     profiles: [backup]
     restart: unless-stopped
     depends_on: [app]
     command: replicate
+    # Storage keys live here rather than in .env so the app container never sees them.
+    env_file: .env.litestream
     environment:
       LITESTREAM_BUCKET: ${BACKUP_BUCKET:-}
       LITESTREAM_REGION: ${AWS_REGION:-}
       LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT:-}
       LITESTREAM_FORCE_PATH_STYLE: ${LITESTREAM_FORCE_PATH_STYLE:-false}
+      LITESTREAM_AZURE_ACCOUNT_NAME: ${AZURE_STORAGE_ACCOUNT:-}
+      LITESTREAM_AZURE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-backups}
+      LITESTREAM_AZURE_ENDPOINT: ${AZURE_BLOB_ENDPOINT:-}
     volumes:
       - aurex-data:/data
-      - ./litestream.yml:/etc/litestream.yml:ro
+      - ./litestream-${BACKUP_TARGET:-s3}.yml:/etc/litestream.yml:ro
     logging: *logs
 
 volumes:

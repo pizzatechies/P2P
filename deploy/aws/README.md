@@ -1,13 +1,14 @@
 # Hosting Aurex on Amazon Web Services (AWS)
 
-This folder has everything needed to run Aurex on AWS:
+Everything needed to run Aurex on AWS. The server setup is shared with the Azure kit and lives in
+[`deploy/server`](../server):
 
 | File | What it does |
 |---|---|
-| `aurex.cloudformation.yml` | One-stack setup: server, static IP, firewall, IAM role, backup bucket and (optionally) the DNS record. It runs the installer on first boot. |
-| `install.sh` | Installs Docker, writes the settings file, generates the secrets, builds the app and starts it. Run it again at any time to update. |
-| `docker-compose.yml` | Runs three containers: the app, **Caddy** (free HTTPS certificates that renew automatically) and **Litestream** (streams every database change to S3). |
-| `Caddyfile`, `litestream.yml` | Settings for those two containers. |
+| `aurex.cloudformation.yml` (this folder) | One-stack setup: server, static IP, firewall, IAM role, backup bucket and (optionally) the DNS record. It runs the installer on first boot. |
+| `../server/install.sh` | Installs Docker, writes the settings file, generates the secrets, builds the app and starts it. Run it again at any time to update. |
+| `../server/docker-compose.yml` | Runs three containers: the app, **Caddy** (free HTTPS certificates that renew automatically) and **Litestream** (streams every database change to S3). |
+| `../server/Caddyfile`, `../server/litestream-s3.yml` | Settings for those two containers. |
 
 ## How it fits together
 
@@ -15,7 +16,7 @@ This folder has everything needed to run Aurex on AWS:
  users ──HTTPS──▶ Elastic IP ──▶ EC2 server (Ubuntu 24.04)
                                   ├─ Caddy :443  → automatic Let's Encrypt certificate
                                   ├─ Aurex app   → SQLite database on the server's disk
-                                  └─ Litestream  → copies every change to S3 within ~1 second
+                                  └─ Litestream  → copies every change to S3 within ~10 seconds
                                                       (30 days of point-in-time history)
  Secrets (MASTER_KEY, admin setup code) ──▶ Systems Manager Parameter Store (encrypted)
  You ──▶ Session Manager (a terminal in your browser; no SSH keys or open SSH port)
@@ -103,7 +104,7 @@ If the address doesn't load after 15 minutes, open **ConnectToServer** and run `
    ```bash
    sudo git clone --depth 1 --branch claude/gifted-ritchie-8xzdk9 https://github.com/pizzatechies/P2P.git /opt/aurex/src
    cd /opt/aurex/src
-   sudo ADMIN_EMAIL=you@example.com BACKUP_BUCKET=aurex-backups-yourname PARAM_PREFIX=/aurex/prod ./deploy/aws/install.sh
+   sudo ADMIN_EMAIL=you@example.com BACKUP_BUCKET=aurex-backups-yourname PARAM_PREFIX=/aurex/prod ./deploy/server/install.sh
    ```
 
    Add `DOMAIN=app.yourdomain.com` if your DNS A record already points to the Elastic IP. The script
@@ -111,22 +112,22 @@ If the address doesn't load after 15 minutes, open **ConnectToServer** and run `
 
 `install.sh` also works on **Amazon Lightsail** (a $12/month 2 GB Ubuntu instance) or any Ubuntu VPS.
 Without an IAM role, either skip `BACKUP_BUCKET`/`PARAM_PREFIX`, or add AWS keys as
-`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` lines in `deploy/aws/.env`.
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` lines in `deploy/server/.env`.
 
 ---
 
 ## After it's running
 
-All settings live in **`/opt/aurex/src/deploy/aws/.env`** on the server. To change something, connect with Session Manager:
+All settings live in **`/opt/aurex/src/deploy/server/.env`** on the server. To change something, connect with Session Manager:
 
 ```bash
-sudo nano /opt/aurex/src/deploy/aws/.env
+sudo nano /opt/aurex/src/deploy/server/.env
 ```
 
 Then apply the change:
 
 ```bash
-cd /opt/aurex/src && sudo ./deploy/aws/install.sh
+cd /opt/aurex/src && sudo ./deploy/server/install.sh
 ```
 
 ### Use your own domain later
@@ -134,7 +135,7 @@ cd /opt/aurex/src && sudo ./deploy/aws/install.sh
 Point the domain's **A record** at the Elastic IP, then run:
 
 ```bash
-cd /opt/aurex/src && sudo DOMAIN=app.yourdomain.com ./deploy/aws/install.sh
+cd /opt/aurex/src && sudo DOMAIN=app.yourdomain.com ./deploy/server/install.sh
 ```
 
 Caddy gets the new certificate automatically.
@@ -183,7 +184,7 @@ become sign-up links on the next website build.
 ### Update to the latest version
 
 ```bash
-cd /opt/aurex/src && sudo git pull && sudo ./deploy/aws/install.sh
+cd /opt/aurex/src && sudo git pull && sudo ./deploy/server/install.sh
 ```
 
 Your data, secrets and settings are kept. The app restarts after the new build, which means a short
@@ -191,12 +192,12 @@ pause of a few seconds.
 
 ### Backups and restoring
 
-- **Continuous:** Litestream copies every change to the S3 bucket (`aurex/` folder) within about a second, and keeps 30 days of history. Deleting the CloudFormation stack keeps the bucket.
+- **Continuous:** Litestream copies every change to the S3 bucket (`aurex/` folder) within about 10 seconds, and keeps 30 days of history. Deleting the CloudFormation stack keeps the bucket.
 - **New or replaced server:** run `install.sh` with the same `BACKUP_BUCKET` and `PARAM_PREFIX`. On a server with no data yet, it **restores the latest backup automatically** before starting, and takes the same `MASTER_KEY` from Parameter Store, so stored keys stay readable.
 - **Point-in-time restore** (for example to undo a mistake):
 
   ```bash
-  cd /opt/aurex/src/deploy/aws
+  cd /opt/aurex/src/deploy/server
   ```
 
   Stop the app:
@@ -230,7 +231,7 @@ pause of a few seconds.
 Follow the app's log:
 
 ```bash
-cd /opt/aurex/src/deploy/aws && sudo docker compose --env-file .env logs -f app
+cd /opt/aurex/src/deploy/server && sudo docker compose --env-file .env logs -f app
 ```
 
 Check that all containers are running:

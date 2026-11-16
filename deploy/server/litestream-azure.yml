@@ -1,0 +1,15 @@
+# Continuous SQLite backup to Azure Blob Storage. The account key comes from LITESTREAM_AZURE_ACCOUNT_KEY
+# (written to .env.litestream by install.sh). Keeps 30 days of point-in-time history.
+dbs:
+  - path: /data/aurex.db
+    replicas:
+      - type: abs
+        account-name: ${LITESTREAM_AZURE_ACCOUNT_NAME}
+        bucket: ${LITESTREAM_AZURE_CONTAINER}
+        path: aurex
+        # Empty means https://<account>.blob.core.windows.net (set it only for sovereign clouds or Azurite).
+        endpoint: ${LITESTREAM_AZURE_ENDPOINT}
+        # Uploads changes every 10s: at most 10s of writes at risk, and few enough requests to stay cheap.
+        sync-interval: 10s
+        retention: 720h
+        snapshot-interval: 24h
