@@ -5,17 +5,16 @@ name: Website (GitHub Pages)
 # Optional: set the repository variable AUREX_APP_URL (Settings -> Secrets and variables -> Actions
 # -> Variables) to the live app's URL so "Get started" and "Sign in" link to it.
 
+# Runs on every push, not only website changes: while Pages is also set to build from the branch, GitHub
+# publishes the README as the site on each push, and this deploy has to land after it.
 on:
   push:
     branches: [main, claude/gifted-ritchie-8xzdk9]
-    paths:
-      - "web/**"
-      - "package-lock.json"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -51,5 +50,18 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # If Pages' own branch build ("pages build and deployment") is running for this commit, wait for it,
+      # so the real website is the one left published.
+      - name: Wait for GitHub's branch build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 30); do
+            pending=$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&per_page=100" \
+              --jq '[.workflow_runs[] | select(.name == "pages build and deployment" and .status != "completed")] | length')
+            [ "$pending" = "0" ] && exit 0
+            echo "Waiting for the branch build to finish..."
+            sleep 10
+          done
       - id: deployment
         uses: actions/deploy-pages@v4
