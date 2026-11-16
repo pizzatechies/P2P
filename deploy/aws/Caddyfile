@@ -1,0 +1,10 @@
+# Caddy gets and renews a free HTTPS certificate (Let's Encrypt) for DOMAIN automatically,
+# redirects HTTP to HTTPS, and passes requests to the app.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:4000
+}

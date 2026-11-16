@@ -269,6 +269,10 @@ npm run build:site
 
 `.github/workflows/pages.yml` publishes it to `https://<owner>.github.io/<repo>/` on every push. One-time setup: **Settings → Pages → Source: GitHub Actions**. Set the repository variable `AUREX_APP_URL` to the live app's URL so the sign-up buttons point at it; until then they read "Launching soon". GitHub Pages can't run the app itself (accounts, payments, AI, trading), which needs a server such as Railway.
 
+### AWS (EC2, one CloudFormation stack)
+
+See **[deploy/aws/README.md](deploy/aws/README.md)**. It sets up one EC2 server with Caddy (automatic HTTPS) and Litestream (continuous backups to S3), keeps secrets in Parameter Store, and gives you a browser terminal through Session Manager. It costs about $18/month. `deploy/aws/install.sh` also works on Lightsail or any Ubuntu server.
+
 ### Render (one click)
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pizzatechies/P2P)

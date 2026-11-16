@@ -1,0 +1,14 @@
+# Continuous SQLite backup to S3. Credentials come from the server's IAM role (EC2) or the
+# standard AWS environment variables. Keeps 30 days of point-in-time history.
+dbs:
+  - path: /data/aurex.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: aurex
+        region: ${LITESTREAM_REGION}
+        # Only for S3-compatible storage (Cloudflare R2, Backblaze B2, MinIO); leave empty for AWS S3.
+        endpoint: ${LITESTREAM_ENDPOINT}
+        force-path-style: ${LITESTREAM_FORCE_PATH_STYLE}
+        retention: 720h
+        snapshot-interval: 24h
