@@ -180,8 +180,8 @@ The browser terminal often won't paste, so the easiest way to give the server a 
    ```
 
    It prints `Found: RESEND_API_KEY …` and writes the keys into `.env`. Keys in Parameter Store override the
-   same names in `.env`, stay encrypted, and come back automatically on a rebuilt server. To change one,
-   edit it in Parameter Store and run the command again.
+   same names in `.env`, stay encrypted, and come back automatically on a rebuilt server. To change or
+   remove one, edit or delete it in Parameter Store and run the command again.
 
 ### Turn on email (verification codes and security alerts)
 

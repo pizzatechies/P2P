@@ -122,26 +122,45 @@ MASTER_KEY="$(secret MASTER_KEY 'openssl rand -hex 32')" || { echo "Fix the Para
 ADMIN_SETUP_CODE="$(secret ADMIN_SETUP_CODE 'openssl rand -hex 16')" || { echo "Fix the Parameter Store access above, then run $0 again." >&2; exit 1; }
 
 # API keys added in Parameter Store (any secret name from .env.example, e.g. RESEND_API_KEY). Adding them
-# there means no pasting into a terminal; they override the same names in .env.
-declare -A STORED=()
+# there means no pasting into a terminal; they override the same names in .env. A key deleted there is
+# removed from .env on the next run (only when AWS confirms it's gone, never because of an error).
+declare -A STORED=() GONE=()
 EXAMPLE="$HERE/../../.env.example"
+STORE_MARK='# From Parameter Store (change or delete them there, then re-run install.sh):'
+# Names this script took from Parameter Store last time (listed on the marker line in .env).
+read -r -a PREV_STORED <<< "$( [ -f "$ENV_FILE" ] && grep -m1 '^# From Parameter Store' "$ENV_FILE" \
+  | sed 's/^[^:]*: *//' | tr ' ' '\n' | grep -E '^[A-Z0-9_]+$' | tr '\n' ' ' || true)"
 if [ -n "$PARAM_PREFIX" ] && [ -n "$AWS_REGION" ] && command -v aws >/dev/null && [ -f "$EXAMPLE" ]; then
   log "Reading API keys from Parameter Store ($PARAM_PREFIX/...)"
+  # Each lookup prints "NAME<tab>value", or "NAME<tab>" when the parameter doesn't exist; errors print nothing.
   while IFS=$'\t' read -r name value; do
-    if [ -n "$name" ] && [ -n "$value" ]; then STORED[$name]="$value"; fi
+    [ -n "$name" ] || continue
+    if [ -n "$value" ]; then STORED[$name]="$value"; else GONE[$name]=1; fi
   done < <(grep -oE '^[A-Z0-9_]+=' "$EXAMPLE" | tr -d '=' | grep -E 'KEY|SECRET|TOKEN|PASSWORD|PASSKEY|WORD' \
     | grep -Ev '^MASTER_KEY' | sort -u \
-    | xargs -P 8 -I{} sh -c 'v=$(aws ssm get-parameter --region "$0" --with-decryption --name "$1/{}" \
-        --query Parameter.Value --output text 2>/dev/null) && printf "%s\t%s\n" "{}" "$v"' "$AWS_REGION" "$PARAM_PREFIX")
+    | xargs -P 8 -I{} sh -c 'if out=$(aws ssm get-parameter --region "$0" --with-decryption --name "$1/{}" \
+          --query Parameter.Value --output text 2>&1); then printf "%s\t%s\n" "{}" "$out";
+        else case "$out" in *ParameterNotFound*) printf "%s\t\n" "{}" ;; esac; fi' "$AWS_REGION" "$PARAM_PREFIX")
   [ "${#STORED[@]}" -gt 0 ] && echo "Found: ${!STORED[*]}"
 fi
+# Lines to replace or remove in .env: keys found now, and previous keys confirmed deleted.
+DROP=("${!STORED[@]}")
+KEEP_LISTED=() # previous keys that couldn't be checked this time: kept, and still listed
+for name in "${PREV_STORED[@]}"; do
+  if [ -n "${GONE[$name]:-}" ]; then
+    DROP+=("$name")
+    echo "Removed $name (deleted from Parameter Store)"
+  elif [ -z "${STORED[$name]:-}" ]; then
+    KEEP_LISTED+=("$name")
+  fi
+done
 
 log "Writing $ENV_FILE"
 # Keep any extra settings you added by hand (provider keys etc.); rewrite only the managed ones.
 MANAGED='^(DOMAIN|ACME_EMAIL|APP_URL|ADMIN_EMAILS|ADMIN_SETUP_CODE|MASTER_KEY|PAYMENT_RAILS|BACKUP_BUCKET|AWS_REGION|PARAM_PREFIX|COMPOSE_PROFILES|NODE_IMAGE)='
-FROM_STORE="^($(IFS='|'; echo "${!STORED[*]}"))="
+DROP_RE="^($(IFS='|'; echo "${DROP[*]}"))="
 EXTRA="$( [ -f "$ENV_FILE" ] && grep -Ev "$MANAGED" "$ENV_FILE" | grep -Ev '^# (Managed|Add|From Parameter Store)' \
-  | { if [ "${#STORED[@]}" -gt 0 ]; then grep -Ev "$FROM_STORE"; else cat; fi; } || true)"
+  | { if [ "${#DROP[@]}" -gt 0 ]; then grep -Ev "$DROP_RE"; else cat; fi; } || true)"
 umask 077
 {
   echo "# Managed by install.sh. Re-run it after changing DOMAIN; secrets are kept."
@@ -159,8 +178,8 @@ umask 077
   echo "NODE_IMAGE=${NODE_IMAGE:-node:22-slim}"
   echo "# Add provider keys below (see .env.example in the repository root), then re-run install.sh."
   [ -n "$EXTRA" ] && echo "$EXTRA"
-  if [ "${#STORED[@]}" -gt 0 ]; then
-    echo "# From Parameter Store ($PARAM_PREFIX/...): change them there, then re-run install.sh."
+  if [ "${#STORED[@]}" -gt 0 ] || [ "${#KEEP_LISTED[@]}" -gt 0 ]; then
+    echo "$STORE_MARK ${!STORED[*]} ${KEEP_LISTED[*]}"
     for name in "${!STORED[@]}"; do echo "$name=${STORED[$name]}"; done
   fi
 } > "$ENV_FILE"
