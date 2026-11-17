@@ -165,21 +165,37 @@ cd /opt/aurex/src && sudo DOMAIN=app.yourdomain.com ./deploy/server/install.sh
 
 Caddy gets the new certificate automatically.
 
+### Add API keys without the terminal (Parameter Store)
+
+The browser terminal often won't paste, so the easiest way to give the server a key is a normal AWS web form:
+
+1. **Systems Manager → Parameter Store → Create parameter** (in your stack's region).
+2. **Name:** `/aurex/<stack name>/` followed by the key's name from `.env.example`, for example
+   `/aurex/aurex/RESEND_API_KEY` or `/aurex/aurex/MPESA_CONSUMER_SECRET`.
+3. **Type:** **SecureString** (keep the default key). **Value:** paste the key. Click **Create parameter**.
+4. In the browser terminal, run (short enough to type):
+
+   ```bash
+   cd /opt/aurex/src && sudo git pull && sudo ./deploy/server/install.sh
+   ```
+
+   It prints `Found: RESEND_API_KEY …` and writes the keys into `.env`. Keys in Parameter Store override the
+   same names in `.env`, stay encrypted, and come back automatically on a rebuilt server. To change one,
+   edit it in Parameter Store and run the command again.
+
 ### Turn on email (verification codes and security alerts)
 
 1. Create a Resend account and add your domain (Resend shows DNS records to create).
-2. Create an API key in Resend.
-3. Add these lines to `.env`, then re-run `install.sh`:
-
-   ```
-   RESEND_API_KEY=re_...
-   EMAIL_FROM=Aurex <no-reply@yourdomain.com>
-   ```
+2. Create an API key in Resend (**Sending access**).
+3. Store it as `/aurex/<stack name>/RESEND_API_KEY` in Parameter Store (see above) and re-run `install.sh`,
+   or add `RESEND_API_KEY=re_...` to `.env` yourself. Emails come from `Aurex <no-reply@your-domain>`;
+   set `EMAIL_FROM` in `.env` to change that.
 
 ### Turn on real payment, AI and trading providers
 
-Copy the lines you need from `.env.example` in the repository root into `.env` (for example
-`ANTHROPIC_API_KEY`, `MPESA_*`, `PAYPAL_*`, `SKRILL_*`, `MONEYGRAM_*`). Add the rail names to
+Put secret keys in Parameter Store (see above), and copy the other lines you need from `.env.example` in
+the repository root into `.env` (for example `ANTHROPIC_API_KEY`, `MPESA_*`, `PAYPAL_*`, `SKRILL_*`,
+`MONEYGRAM_*`). Add the rail names to
 `PAYMENT_RAILS` (for example `PAYMENT_RAILS=mpesa,paypal,skrill`; remove `sandbox` for real money),
 then re-run `install.sh`.
 

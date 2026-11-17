@@ -13,6 +13,8 @@
 #                  elsewhere, put AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env.litestream.
 #   AWS_REGION     Region of the bucket and of Parameter Store (detected on EC2).
 #   PARAM_PREFIX   Parameter Store path to keep MASTER_KEY and ADMIN_SETUP_CODE in, e.g. /aurex/prod.
+#                  API keys can live there too: create <PARAM_PREFIX>/RESEND_API_KEY (or any key name from
+#                  .env.example, such as MPESA_CONSUMER_SECRET) as a SecureString, then re-run this script.
 #
 # Safe to run again: secrets already in .env (or Parameter Store) are kept, and the app is rebuilt
 # from the code in this checkout. To update: git pull, then run this script again.
@@ -119,10 +121,27 @@ secret() { # NAME generator
 MASTER_KEY="$(secret MASTER_KEY 'openssl rand -hex 32')" || { echo "Fix the Parameter Store access above, then run $0 again." >&2; exit 1; }
 ADMIN_SETUP_CODE="$(secret ADMIN_SETUP_CODE 'openssl rand -hex 16')" || { echo "Fix the Parameter Store access above, then run $0 again." >&2; exit 1; }
 
+# API keys added in Parameter Store (any secret name from .env.example, e.g. RESEND_API_KEY). Adding them
+# there means no pasting into a terminal; they override the same names in .env.
+declare -A STORED=()
+EXAMPLE="$HERE/../../.env.example"
+if [ -n "$PARAM_PREFIX" ] && [ -n "$AWS_REGION" ] && command -v aws >/dev/null && [ -f "$EXAMPLE" ]; then
+  log "Reading API keys from Parameter Store ($PARAM_PREFIX/...)"
+  while IFS=$'\t' read -r name value; do
+    if [ -n "$name" ] && [ -n "$value" ]; then STORED[$name]="$value"; fi
+  done < <(grep -oE '^[A-Z0-9_]+=' "$EXAMPLE" | tr -d '=' | grep -E 'KEY|SECRET|TOKEN|PASSWORD|PASSKEY|WORD' \
+    | grep -Ev '^MASTER_KEY' | sort -u \
+    | xargs -P 8 -I{} sh -c 'v=$(aws ssm get-parameter --region "$0" --with-decryption --name "$1/{}" \
+        --query Parameter.Value --output text 2>/dev/null) && printf "%s\t%s\n" "{}" "$v"' "$AWS_REGION" "$PARAM_PREFIX")
+  [ "${#STORED[@]}" -gt 0 ] && echo "Found: ${!STORED[*]}"
+fi
+
 log "Writing $ENV_FILE"
 # Keep any extra settings you added by hand (provider keys etc.); rewrite only the managed ones.
 MANAGED='^(DOMAIN|ACME_EMAIL|APP_URL|ADMIN_EMAILS|ADMIN_SETUP_CODE|MASTER_KEY|PAYMENT_RAILS|BACKUP_BUCKET|AWS_REGION|PARAM_PREFIX|COMPOSE_PROFILES|NODE_IMAGE)='
-EXTRA="$( [ -f "$ENV_FILE" ] && grep -Ev "$MANAGED" "$ENV_FILE" | grep -Ev '^# (Managed|Add)' || true)"
+FROM_STORE="^($(IFS='|'; echo "${!STORED[*]}"))="
+EXTRA="$( [ -f "$ENV_FILE" ] && grep -Ev "$MANAGED" "$ENV_FILE" | grep -Ev '^# (Managed|Add|From Parameter Store)' \
+  | { if [ "${#STORED[@]}" -gt 0 ]; then grep -Ev "$FROM_STORE"; else cat; fi; } || true)"
 umask 077
 {
   echo "# Managed by install.sh. Re-run it after changing DOMAIN; secrets are kept."
@@ -140,6 +159,10 @@ umask 077
   echo "NODE_IMAGE=${NODE_IMAGE:-node:22-slim}"
   echo "# Add provider keys below (see .env.example in the repository root), then re-run install.sh."
   [ -n "$EXTRA" ] && echo "$EXTRA"
+  if [ "${#STORED[@]}" -gt 0 ]; then
+    echo "# From Parameter Store ($PARAM_PREFIX/...): change them there, then re-run install.sh."
+    for name in "${!STORED[@]}"; do echo "$name=${STORED[$name]}"; done
+  fi
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 if [ ! -f "$BACKUP_ENV_FILE" ]; then
