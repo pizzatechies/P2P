@@ -40,7 +40,15 @@ export function num(n: number | null | undefined, digits = 2) {
 }
 
 export function qty(n: number) {
-  return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  return n.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
+/** A market price: given decimals (e.g. a futures tick), two decimals, or 4 significant digits below 1 (SHIB). */
+export function price(n: number | null | undefined, decimals?: number) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  if (decimals !== undefined) return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  if (n === 0 || Math.abs(n) >= 1) return num(n, 2);
+  return n.toLocaleString(undefined, { maximumSignificantDigits: 4 });
 }
 
 export function timeAgo(iso: string) {

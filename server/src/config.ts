@@ -114,6 +114,12 @@ const EnvSchema = z.object({
   AUTOPILOT_ENABLED: bool.default(true),
   /** Must be true before the autopilot may trade a LIVE (real-money) brokerage account. */
   ALLOW_LIVE_AUTOPILOT: bool.default(false),
+  /** Crypto prices: live from Coinbase's public market data (no key needed), or the simulator. */
+  CRYPTO_DATA: z.enum(["coinbase", "simulated"]).optional(),
+  COINBASE_EXCHANGE_URL: z.string().url().default("https://api.exchange.coinbase.com"),
+  /** US stock list for search and validation: Nasdaq Trader's daily symbol files, or the built-in list only. */
+  STOCK_DIRECTORY: z.enum(["nasdaq", "builtin"]).optional(),
+  NASDAQ_DIRECTORY_URL: z.string().url().default("https://www.nasdaqtrader.com/dynamic/SymDir"),
   /** Shortest interval a user may set between autopilot runs. */
   AUTOPILOT_MIN_INTERVAL_MIN: z.coerce.number().int().min(1).max(1440).default(5),
 
@@ -227,6 +233,8 @@ export interface Config extends Env {
   requireEmailVerification: boolean;
   emailFrom: string;
   liveCountries: Set<string>;
+  cryptoData: "coinbase" | "simulated";
+  stockDirectory: "nasdaq" | "builtin";
 }
 
 const DEV_MASTER_KEY = "aurex-dev-only-master-key-change-me";
@@ -329,5 +337,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     requireEmailVerification: env.REQUIRE_EMAIL_VERIFICATION ?? emailDelivery !== "none",
     emailFrom: env.EMAIL_FROM ?? `Aurex <no-reply@${new URL(env.APP_URL).hostname}>`,
     liveCountries: new Set(list(env.LIVE_COUNTRIES).map((c) => c.toUpperCase())),
+    // Tests stay offline: simulated crypto and the built-in stock list unless a test asks otherwise.
+    cryptoData: env.CRYPTO_DATA ?? (env.NODE_ENV === "test" ? "simulated" : "coinbase"),
+    stockDirectory: env.STOCK_DIRECTORY ?? (env.NODE_ENV === "test" ? "builtin" : "nasdaq"),
   };
 }

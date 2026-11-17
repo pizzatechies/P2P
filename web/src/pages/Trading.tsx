@@ -5,9 +5,10 @@ import { AutopilotPanel } from "../components/Autopilot";
 import { PriceChart } from "../components/charts";
 import { Icon } from "../components/icons";
 import { Delta, Empty, ErrorText, Field, Modal, StatusPill } from "../components/ui";
-import { num, pct, qty as fmtQty, timeAgo, usd } from "../format";
+import { num, pct, price, qty as fmtQty, timeAgo, usd } from "../format";
+import { assetClassOf, fmtPrice, MARKET_LABEL, sourceLabel, units } from "../markets";
 import { useAuth, useLoad, useToast } from "../state";
-import type { Bar, Order, Provider, Quote, Signal, TradingAccount, TradingSettings } from "../types";
+import type { AssetClass, Bar, Instrument, Order, Position, Provider, Quote, Signal, TradingAccount, TradingSettings } from "../types";
 
 export function TradingPage() {
   const toast = useToast();
@@ -72,7 +73,8 @@ export function TradingPage() {
             )}
             {settings?.accountType === "demo" && <Link to="/app/learn" className="small">Learn</Link>}
             {settings?.accountType === "demo" && !settings.realAccountApproved && <Link to="/app/upgrade" className="small">Upgrade to real</Link>}
-            {settings && <span className={`pill ${simulated ? "warn" : "good"}`}>{simulated ? "Simulated market data" : "Live market data"}</span>}
+            {settings && <span className={`pill ${simulated ? "warn" : "good"}`}>{simulated ? "Simulated stock prices" : "Live stock prices"}</span>}
+            {settings?.markets?.crypto === "coinbase" && <span className="pill good">Live crypto prices</span>}
             <Link to="/app/settings#trading" className="small">Broker settings</Link>
           </p>
         </div>
@@ -81,11 +83,7 @@ export function TradingPage() {
         )}
       </div>
 
-      {simulated && (
-        <div className="banner">
-          Prices are synthetic so you can practise risk-free. Connect Alpaca in Settings for real market data and paper or live brokerage.
-        </div>
-      )}
+      {chart.data && <MarketBanner quote={chart.data.quote} futuresTradable={settings?.markets?.futuresTradable ?? true} />}
 
       <div className="grid grid-4" style={{ marginBottom: 16 }}>
         <div className="card">
@@ -98,7 +96,10 @@ export function TradingPage() {
         <div className="card">
           <div className="stat-label">Cash</div>
           <div className="stat-value">{acct ? usd(acct.cash) : "—"}</div>
-          <div className="stat-sub">Buying power {acct ? usd(acct.buyingPower) : "—"}</div>
+          <div className="stat-sub">
+            Buying power {acct ? usd(acct.buyingPower) : "—"}
+            {acct && acct.marginUsed > 0 ? ` · ${usd(acct.marginUsed)} futures margin` : ""}
+          </div>
         </div>
         <div className="card">
           <div className="stat-label">Unrealised P&L</div>
@@ -115,7 +116,7 @@ export function TradingPage() {
       </div>
 
       <div className="grid grid-3" style={{ marginBottom: 16 }}>
-        <Watchlist
+        <MarketsCard
           items={watchlist.data?.items ?? []}
           selected={symbol}
           onSelect={setSymbol}
@@ -124,30 +125,7 @@ export function TradingPage() {
         <div className="card span-2">
           {chart.data ? (
             <>
-              <div className="row between wrap" style={{ marginBottom: 12, alignItems: "flex-start" }}>
-                <div>
-                  <div className="row" style={{ gap: 8 }}>
-                    <h2 style={{ fontSize: 20 }}>{chart.data.quote.symbol}</h2>
-                    <span className="muted small">{chart.data.quote.name}</span>
-                  </div>
-                  <div className="row" style={{ gap: 10, marginTop: 4 }}>
-                    <span className="stat-value" style={{ margin: 0 }}>{usd(chart.data.quote.price)}</span>
-                    <Delta value={chart.data.quote.change}>
-                      {usd(chart.data.quote.change, true)} ({pct(chart.data.quote.changePct)})
-                    </Delta>
-                  </div>
-                  <div className="faint xs">
-                    Day range {num(chart.data.quote.dayLow)} – {num(chart.data.quote.dayHigh)} · updated {timeAgo(chart.data.quote.asOf)}
-                  </div>
-                </div>
-                {position && (
-                  <div className="card" style={{ padding: "10px 14px", boxShadow: "none", background: "var(--surface-2)" }}>
-                    <div className="faint xs">Your position</div>
-                    <div className="num" style={{ fontWeight: 650 }}>{fmtQty(position.qty)} sh · {usd(position.marketValue)}</div>
-                    <Delta value={position.unrealizedPl}>{usd(position.unrealizedPl, true)} ({pct(position.unrealizedPlPct)})</Delta>
-                  </div>
-                )}
-              </div>
+              <QuoteHeader quote={chart.data.quote} position={position} />
               <PriceChart bars={chart.data.bars} title={`${chart.data.quote.symbol} daily price`} />
             </>
           ) : chart.error ? (
@@ -159,8 +137,14 @@ export function TradingPage() {
       </div>
 
       <div className="grid grid-2" style={{ marginBottom: 16 }}>
-        <OrderTicket symbol={symbol} quote={chart.data?.quote ?? null} held={position?.qty ?? 0} onPlaced={refreshAll} />
-        <AnalystPanel symbol={symbol} onExecuted={refreshAll} onAnalyzed={() => signals.reload()} maxPct={aiCapPct} liveTradingNote={meta?.trading.liveTradingAllowed ?? false} />
+        <OrderTicket
+          symbol={symbol}
+          quote={chart.data?.quote ?? null}
+          held={position?.qty ?? 0}
+          futuresTradable={settings?.markets?.futuresTradable ?? true}
+          onPlaced={refreshAll}
+        />
+        <AnalystPanel symbol={symbol} quote={chart.data?.quote ?? null} onExecuted={refreshAll} onAnalyzed={() => signals.reload()} maxPct={aiCapPct} liveTradingNote={meta?.trading.liveTradingAllowed ?? false} />
       </div>
 
       <div style={{ marginBottom: 16 }}>
@@ -177,8 +161,8 @@ export function TradingPage() {
               <thead>
                 <tr>
                   <th>Symbol</th>
-                  <th className="r">Shares</th>
-                  <th className="r">Avg cost</th>
+                  <th className="r">Quantity</th>
+                  <th className="r">Avg price</th>
                   <th className="r">Price</th>
                   <th className="r">Value</th>
                   <th className="r">P&L</th>
@@ -187,11 +171,26 @@ export function TradingPage() {
               <tbody>
                 {(acct?.positions ?? []).map((p) => (
                   <tr key={p.symbol} onClick={() => setSymbol(p.symbol)} style={{ cursor: "pointer" }}>
-                    <td style={{ fontWeight: 650 }}>{p.symbol}</td>
-                    <td className="r num">{fmtQty(p.qty)}</td>
-                    <td className="r num">{num(p.avgCost)}</td>
-                    <td className="r num">{num(p.price)}</td>
-                    <td className="r num">{usd(p.marketValue)}</td>
+                    <td>
+                      <div style={{ fontWeight: 650 }}>{p.symbol}</div>
+                      <div className="faint xs">
+                        {MARKET_LABEL[p.assetClass ?? "stock"]}
+                        {p.assetClass === "future" ? ` · ${p.side === "short" ? "Short" : "Long"}` : ""}
+                      </div>
+                    </td>
+                    <td className="r num">{fmtQty(p.qty)} <span className="faint xs">{units(p.symbol, p.qty)}</span></td>
+                    <td className="r num">{price(p.avgCost)}</td>
+                    <td className="r num">{price(p.price)}</td>
+                    <td className="r num">
+                      {p.assetClass === "future" ? (
+                        <>
+                          {usd(p.notional)}
+                          <div className="faint xs">{usd(p.margin)} margin</div>
+                        </>
+                      ) : (
+                        usd(p.marketValue)
+                      )}
+                    </td>
                     <td className="r"><Delta value={p.unrealizedPl}>{usd(p.unrealizedPl, true)} ({pct(p.unrealizedPlPct)})</Delta></td>
                   </tr>
                 ))}
@@ -218,16 +217,18 @@ export function TradingPage() {
                       <td>
                         <div style={{ fontWeight: 600 }}>
                           <span className={o.side === "buy" ? "good" : "bad"}>{o.side.toUpperCase()}</span> {fmtQty(o.qty)} {o.symbol}
-                          {o.placedBy === "autopilot" ? (
+                          {o.placedBy === "system" ? (
+                            <span className="pill bad" style={{ marginLeft: 6 }}>Margin call</span>
+                          ) : o.placedBy === "autopilot" ? (
                             <span className="pill brand" style={{ marginLeft: 6 }}>Autopilot</span>
                           ) : (
                             o.source === "ai" && <span className="pill brand" style={{ marginLeft: 6 }}>AI</span>
                           )}
                         </div>
-                        <div className="faint xs">{o.type}{o.limitPrice ? ` @ ${num(o.limitPrice)}` : ""} · {timeAgo(o.createdAt)}</div>
+                        <div className="faint xs">{o.type}{o.limitPrice ? ` @ ${price(o.limitPrice)}` : ""} · {timeAgo(o.createdAt)}</div>
                         {o.rejectReason && <div className="error-text xs">{o.rejectReason}</div>}
                       </td>
-                      <td className="r num">{o.filledAvgPrice ? num(o.filledAvgPrice) : "—"}</td>
+                      <td className="r num">{o.filledAvgPrice ? price(o.filledAvgPrice) : "—"}</td>
                       <td><StatusPill status={o.status} /></td>
                       <td className="r">
                         {["new", "accepted", "pending_new", "partially_filled"].includes(o.status) && (
@@ -261,7 +262,7 @@ export function TradingPage() {
               <button key={s.id} className="list-item" style={{ background: "none", border: 0, borderBottom: "1px solid var(--border)", font: "inherit", color: "inherit", textAlign: "left", cursor: "pointer" }} onClick={() => setSymbol(s.symbol)}>
                 <span className={`pill ${s.action === "buy" ? "good" : s.action === "sell" ? "bad" : ""}`} style={{ width: 52, justifyContent: "center" }}>{s.action.toUpperCase()}</span>
                 <div className="grow">
-                  <div style={{ fontWeight: 600 }}>{s.symbol} <span className="faint small">@ {num(s.price)}</span></div>
+                  <div style={{ fontWeight: 600 }}>{s.symbol} <span className="faint small">@ {price(s.price)}</span></div>
                   <div className="faint xs">{s.provider === "rules" ? "Rule-based" : s.model} · {Math.round(s.confidence * 100)}% confidence · {timeAgo(s.createdAt)}</div>
                 </div>
                 {s.executedOrderId && <span className="pill brand">executed</span>}
@@ -274,7 +275,82 @@ export function TradingPage() {
   );
 }
 
-function Watchlist({
+function MarketBanner({ quote, futuresTradable }: { quote: Quote; futuresTradable: boolean }) {
+  if (quote.assetClass === "future") {
+    return (
+      <div className="banner">
+        Futures prices are simulated: live futures data needs a paid exchange licence. Contract sizes, margin and leverage match the
+        real {quote.contract?.exchange ?? "exchange"} contracts, and futures trade in your demo account
+        {futuresTradable ? "." : ". Switch to your demo account in Settings to trade them."}
+      </div>
+    );
+  }
+  if (quote.source !== "simulated") return null;
+  return (
+    <div className="banner">
+      {quote.assetClass === "crypto"
+        ? "Crypto prices are simulated on this server, so you can practise risk-free."
+        : "Stock prices are synthetic so you can practise risk-free. Connect Alpaca in Settings for real market data and paper or live brokerage."}
+    </div>
+  );
+}
+
+function QuoteHeader({ quote, position }: { quote: Quote; position?: Position }) {
+  const c = quote.contract;
+  return (
+    <div className="stack" style={{ gap: 10, marginBottom: 12 }}>
+      <div className="row between wrap" style={{ alignItems: "flex-start" }}>
+        <div>
+          <div className="row wrap" style={{ gap: 8 }}>
+            <h2 style={{ fontSize: 20 }}>{quote.symbol}</h2>
+            <span className="muted small">{quote.name}</span>
+            <span className={`pill ${quote.assetClass === "future" ? "warn" : quote.assetClass === "crypto" ? "brand" : ""}`}>{MARKET_LABEL[quote.assetClass ?? "stock"]}</span>
+          </div>
+          <div className="row" style={{ gap: 10, marginTop: 4 }}>
+            <span className="stat-value" style={{ margin: 0 }}>${fmtPrice(quote.price, quote)}</span>
+            <Delta value={quote.change}>
+              {quote.change >= 0 ? "+" : "−"}
+              {fmtPrice(Math.abs(quote.change), quote)} ({pct(quote.changePct)})
+            </Delta>
+          </div>
+          <div className="faint xs">
+            {quote.assetClass === "crypto" ? "24h" : "Day"} range {fmtPrice(quote.dayLow, quote)} – {fmtPrice(quote.dayHigh, quote)} · {sourceLabel(quote.source)} · {quote.hours} · updated {timeAgo(quote.asOf)}
+          </div>
+        </div>
+        {position && (
+          <div className="card" style={{ padding: "10px 14px", boxShadow: "none", background: "var(--surface-2)" }}>
+            <div className="faint xs">Your position</div>
+            <div className="num" style={{ fontWeight: 650 }}>
+              {position.assetClass === "future" ? `${position.side === "short" ? "Short" : "Long"} ${fmtQty(Math.abs(position.qty))}` : fmtQty(position.qty)}{" "}
+              {units(position.symbol, position.qty)} · {usd(position.assetClass === "future" ? position.notional : position.marketValue)}
+            </div>
+            <Delta value={position.unrealizedPl}>{usd(position.unrealizedPl, true)} ({pct(position.unrealizedPlPct)})</Delta>
+          </div>
+        )}
+      </div>
+      {c && (
+        <div className="kv" style={{ background: "var(--surface-2)", borderRadius: 10, padding: "8px 12px" }}>
+          <div><span>Contract</span><strong>{c.exchange} · {c.month} ({c.code})</strong></div>
+          <div><span>Contract size</span><strong>{c.multiplier.toLocaleString()} × price ({c.unit})</strong></div>
+          <div><span>Contract value</span><strong>{usd(quote.price * c.multiplier)}</strong></div>
+          <div><span>Margin per contract</span><strong>{usd(c.marginPerContract)} ({c.leverage}x leverage)</strong></div>
+          <div><span>Tick</span><strong>{c.tickSize} = {usd(c.tickValue)}</strong></div>
+          <div><span>Maintenance margin</span><strong>{usd(c.maintenancePerContract)}</strong></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type MarketTab = "watchlist" | AssetClass;
+const TABS: { id: MarketTab; label: string }[] = [
+  { id: "watchlist", label: "Watchlist" },
+  { id: "stock", label: "Stocks" },
+  { id: "crypto", label: "Crypto" },
+  { id: "future", label: "Futures" },
+];
+
+function MarketsCard({
   items,
   selected,
   onSelect,
@@ -286,84 +362,184 @@ function Watchlist({
   onChange: () => void;
 }) {
   const toast = useToast();
-  const [adding, setAdding] = useState("");
-  const [suggestions, setSuggestions] = useState<{ symbol: string; name: string }[]>([]);
+  const [tab, setTab] = useState<MarketTab>("watchlist");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Instrument[] | null>(null);
+  const browse = useLoad(
+    () => (tab === "watchlist" ? Promise.resolve([] as Instrument[]) : api.get<{ symbols: Instrument[] }>(`/api/trading/symbols?class=${tab}`).then((r) => r.symbols)),
+    [tab],
+  );
+  const watched = new Set(items.map((i) => i.symbol));
 
   useEffect(() => {
+    if (!query.trim()) {
+      setResults(null);
+      return;
+    }
     const t = setTimeout(() => {
-      api.get<{ symbols: { symbol: string; name: string }[] }>(`/api/trading/symbols?q=${encodeURIComponent(adding)}`).then((r) => setSuggestions(r.symbols.slice(0, 6))).catch(() => undefined);
+      api.get<{ symbols: Instrument[] }>(`/api/trading/symbols?q=${encodeURIComponent(query)}`).then((r) => setResults(r.symbols)).catch(() => undefined);
     }, 150);
     return () => clearTimeout(t);
-  }, [adding]);
+  }, [query]);
 
-  async function add(e?: FormEvent, sym = adding) {
-    e?.preventDefault();
-    if (!sym.trim()) return;
+  async function watch(sym: string) {
     try {
-      await api.post("/api/trading/watchlist", { symbol: sym.trim().toUpperCase() });
-      setAdding("");
+      await api.post("/api/trading/watchlist", { symbol: sym });
       onChange();
-      onSelect(sym.trim().toUpperCase());
+      toast(`${sym} added to your watchlist`);
     } catch (err) {
       toast((err as Error).message, "error");
     }
   }
 
+  function open(e?: FormEvent) {
+    e?.preventDefault();
+    const first = results?.[0]?.symbol ?? query.trim().toUpperCase();
+    if (!first) return;
+    onSelect(first);
+    setQuery("");
+  }
+
+  const instrumentRow = (it: Instrument) => (
+    <div key={it.symbol} className="row" style={{ gap: 2 }}>
+      <button className={`ticker-row ${it.symbol === selected ? "active" : ""}`} onClick={() => onSelect(it.symbol)} style={{ gridTemplateColumns: "1fr auto" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 650 }}>{it.symbol}</div>
+          <div className="faint xs" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 170 }}>{it.name}</div>
+        </div>
+        <span className="faint xs" style={{ textAlign: "right", maxWidth: 90 }}>{it.detail}</span>
+      </button>
+      {watched.has(it.symbol) ? (
+        <span className="faint xs" style={{ width: 26, textAlign: "center" }} title="On your watchlist">✓</span>
+      ) : (
+        <button className="btn ghost icon-btn" style={{ width: 26, height: 26 }} aria-label={`Add ${it.symbol} to watchlist`} onClick={() => watch(it.symbol)}>
+          <Icon.Plus size={12} />
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="card">
-      <div className="card-head"><h2>Watchlist</h2></div>
-      <form onSubmit={add} className="row" style={{ marginBottom: 8 }}>
-        <input className="input" style={{ height: 34 }} placeholder="Add symbol, e.g. TSLA" value={adding} onChange={(e) => setAdding(e.target.value.toUpperCase())} list="symbol-suggestions" aria-label="Add symbol" />
-        <datalist id="symbol-suggestions">
-          {suggestions.map((s) => (
-            <option key={s.symbol} value={s.symbol}>{s.name}</option>
-          ))}
-        </datalist>
-        <button className="btn sm" aria-label="Add to watchlist"><Icon.Plus size={14} /></button>
+      <div className="card-head"><h2>Markets</h2></div>
+      <form onSubmit={open} style={{ marginBottom: 8 }}>
+        <input
+          className="input"
+          style={{ height: 34 }}
+          placeholder="Search stocks, crypto, futures…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search markets"
+        />
       </form>
-      <div>
-        {items.map((it) => (
-          <div key={it.symbol} className="row" style={{ gap: 2 }}>
-            <button className={`ticker-row ${it.symbol === selected ? "active" : ""}`} onClick={() => onSelect(it.symbol)} style={{ gridTemplateColumns: "1fr auto" }}>
-              <div>
-                <div style={{ fontWeight: 650 }}>{it.symbol}</div>
-                <div className="faint xs" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 130 }}>{it.quote?.name ?? it.error}</div>
+      {!results && (
+        <div className="seg" role="tablist" style={{ marginBottom: 8, width: "100%" }}>
+          {TABS.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? "on" : ""} style={{ flex: 1 }} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ maxHeight: 440, overflowY: "auto" }}>
+        {results ? (
+          results.length === 0 ? (
+            <Empty>No matches. Try a ticker (AAPL), a coin (BTC) or a contract (ES).</Empty>
+          ) : (
+            results.map(instrumentRow)
+          )
+        ) : tab === "watchlist" ? (
+          items.length === 0 ? (
+            <Empty>Your watchlist is empty. Browse Stocks, Crypto or Futures and tap + to add.</Empty>
+          ) : (
+            items.map((it) => (
+              <div key={it.symbol} className="row" style={{ gap: 2 }}>
+                <button className={`ticker-row ${it.symbol === selected ? "active" : ""}`} onClick={() => onSelect(it.symbol)} style={{ gridTemplateColumns: "1fr auto" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 650 }}>{it.symbol}</div>
+                    <div className="faint xs" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 130 }}>{it.quote?.name ?? it.error}</div>
+                  </div>
+                  {it.quote && (
+                    <div style={{ textAlign: "right" }}>
+                      <div className="num" style={{ fontWeight: 600 }}>{fmtPrice(it.quote.price, it.quote)}</div>
+                      <div className="xs"><Delta value={it.quote.changePct}>{pct(it.quote.changePct)}</Delta></div>
+                    </div>
+                  )}
+                </button>
+                <button
+                  className="btn ghost icon-btn"
+                  style={{ width: 26, height: 26 }}
+                  aria-label={`Remove ${it.symbol}`}
+                  onClick={async () => {
+                    await api.del(`/api/trading/watchlist/${encodeURIComponent(it.symbol)}`);
+                    onChange();
+                  }}
+                >
+                  <Icon.X size={12} />
+                </button>
               </div>
-              {it.quote && (
-                <div style={{ textAlign: "right" }}>
-                  <div className="num" style={{ fontWeight: 600 }}>{num(it.quote.price)}</div>
-                  <div className="xs"><Delta value={it.quote.changePct}>{pct(it.quote.changePct)}</Delta></div>
-                </div>
-              )}
-            </button>
-            <button
-              className="btn ghost icon-btn"
-              style={{ width: 26, height: 26 }}
-              aria-label={`Remove ${it.symbol}`}
-              onClick={async () => {
-                await api.del(`/api/trading/watchlist/${encodeURIComponent(it.symbol)}`);
-                onChange();
-              }}
-            >
-              <Icon.X size={12} />
-            </button>
-          </div>
-        ))}
+            ))
+          )
+        ) : browse.data ? (
+          <>
+            {tab === "stock" && <p className="faint xs" style={{ margin: "0 0 6px" }}>Popular picks. Search to find any of the 12,000 US-listed stocks and ETFs.</p>}
+            {tab === "crypto" && <p className="faint xs" style={{ margin: "0 0 6px" }}>Popular coins, trading 24/7. Search for hundreds more.</p>}
+            {tab === "future" && <p className="faint xs" style={{ margin: "0 0 6px" }}>Front-month contracts with real sizes and margin. Demo account only.</p>}
+            {browse.data.map(instrumentRow)}
+          </>
+        ) : (
+          <div className="skeleton" style={{ height: 200 }} />
+        )}
       </div>
     </div>
   );
 }
 
-function OrderTicket({ symbol, quote, held, onPlaced }: { symbol: string; quote: Quote | null; held: number; onPlaced: () => void }) {
+function OrderTicket({
+  symbol,
+  quote,
+  held,
+  futuresTradable,
+  onPlaced,
+}: {
+  symbol: string;
+  quote: Quote | null;
+  held: number;
+  futuresTradable: boolean;
+  onPlaced: () => void;
+}) {
   const toast = useToast();
+  const cls = assetClassOf(symbol);
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [type, setType] = useState<"market" | "limit">("market");
   const [qty, setQty] = useState("1");
+  const [spend, setSpend] = useState("");
   const [limit, setLimit] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const price = type === "limit" && Number(limit) > 0 ? Number(limit) : quote?.price ?? 0;
-  const estimate = Number(qty) > 0 ? Number(qty) * price : 0;
+  const px = type === "limit" && Number(limit) > 0 ? Number(limit) : quote?.price ?? 0;
+  const n = Number(qty) > 0 ? Number(qty) : 0;
+  const contract = quote?.contract;
+
+  // A sensible starting size for each market: 1 share, $100 of crypto, 1 contract.
+  useEffect(() => {
+    setError(null);
+    setSide("buy");
+    setType("market");
+    setLimit("");
+    setSpend(cls === "crypto" ? "100" : "");
+    setQty(cls === "crypto" ? "" : "1");
+  }, [symbol, cls]);
+  useEffect(() => {
+    if (cls === "crypto" && spend && quote?.price && !qty) setQty(String(Math.floor((Number(spend) / quote.price) * 1e8) / 1e8));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote?.price]);
+
+  const opening = cls === "future" && Math.abs(held + (side === "buy" ? n : -n)) > Math.abs(held);
+  const sideLabel =
+    cls !== "future"
+      ? side === "buy" ? "Buy" : "Sell"
+      : side === "buy" ? (held < 0 ? "Buy to cover" : "Buy (long)") : held > 0 ? "Sell" : "Sell short";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -374,10 +550,14 @@ function OrderTicket({ symbol, quote, held, onPlaced }: { symbol: string; quote:
         symbol,
         side,
         type,
-        qty: Number(qty),
+        qty: n,
         limitPrice: type === "limit" ? Number(limit) : undefined,
       });
-      toast(r.order.status === "filled" ? `${side === "buy" ? "Bought" : "Sold"} ${fmtQty(r.order.qty)} ${symbol} at ${num(r.order.filledAvgPrice)}` : `Order placed (${r.order.status})`);
+      toast(
+        r.order.status === "filled"
+          ? `${side === "buy" ? "Bought" : "Sold"} ${fmtQty(r.order.qty)} ${units(symbol, r.order.qty)}${cls === "crypto" ? "" : ` of ${symbol}`} at ${fmtPrice(r.order.filledAvgPrice, quote)}`
+          : `Order placed (${r.order.status})`,
+      );
       onPlaced();
     } catch (err) {
       setError((err as Error).message);
@@ -386,13 +566,22 @@ function OrderTicket({ symbol, quote, held, onPlaced }: { symbol: string; quote:
     }
   }
 
+  if (cls === "future" && !futuresTradable) {
+    return (
+      <div className="card">
+        <div className="card-head"><h2>Order ticket · {symbol}</h2></div>
+        <Empty>Futures trade in your demo account only (Alpaca doesn't offer futures). Switch to your demo account in Settings → Trading to trade {symbol}.</Empty>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
       <div className="card-head">
         <h2>Order ticket · {symbol}</h2>
         <div className="seg buy-sell">
-          <button type="button" className={`buy ${side === "buy" ? "on" : ""}`} onClick={() => setSide("buy")}>Buy</button>
-          <button type="button" className={`sell ${side === "sell" ? "on" : ""}`} onClick={() => setSide("sell")}>Sell</button>
+          <button type="button" className={`buy ${side === "buy" ? "on" : ""}`} onClick={() => setSide("buy")}>{cls === "future" ? "Buy / Long" : "Buy"}</button>
+          <button type="button" className={`sell ${side === "sell" ? "on" : ""}`} onClick={() => setSide("sell")}>{cls === "future" ? "Sell / Short" : "Sell"}</button>
         </div>
       </div>
       <form className="stack" onSubmit={submit}>
@@ -403,29 +592,93 @@ function OrderTicket({ symbol, quote, held, onPlaced }: { symbol: string; quote:
               <option value="limit">Limit</option>
             </select>
           </Field>
-          <Field label="Shares" hint={side === "sell" ? `You hold ${fmtQty(held)}` : undefined}>
-            <input className="input num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ""))} required />
+          <Field
+            label={cls === "future" ? "Contracts" : cls === "crypto" ? `Amount (${symbol.replace("-USD", "")})` : "Shares"}
+            hint={
+              held !== 0
+                ? cls === "future"
+                  ? `You're ${held < 0 ? "short" : "long"} ${fmtQty(Math.abs(held))}`
+                  : `You hold ${fmtQty(held)}`
+                : undefined
+            }
+          >
+            <input
+              className="input num"
+              inputMode={cls === "future" ? "numeric" : "decimal"}
+              value={qty}
+              onChange={(e) => {
+                setQty(e.target.value.replace(cls === "future" ? /[^\d]/g : /[^\d.]/g, ""));
+                setSpend("");
+              }}
+              required
+            />
           </Field>
         </div>
-        {type === "limit" && (
-          <Field label="Limit price" hint={side === "buy" ? "Fills at or below this price" : "Fills at or above this price"}>
-            <input className="input num" inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^\d.]/g, ""))} placeholder={quote ? num(quote.price) : ""} required />
+        {cls === "crypto" && (
+          <Field label="Or spend (USD)" hint="Crypto trades in fractions, around the clock">
+            <input
+              className="input num"
+              inputMode="decimal"
+              value={spend}
+              placeholder="100"
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d.]/g, "");
+                setSpend(v);
+                if (quote?.price && Number(v) > 0) setQty(String(Math.floor((Number(v) / px) * 1e8) / 1e8));
+              }}
+            />
           </Field>
         )}
-        <div className="row between small">
-          <span className="muted">Estimated {side === "buy" ? "cost" : "proceeds"}</span>
-          <strong className="num">{usd(estimate)}</strong>
-        </div>
+        {type === "limit" && (
+          <Field label="Limit price" hint={side === "buy" ? "Fills at or below this price" : "Fills at or above this price"}>
+            <input className="input num" inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^\d.]/g, ""))} placeholder={quote ? fmtPrice(quote.price, quote) : ""} required />
+          </Field>
+        )}
+        {contract ? (
+          <>
+            <div className="row between small">
+              <span className="muted">Contract value</span>
+              <strong className="num">{usd(n * px * contract.multiplier)}</strong>
+            </div>
+            <div className="row between small">
+              <span className="muted">{opening ? "Margin needed" : "Margin released"}</span>
+              <strong className="num">{usd(n * contract.marginPerContract)}</strong>
+            </div>
+            <p className="faint xs" style={{ margin: 0 }}>
+              Each {fmtPrice(contract.tickSize, quote)} move is {usd(contract.tickValue)} per contract. With {contract.leverage}x leverage, a{" "}
+              {(100 / contract.leverage).toFixed(1)}% move against you would wipe out the margin.
+            </p>
+          </>
+        ) : (
+          <div className="row between small">
+            <span className="muted">Estimated {side === "buy" ? "cost" : "proceeds"}</span>
+            <strong className="num">{usd(n * px)}</strong>
+          </div>
+        )}
         <ErrorText error={error} />
-        <button className={`btn block lg ${side === "sell" ? "danger" : ""}`} disabled={busy || !quote || !(Number(qty) > 0)}>
-          {busy ? "Placing…" : `${side === "buy" ? "Buy" : "Sell"} ${qty || 0} ${symbol}`}
+        <button className={`btn block lg ${side === "sell" ? "danger" : ""}`} disabled={busy || !quote || !(n > 0)}>
+          {busy ? "Placing…" : `${sideLabel} ${qty || 0} ${cls === "crypto" ? symbol.replace("-USD", "") : symbol}`}
         </button>
       </form>
     </div>
   );
 }
 
-function AnalystPanel({ symbol, onExecuted, onAnalyzed, maxPct, liveTradingNote }: { symbol: string; onExecuted: () => void; onAnalyzed: () => void; maxPct: number; liveTradingNote: boolean }) {
+function AnalystPanel({
+  symbol,
+  quote,
+  onExecuted,
+  onAnalyzed,
+  maxPct,
+  liveTradingNote,
+}: {
+  symbol: string;
+  quote: Quote | null;
+  onExecuted: () => void;
+  onAnalyzed: () => void;
+  maxPct: number;
+  liveTradingNote: boolean;
+}) {
   const toast = useToast();
   const providers = useLoad(() => api.get<{ providers: Provider[] }>("/api/ai/providers").then((r) => r.providers));
   const options = [
@@ -499,10 +752,10 @@ function AnalystPanel({ symbol, onExecuted, onAnalyzed, maxPct, liveTradingNote 
             </div>
             <p className="small">{signal.rationale}</p>
             <div className="kv">
-              <div><span>Price</span><strong>{num(signal.price)}</strong></div>
-              <div><span>Stop-loss</span><strong>{num(signal.stopLoss)}</strong></div>
-              <div><span>Take-profit</span><strong>{num(signal.takeProfit)}</strong></div>
-              <div><span>Suggested size</span><strong>{signal.suggestedQty ? `${fmtQty(signal.suggestedQty)} sh` : "—"}</strong></div>
+              <div><span>Price</span><strong>{fmtPrice(signal.price, quote)}</strong></div>
+              <div><span>Stop-loss</span><strong>{fmtPrice(signal.stopLoss, quote)}</strong></div>
+              <div><span>Take-profit</span><strong>{fmtPrice(signal.takeProfit, quote)}</strong></div>
+              <div><span>Suggested size</span><strong>{signal.suggestedQty ? `${fmtQty(signal.suggestedQty)} ${units(signal.symbol, signal.suggestedQty)}` : "—"}</strong></div>
               <div><span>RSI 14</span><strong>{num(signal.indicators.rsi14 ?? null, 1)}</strong></div>
               <div><span>20d return</span><strong>{signal.indicators.return20d !== null ? pct((signal.indicators.return20d ?? 0) * 100) : "—"}</strong></div>
             </div>
@@ -530,6 +783,7 @@ function AnalystPanel({ symbol, onExecuted, onAnalyzed, maxPct, liveTradingNote 
       {confirming && signal && (
         <ConfirmAiOrder
           signal={signal}
+          quote={quote?.symbol === signal.symbol ? quote : null}
           onClose={() => setConfirming(false)}
           onDone={(s) => {
             setSignal(s);
@@ -542,7 +796,9 @@ function AnalystPanel({ symbol, onExecuted, onAnalyzed, maxPct, liveTradingNote 
   );
 }
 
-function ConfirmAiOrder({ signal, onClose, onDone }: { signal: Signal; onClose: () => void; onDone: (s: Signal) => void }) {
+function ConfirmAiOrder({ signal, quote, onClose, onDone }: { signal: Signal; quote: Quote | null; onClose: () => void; onDone: (s: Signal) => void }) {
+  const cls = assetClassOf(signal.symbol);
+  const contract = quote?.contract;
   const [qty, setQty] = useState(String(signal.suggestedQty));
   const [ack, setAck] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -567,11 +823,20 @@ function ConfirmAiOrder({ signal, onClose, onDone }: { signal: Signal; onClose: 
     <Modal title={`Confirm AI ${signal.action} order`} onClose={onClose}>
       <form className="stack" onSubmit={submit}>
         <p className="small">
-          Market order to <strong>{signal.action}</strong> {signal.symbol} at about {usd(signal.price)} per share.
-          {signal.stopLoss && ` Suggested stop-loss ${num(signal.stopLoss)}.`} {signal.takeProfit && `Take-profit ${num(signal.takeProfit)}.`}
+          Market order to <strong>{signal.action}</strong> {signal.symbol} at about ${fmtPrice(signal.price, quote)}
+          {cls === "future" ? " per contract unit" : cls === "crypto" ? " per coin" : " per share"}.
+          {signal.stopLoss && ` Suggested stop-loss ${fmtPrice(signal.stopLoss, quote)}.`} {signal.takeProfit && `Take-profit ${fmtPrice(signal.takeProfit, quote)}.`}
+          {cls === "future" && " Futures are leveraged: losses can exceed the margin you put up."}
         </p>
-        <Field label="Shares" hint={`Estimated ${usd(Number(qty || 0) * signal.price)}`}>
-          <input className="input num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ""))} />
+        <Field
+          label={cls === "future" ? "Contracts" : cls === "crypto" ? `Amount (${signal.symbol.replace("-USD", "")})` : "Shares"}
+          hint={
+            contract
+              ? `Contract value ${usd(Number(qty || 0) * signal.price * contract.multiplier)} · margin ${usd(Number(qty || 0) * contract.marginPerContract)}`
+              : `Estimated ${usd(Number(qty || 0) * signal.price)}`
+          }
+        >
+          <input className="input num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value.replace(cls === "future" ? /[^\d]/g : /[^\d.]/g, ""))} />
         </Field>
         <label className="row small" style={{ alignItems: "flex-start" }}>
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} style={{ marginTop: 3 }} />

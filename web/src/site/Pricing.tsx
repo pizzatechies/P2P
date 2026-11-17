@@ -21,9 +21,10 @@ export function PricingPage() {
     ["Connecting accounts", "Free", "Banks, brokerages and Coinbase, read-only"],
     ["AI Hub", "Free", freeAi > 0 ? `${freeAi} free AI requests a day on Aurex's models; unlimited with your own API keys` : "Built-in assistant included; providers bill your own API keys directly"],
     ["AI Autopilot", "Free", "Trades for you within your limits; AI model usage counts toward your allowance"],
-    ["Demo account & trading academy", "Free", "Virtual money from $1,000 to $1,000,000, six lessons with quizzes and practice missions"],
+    ["Demo account & trading academy", "Free", "Virtual money from $1,000 to $1,000,000; stocks, crypto and futures; lessons with quizzes and practice missions"],
+    ["Futures (demo account)", "Free", "Long or short, with real contract sizes, margin and leverage"],
     ["Upgrading to a real account", "Free", "Questionnaire and review; trade through your own licensed broker"],
-    ["Live trading via Alpaca", "No Aurex fee", "Your Alpaca account's own pricing applies"],
+    ["Real stock & crypto trading via Alpaca", "No Aurex fee", "Your Alpaca account's own pricing applies"],
   ];
 
   return (
@@ -46,7 +47,7 @@ export function PricingPage() {
               <Check>Wallets in {meta?.currencies.length ?? 19} currencies</Check>
               <Check>Send & request money {fees.p2pBps === 0 ? "with no fee" : ""}</Check>
               <Check>AI Hub with every major provider</Check>
-              <Check>AI analyst, demo trading account and academy</Check>
+              <Check>Stocks, crypto and futures in a demo account, with an AI analyst</Check>
               <Check>Two-factor sign-in and activity log</Check>
             </ul>
             <PrimaryCta>Create free account</PrimaryCta>

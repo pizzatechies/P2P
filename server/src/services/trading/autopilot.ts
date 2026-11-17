@@ -7,6 +7,7 @@ import { analyze } from "./analyst.js";
 import { ALPACA_LIVE, ALPACA_PAPER, alpacaRequest } from "./brokers/alpaca.js";
 import type { AccountView } from "./brokers/types.js";
 import { brokerFor, placeOrder } from "./index.js";
+import { assetClassOf } from "./instruments.js";
 import { alpacaCredentials, normalizeSymbol } from "./market.js";
 
 /**
@@ -174,6 +175,10 @@ export function updateAutopilotSettings(ctx: Ctx, userId: string, patch: Autopil
   if (patch.symbols) {
     const symbols = [...new Set(patch.symbols.map(normalizeSymbol))];
     if (symbols.length > 20) throw badRequest("The autopilot can watch up to 20 symbols");
+    const futures = symbols.filter((sym) => assetClassOf(sym) === "future");
+    if (futures.length) {
+      throw badRequest(`The autopilot trades stocks and crypto only. Futures use leverage, so trade ${futures.join(", ")} yourself.`);
+    }
     next.symbols = JSON.stringify(symbols);
   }
   if (patch.intervalMin !== undefined) next.interval_min = Math.round(clamp(patch.intervalMin, ctx.config.AUTOPILOT_MIN_INTERVAL_MIN, 1440));
@@ -430,7 +435,8 @@ export async function runAutopilot(ctx: Ctx, userId: string, opts: { manual?: bo
     if (universe.length === 0) {
       universe = all<{ symbol: string }>(ctx.db, "SELECT symbol FROM watchlist WHERE user_id = ? ORDER BY created_at", userId).map((w) => w.symbol);
     }
-    universe = universe.slice(0, 10);
+    // Stocks and crypto only: the autopilot never opens leveraged futures positions.
+    universe = universe.filter((sym) => assetClassOf(sym) !== "future").slice(0, 10);
     if (universe.length === 0) {
       logEvent(ctx, userId, { kind: "skip", message: "Nothing to watch. Add symbols to your watchlist or autopilot list." });
     }
@@ -454,13 +460,15 @@ export async function runAutopilot(ctx: Ctx, userId: string, opts: { manual?: bo
       const held = account.positions.find((p) => p.symbol === symbol);
 
       if (signal.action === "buy" && signal.confidence >= s.min_confidence) {
-        const exposure = account.positions.reduce((sum, p) => sum + p.marketValue, 0);
+        const exposure = account.positions.filter((p) => p.assetClass !== "future").reduce((sum, p) => sum + p.marketValue, 0);
         const roomPosition = (account.equity * s.max_position_pct) / 100 - (held?.marketValue ?? 0);
         const roomExposure = (account.equity * s.max_exposure_pct) / 100 - exposure;
         const budget = Math.min(roomPosition, roomExposure, account.buyingPower);
-        let qty = budget >= signal.price ? Math.floor(budget / signal.price) : 0;
-        if (signal.suggestedQty > 0) qty = Math.min(qty, Math.floor(signal.suggestedQty) || qty);
-        if (qty < 1) {
+        // Whole shares for stocks; fractions for crypto (a single coin can cost more than a position).
+        const isCrypto = assetClassOf(symbol) === "crypto";
+        let qty = isCrypto ? Math.floor((Math.max(budget, 0) / signal.price) * 1e6) / 1e6 : budget >= signal.price ? Math.floor(budget / signal.price) : 0;
+        if (signal.suggestedQty > 0) qty = Math.min(qty, isCrypto ? signal.suggestedQty : Math.floor(signal.suggestedQty) || qty);
+        if (isCrypto ? qty * signal.price < 1 : qty < 1) {
           summary.holds++;
           logEvent(ctx, userId, {
             kind: "hold",

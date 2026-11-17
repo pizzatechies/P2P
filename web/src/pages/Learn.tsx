@@ -14,6 +14,7 @@ interface Lesson {
   summary: string;
   sections: { heading: string; body: string[] }[];
   quiz: { question: string; options: string[] }[];
+  optional?: boolean;
   passed: boolean;
   score: number | null;
 }
@@ -50,7 +51,9 @@ export function LearnPage() {
               <div className="stat-label">Your progress</div>
               <div className="stat-value">{data ? `${data.progress}%` : "—"}</div>
               <div className="stat-sub">
-                {data ? `${data.lessons.filter((l) => l.passed).length} of ${data.lessons.length} lessons passed · ${data.missions.filter((m) => m.done).length} of ${data.missions.length} practice missions done` : ""}
+                {data
+                  ? `${data.lessons.filter((l) => l.passed && !l.optional).length} of ${data.lessons.filter((l) => !l.optional).length} core lessons passed · ${data.missions.filter((m) => m.done).length} of ${data.missions.length} practice missions done`
+                  : ""}
               </div>
             </div>
             <span className="pillar-ico"><Icon.Learn /></span>
@@ -73,6 +76,7 @@ export function LearnPage() {
                   <span className="grow">
                     <strong>{l.title}</strong>
                     <span className="faint small"> · {l.minutes} min</span>
+                    {l.optional && <span className="pill brand" style={{ marginLeft: 6 }}>Optional</span>}
                     <span className="muted small" style={{ display: "block" }}>{l.summary}</span>
                   </span>
                   {l.passed ? <span className="pill good">Passed {Math.round((l.score ?? 1) * 100)}%</span> : <span className="pill">Start</span>}

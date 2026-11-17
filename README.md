@@ -1,6 +1,6 @@
 # Aurex
 
-Peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in one web app.
+Peer-to-peer payments, a multi-provider AI hub and AI-assisted trading in stocks, crypto and futures in one web app.
 
 | | |
 |---|---|
@@ -9,7 +9,7 @@ Peer-to-peer payments, a multi-provider AI hub and AI-assisted stock trading in 
 | **AI Autopilot** | Optional: the AI trades for the user on a schedule, strictly inside limits they set (per position, total invested, trades per day, minimum confidence, daily loss stop), or proposes trades for one-tap approval |
 | **Reach** | Installable app (add to home screen, works offline for the app shell), shareable pay links that sign new people up and land them on the payment, WhatsApp sharing, and a free daily AI allowance |
 | **Connections** | Link outside banks, cards, brokerages and crypto through Plaid, Salt Edge, Mono, SnapTrade and Coinbase to see a combined net worth. Move money in and out with M-Pesa, MTN MoMo, PayPal/Venmo, Wise (bank payouts to 160+ countries), Flutterwave and Stripe |
-| **Trading** | Paper trading with $100k virtual cash, or each user's own Alpaca account. Charts and indicators, plus an AI analyst that returns buy/sell/hold signals with position size, stop-loss and take-profit. Execution is one click, but the user must confirm and position caps apply |
+| **Trading** | Every US-listed stock and ETF (~12,000), hundreds of cryptocurrencies with live prices (24/7, fractional) and 20 futures contracts with real sizes, margin and leverage (long or short). A demo account with virtual cash, or each user's own Alpaca account for real stocks and crypto. Charts and indicators, plus an AI analyst that returns buy/sell/hold signals with position size, stop-loss and take-profit. Execution is one click, but the user must confirm and position caps apply |
 
 It works out of the box with no keys at all: sandbox payments, simulated market data, a rule-based analyst and an offline demo assistant. Add keys to switch each part to real providers.
 
@@ -123,10 +123,10 @@ Rails included: `sandbox`, `stripe`, `flutterwave`, `mpesa`, `mtn-momo`, `paypal
 
 **Demo accounts, the academy and real accounts**
 - Every user starts with a **demo account** of virtual money. They can restart it any time with a balance from $1,000 to $1,000,000.
-- **Learn** (`/app/learn`) has six short lessons: how markets work, order types, risk and position sizing, reading charts, trading with the AI analyst, and going live. Each ends with a quiz graded on the server (80% to pass); the answers never reach the browser. Six **practice missions** are detected from demo activity: first buy, a limit order, a sale, three different stocks, an AI analysis and a watchlist.
+- **Learn** (`/app/learn`) has six core lessons: how markets work, order types, risk and position sizing, reading charts, trading with the AI analyst, and going live, plus an optional lesson on crypto and futures (margin, leverage, margin calls, going short). Each ends with a quiz graded on the server (80% to pass); the answers never reach the browser. **Practice missions** are detected from demo activity: first buy, a limit order, a sale, three different stocks, a crypto trade, a futures position, an AI analysis and a watchlist.
 - **Upgrade to real** (`/app/upgrade`) requires:
   - a verified email and 2FA;
-  - all quizzes passed and `LIVE_MIN_PRACTICE_TRADES` demo trades;
+  - the six core quizzes passed and `LIVE_MIN_PRACTICE_TRADES` demo trades;
   - an appropriateness questionnaire and four acknowledgements.
 - The questionnaire gives warnings for risky answers (for example, speculating with no experience or limited savings). The user must acknowledge them before applying.
 - The applicant must be 18+, and `LIVE_COUNTRIES` can restrict where real accounts are offered. Personal details are encrypted with `MASTER_KEY`.
@@ -134,14 +134,18 @@ Rails included: `sandbox`, `stripe`, `flutterwave`, `mpesa`, `mtn-momo`, `paypal
 - Live brokerage keys and the live broker are refused until the application is approved and `ALLOW_LIVE_TRADING=true`. Revoking an approval returns the user to their demo account immediately.
 - Real trades go through the user's own licensed broker (Alpaca), which runs its own identity checks; Aurex never holds securities.
 
-- **Market data:** Alpaca (real, IEX feed) when the user or server has Alpaca keys. Otherwise a deterministic simulated market of 20 well-known tickers, clearly labelled as synthetic.
-- **Brokers:** the built-in paper broker (market and limit orders, long-only, instant fills) or the user's **own** Alpaca account through their own keys. Paper is the default. Live Alpaca accounts are refused unless the operator sets `ALLOW_LIVE_TRADING=true`.
+- **Markets** (symbols tell them apart: `AAPL`, `BTC-USD`, `ES=F`; `BTC/USD` and `/ES` are accepted too):
+  - **Stocks and ETFs:** every US listing (~12,000), from Nasdaq Trader's daily symbol files (`STOCK_DIRECTORY=nasdaq`, the default; `builtin` limits search to ~60 popular names). Prices from Alpaca (real, IEX feed) when the user or server has Alpaca keys, otherwise a deterministic simulator that prices any listed ticker, clearly labelled.
+  - **Crypto:** every coin Coinbase trades against USD (~400, stablecoins excluded), with live prices and daily history from Coinbase's public market data, no key needed (`CRYPTO_DATA=coinbase`, the default; `simulated` for offline use). Trades 24/7 in fractions (up to 8 decimals, $1 minimum).
+  - **Futures:** 20 front-month contracts (E-mini and micro S&P 500, Nasdaq-100, Dow, Russell 2000; WTI crude, micro crude, natural gas; gold, micro gold, silver, copper; corn, wheat, soybeans; 10-year Treasury note; euro FX; CME Bitcoin and Micro Bitcoin) with real multipliers, tick sizes and approximate exchange margin. Prices are simulated, because live futures data needs a paid exchange licence. Demo account only: Alpaca doesn't offer futures.
+- **Brokers:** the built-in demo broker or the user's **own** Alpaca account through their own keys. The demo broker fills market orders instantly and limit orders when the price crosses. Stocks and crypto are long-only and paid in full; futures are margined, go long or short, settle profit and loss to cash as positions close, and are closed automatically if the account falls below maintenance margin (a margin call, shown in the order history). The Alpaca broker trades stocks and crypto (`BTC-USD` becomes Alpaca's `BTC/USD`, good-till-canceled) and refuses futures. Live Alpaca accounts are refused unless the operator sets `ALLOW_LIVE_TRADING=true`.
 - **AI analyst:** computes SMA 20/50/200, RSI, MACD, ATR, volatility, returns and the 52-week range, then asks the selected model for a structured signal. Claude responses use structured outputs, which are schema-guaranteed; other providers use JSON mode plus validation. With no AI connected, a transparent rule-based model is used.
 - **Guardrails** are enforced on the server:
   - Every AI-originated order needs explicit confirmation.
   - Each signal can be executed only once.
-  - AI buys are capped at `AI_MAX_POSITION_PCT` of portfolio equity (default 10%).
-  - "Sell" without a position is downgraded to "hold", because the account is long-only.
+  - AI buys are capped at `AI_MAX_POSITION_PCT` of portfolio equity (default 10%); for futures the cap applies to the margin a new position ties up.
+  - "Sell" without a position is downgraded to "hold" for stocks and crypto, which are long-only. For futures it means going short.
+  - The autopilot trades stocks and crypto only, never leveraged futures.
 
 ### AI Autopilot
 

@@ -72,12 +72,15 @@ export function FeaturesPage() {
       <Section id="trading">
         <div className="split">
           <div>
-            <SectionHead eyebrow="AI trading" title="An analyst on your side, and an autopilot when you want one" lead="Aurex's AI analyst reads the trend, momentum and volatility of any stock and proposes a trade, sized and with exits. Switch on Autopilot and it can act for you, inside rules you set." />
+            <SectionHead eyebrow="Stocks · Crypto · Futures" title="Every market, with an analyst on your side" lead="Trade every US-listed stock and ETF, hundreds of coins around the clock, and futures on indexes, energy, metals, grains, rates, currencies and Bitcoin. The AI analyst reads the trend, momentum and volatility of any of them and proposes a trade, sized and with exits. Switch on Autopilot and it can act for you, inside rules you set." />
             <ul className="check-list">
+              <Check>About 12,000 US stocks and ETFs, searchable by ticker or company name</Check>
+              <Check>Hundreds of cryptocurrencies with live prices, traded in fractions, 24/7</Check>
+              <Check>20 futures contracts, including micros, with real contract sizes, margin and leverage; go long or short in the demo account</Check>
               <Check>Start with a demo account of virtual money ($1,000 to $1,000,000), and restart it any time</Check>
-              <Check>Learn the essentials in six short lessons with quizzes, then complete practice missions</Check>
+              <Check>Learn the essentials in short lessons with quizzes, including crypto and futures, then complete practice missions</Check>
               <Check>Upgrade to a real account when you're ready: a short questionnaire, review, then your own licensed broker</Check>
-              <Check>Connect your own Alpaca account for live market data and brokerage</Check>
+              <Check>Connect your own Alpaca account for live stock prices and real stock and crypto trading</Check>
               <Check>Signals cite moving averages, RSI, MACD, volatility and recent returns</Check>
               <Check>AI Autopilot can trade for you on a schedule, or ask before each trade</Check>
               <Check>You set the limits: per position (up to {cap}%), total invested, trades per day, minimum confidence</Check>
@@ -108,7 +111,7 @@ export function FeaturesPage() {
             <SectionHead eyebrow="Learn to trade" title="A demo account and an academy, built in" lead="Learn the essentials, practise with virtual money, and upgrade to a real account only when you've shown you're ready." />
             <ul className="check-list">
               <Check>Demo account with $1,000 to $1,000,000 of virtual money; restart it whenever you like</Check>
-              <Check>Six short lessons: how markets work, market and limit orders, risk and stop-losses, reading charts, trading with AI, and going live</Check>
+              <Check>Six core lessons (how markets work, market and limit orders, risk and stop-losses, reading charts, trading with AI, going live), plus crypto and futures</Check>
               <Check>Each lesson ends with a quiz (80% to pass), with explanations for every answer</Check>
               <Check>Practice missions tick off as you trade: your first buy, a limit order, a sale, three different stocks and more</Check>
               <Check>Upgrade to a real account: verified email, two-factor sign-in, the academy, a few demo trades and a short questionnaire</Check>

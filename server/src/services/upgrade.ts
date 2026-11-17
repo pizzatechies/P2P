@@ -2,7 +2,7 @@ import type { Ctx } from "../context.js";
 import { all, nowIso, one, run } from "../db/index.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 import { HttpError, notFound } from "../lib/errors.js";
-import { LESSONS, demoTradeCount, lessonsPassed } from "./learn.js";
+import { REQUIRED_LESSONS, demoTradeCount, lessonsPassed } from "./learn.js";
 import { addAlert } from "./security.js";
 import { getUserRow } from "./users.js";
 
@@ -109,7 +109,7 @@ export function checklist(ctx: Ctx, userId: string) {
       link: "/app/settings#security",
     },
     { id: "two_factor", label: "Turn on two-factor authentication", done: user.totp_enabled === 1, hint: "Protects real money even if your password leaks.", link: "/app/settings#two-factor" },
-    { id: "lessons", label: `Pass all ${LESSONS.length} academy quizzes`, done: passed >= LESSONS.length, hint: `${passed} of ${LESSONS.length} passed (80% needed on each).`, link: "/app/learn" },
+    { id: "lessons", label: `Pass all ${REQUIRED_LESSONS.length} core academy quizzes`, done: passed >= REQUIRED_LESSONS.length, hint: `${passed} of ${REQUIRED_LESSONS.length} passed (80% needed on each).`, link: "/app/learn" },
     { id: "practice", label: `Make ${need} trades in your demo account`, done: trades >= need, hint: `${Math.min(trades, need)} of ${need} done.`, link: "/app/trading" },
     { id: "profile", label: "Complete your profile and questionnaire", done: Boolean(row?.data_enc), hint: "About 2 minutes. Your details are encrypted.", link: "/app/upgrade#application" },
   ];

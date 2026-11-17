@@ -13,6 +13,8 @@ export interface Lesson {
   summary: string;
   sections: { heading: string; body: string[] }[];
   quiz: { question: string; options: string[]; answer: number; explain: string }[];
+  /** Extra lessons that don't count toward the real-account upgrade. */
+  optional?: boolean;
 }
 
 export const PASS_MARK = 0.8;
@@ -211,7 +213,54 @@ export const LESSONS: Lesson[] = [
       { question: "You should only invest money that…", options: ["You can afford to lose", "You borrowed", "You need next month"], answer: 0, explain: "Never trade money you need." },
     ],
   },
+  {
+    id: "crypto-futures",
+    title: "Crypto and futures",
+    minutes: 6,
+    summary: "24/7 coins, futures contracts, margin, leverage and going short.",
+    optional: true,
+    sections: [
+      {
+        heading: "Crypto: a market that never closes",
+        body: [
+          "Coins such as Bitcoin and Ether trade around the clock, every day of the year, so prices keep moving while you sleep. Swings of 5-10% in a day are common, far more than most stocks.",
+          "You can buy a fraction of a coin, so $20 of Bitcoin is fine. Most coins have no company profits behind them: their price comes from supply, demand and sentiment. Stablecoins such as USDC are built to track the US dollar, so there's nothing to trade against the dollar.",
+        ],
+      },
+      {
+        heading: "Futures: agreeing a price today",
+        body: [
+          "A futures contract is an agreement to buy or sell something (a stock index, crude oil, gold, corn) at a set price on a set date. Most traders close their position before that date and simply take the profit or loss.",
+          "Each contract has a fixed size. One E-mini S&P 500 contract (ES) gains or loses $50 for every point the index moves; the micro version (MES) moves $5 per point. The front month is the contract nearest to expiry, and it's the one most people trade.",
+        ],
+      },
+      {
+        heading: "Margin and leverage",
+        body: [
+          "You don't pay a contract's full value. You put up margin, often 5-10% of it, and the rest is leverage. At 15x leverage a 1% move in the price is a 15% gain or loss on your margin.",
+          "Your profit or loss is settled as the price moves. If losses push your account below the maintenance margin, the broker closes your positions for you: a margin call. Losses can be larger than the money you put up.",
+        ],
+      },
+      {
+        heading: "Going short",
+        body: [
+          "With futures you can sell first and buy back later, which profits if the price falls. If the price rises instead, there's no limit to how far it can go against you, so always know where you'll get out.",
+          "In Aurex, stocks and crypto are bought and held (no borrowing or shorting). Futures can go long or short in the demo account, with prices simulated but real contract sizes and margin. The autopilot never trades futures.",
+        ],
+      },
+    ],
+    quiz: [
+      { question: "When does the crypto market close?", options: ["4 pm New York time", "It doesn't: crypto trades 24/7", "Every weekend"], answer: 1, explain: "Crypto trades around the clock, so prices can move at any hour." },
+      { question: "An E-mini S&P 500 contract moves $50 per point. The index rises 10 points and you're long 1 contract. You…", options: ["Gain $10", "Gain $500", "Lose $500"], answer: 1, explain: "10 points × $50 per point = $500 per contract." },
+      { question: "With 10x leverage, a 10% price move against you…", options: ["Costs about 1% of your margin", "Can wipe out your whole margin", "Doesn't count until the contract expires"], answer: 1, explain: "Leverage multiplies the move: 10% × 10 = 100% of your margin." },
+      { question: "What is a margin call?", options: ["A bonus when a trade wins", "Losses take your account below maintenance margin, so you must add money or positions are closed", "A fee for opening an account"], answer: 1, explain: "Brokers close positions when the account can't cover the maintenance margin." },
+      { question: "Selling a futures contract you don't own (going short) makes money when…", options: ["The price falls", "The price rises", "Never"], answer: 0, explain: "You sell high and buy back lower. If the price rises, you lose." },
+    ],
+  },
 ];
+
+/** Lessons the real-account upgrade requires (optional ones are extra practice). */
+export const REQUIRED_LESSONS = LESSONS.filter((l) => !l.optional);
 
 /** Practice missions, detected from what the user actually did in their demo account. */
 const MISSIONS: { id: string; title: string; hint: string; done: (ctx: Ctx, userId: string) => boolean }[] = [
@@ -246,6 +295,18 @@ const MISSIONS: { id: string; title: string; hint: string; done: (ctx: Ctx, user
     done: (ctx, u) => Boolean(one(ctx.db, "SELECT 1 FROM ai_signals WHERE user_id = ? LIMIT 1", u)),
   },
   {
+    id: "crypto-trade",
+    title: "Trade some crypto",
+    hint: "Open a coin such as BTC-USD and buy a small amount; crypto trades in fractions, 24/7.",
+    done: (ctx, u) => Boolean(one(ctx.db, "SELECT 1 FROM orders WHERE user_id = ? AND broker = 'paper' AND status = 'filled' AND symbol LIKE '%-USD' LIMIT 1", u)),
+  },
+  {
+    id: "futures-trade",
+    title: "Open a futures position",
+    hint: "Try a micro contract such as MES=F and watch how margin and leverage work.",
+    done: (ctx, u) => Boolean(one(ctx.db, "SELECT 1 FROM orders WHERE user_id = ? AND broker = 'paper' AND status = 'filled' AND symbol LIKE '%=F' LIMIT 1", u)),
+  },
+  {
     id: "watchlist",
     title: "Build a watchlist",
     hint: "Add at least three symbols you want to follow.",
@@ -267,6 +328,7 @@ export function learningOverview(ctx: Ctx, userId: string) {
     sections: l.sections,
     // Questions and options only: answers never leave the server.
     quiz: l.quiz.map((q) => ({ question: q.question, options: q.options })),
+    optional: !!l.optional,
     passed: passed.has(l.id),
     score: passed.get(l.id)?.score ?? null,
     completedAt: passed.get(l.id)?.completed_at ?? null,
@@ -298,7 +360,8 @@ export function gradeQuiz(ctx: Ctx, userId: string, lessonId: string, answers: n
   return { score, passed, results };
 }
 
+/** Required lessons passed (what the real-account upgrade counts). */
 export function lessonsPassed(ctx: Ctx, userId: string) {
   const ids = new Set(all<{ item_id: string }>(ctx.db, "SELECT item_id FROM learning_progress WHERE user_id = ?", userId).map((r) => r.item_id));
-  return LESSONS.filter((l) => ids.has(l.id)).length;
+  return REQUIRED_LESSONS.filter((l) => ids.has(l.id)).length;
 }

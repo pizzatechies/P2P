@@ -27,11 +27,11 @@ import {
   setBroker,
   tradingSettings,
 } from "../services/trading/index.js";
-import { marketFor, normalizeSymbol, searchSymbols } from "../services/trading/market.js";
+import { marketFor, normalizeSymbol, searchInstruments } from "../services/trading/market.js";
 import { audit } from "../services/users.js";
 
 const OrderBody = z.object({
-  symbol: z.string().min(1).max(12),
+  symbol: z.string().min(1).max(16),
   side: z.enum(["buy", "sell"]),
   type: z.enum(["market", "limit"]).default("market"),
   qty: z.coerce.number().positive(),
@@ -41,7 +41,7 @@ const OrderBody = z.object({
 });
 
 const AnalyzeBody = z.object({
-  symbol: z.string().min(1).max(12),
+  symbol: z.string().min(1).max(16),
   provider: z.string().max(30).optional(),
   model: z.string().max(200).optional(),
 });
@@ -74,7 +74,7 @@ const AutopilotBody = z.object({
   mode: z.enum(["auto", "approve"]).optional(),
   provider: z.string().max(30).optional(),
   model: z.string().max(200).nullable().optional(),
-  symbols: z.array(z.string().min(1).max(12)).max(20).optional(),
+  symbols: z.array(z.string().min(1).max(16)).max(20).optional(),
   intervalMin: z.coerce.number().int().optional(),
   maxPositionPct: z.coerce.number().optional(),
   maxExposurePct: z.coerce.number().optional(),
@@ -166,8 +166,11 @@ export function tradingRoutes(ctx: Ctx) {
     res.json({ settings: tradingSettings(ctx, req.user!.id) });
   });
 
-  r.get("/symbols", (req, res) => {
-    res.json({ symbols: searchSymbols(String(req.query.q ?? "")), source: marketFor(ctx, req.user!.id).source });
+  /** Search stocks, crypto and futures by ticker or name; `class` narrows it to one market. */
+  r.get("/symbols", async (req, res) => {
+    const cls = z.enum(["stock", "crypto", "future"]).optional().safeParse(req.query.class || undefined);
+    const symbols = await searchInstruments(ctx, String(req.query.q ?? "").slice(0, 40), cls.success ? cls.data : undefined);
+    res.json({ symbols, source: marketFor(ctx, req.user!.id).source });
   });
 
   r.get("/quote/:symbol", async (req, res) => {
@@ -185,7 +188,7 @@ export function tradingRoutes(ctx: Ctx) {
   });
 
   r.post("/watchlist", async (req, res) => {
-    const { symbol } = parse(z.object({ symbol: z.string().min(1).max(12) }), req.body);
+    const { symbol } = parse(z.object({ symbol: z.string().min(1).max(16) }), req.body);
     await addToWatchlist(ctx, req.user!.id, symbol);
     res.status(201).json(await getWatchlist(ctx, req.user!.id));
   });

@@ -21,8 +21,8 @@ export function HomePage() {
             </h1>
             <p className="lead">
               Send and request money in {currencies} currencies, pay in and out with M-Pesa, MTN MoMo, PayPal, Skrill or a bank in
-              160+ countries, chat with every major AI model, and learn to trade in a free demo account before you ever risk real
-              money.
+              160+ countries, chat with every major AI model, and trade stocks, crypto and futures in a free demo account before you
+              ever risk real money.
             </p>
             <div className="row wrap">
               <PrimaryCta />
@@ -32,7 +32,7 @@ export function HomePage() {
               <li>Free to open</li>
               <li>{currencies} currencies</li>
               <li>M-Pesa, PayPal, Skrill &amp; MoneyGram</li>
-              <li>Free demo trading account</li>
+              <li>Stocks, crypto &amp; futures</li>
               <li>{PROVIDERS.length} AI providers</li>
             </ul>
           </div>
@@ -83,7 +83,7 @@ export function HomePage() {
           <Link to="/features#trading" className="pillar">
             <span className="pillar-ico"><Icon.Chart /></span>
             <h3>AI-assisted trading</h3>
-            <p>An analyst that reads the charts, sizes the trade and sets a stop-loss, and an autopilot that can trade for you within your limits.</p>
+            <p>Every US stock and ETF, hundreds of coins 24/7, and futures, with an analyst that sizes the trade and sets a stop-loss, and an autopilot that trades within your limits.</p>
             <span className="pillar-link">Trading →</span>
           </Link>
           <Link to="/features#connections" className="pillar">
@@ -198,6 +198,7 @@ export function HomePage() {
             { q: "Can I use M-Pesa, MTN MoMo, PayPal, Skrill or MoneyGram?", a: "Yes, where the Aurex operator has switched them on. Add money with an M-Pesa or MoMo PIN prompt on your phone, PayPal or Skrill, and withdraw to M-Pesa, MoMo, PayPal, Venmo (US), Skrill, a bank account in 160+ countries through Wise, or cash at a MoneyGram location." },
             { q: "How is my account protected?", a: "Two-factor sign-in with recovery codes, lockouts after repeated wrong guesses, alerts for new devices, a password re-check before money leaves, and a 24-hour pause on withdrawals after any security change, so a stolen password alone can't empty your wallet." },
             { q: "Can I see my other bank and crypto accounts?", a: "Yes. Connections links banks and cards (Plaid, Salt Edge, Mono), brokerages (SnapTrade) and Coinbase, read-only. You approve access on the provider's own page and can disconnect at any time." },
+            { q: "What can I trade?", a: "Every US-listed stock and ETF (about 12,000), hundreds of cryptocurrencies with live prices around the clock, and futures on stock indexes, oil, gas, gold, silver, copper, grains, Treasuries, the euro and Bitcoin. Futures run in the demo account with real contract sizes, margin and leverage." },
             { q: "Will the AI trade for me?", a: "Only if you want it to. By default the AI analyst suggests trades and waits for you. Switch on AI Autopilot and it trades for you on a schedule, strictly inside limits you set: a maximum per position and in total, trades per day, a minimum confidence, and a daily loss limit that pauses it. You can also have it ask before every trade, and pause it any time." },
             { q: "Can I practise before using real money?", a: "Yes. Every account starts with a demo account of virtual money and a free academy of short lessons, quizzes and practice missions. When you're ready, upgrade to a real account after a short questionnaire and review, and trade through your own licensed broker." },
             { q: "Is my money real right now?", a: "Aurex is currently in sandbox mode: deposits and withdrawals use test money while licensed payment partners are being connected. Transfers between users work exactly as they will with real funds." },

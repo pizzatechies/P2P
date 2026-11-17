@@ -1,7 +1,7 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { totp } from "../src/lib/crypto.js";
-import { LESSONS } from "../src/services/learn.js";
+import { LESSONS, REQUIRED_LESSONS } from "../src/services/learn.js";
 import { api, makeApp } from "./helpers.js";
 import { stub } from "./stub.js";
 
@@ -175,7 +175,7 @@ describe("upgrading to a real account", () => {
     await admin.post("/api/settings/2fa/confirm", { code: totp(s2.body.secret) });
     const queue = (await admin.get("/api/admin/upgrades")).body.applications;
     expect(queue).toHaveLength(1);
-    expect(queue[0]).toMatchObject({ legalName: "Ada Mensah", country: "GH", twoFactor: true, emailVerified: true, lessonsPassed: LESSONS.length, demoTrades: 3 });
+    expect(queue[0]).toMatchObject({ legalName: "Ada Mensah", country: "GH", twoFactor: true, emailVerified: true, lessonsPassed: REQUIRED_LESSONS.length, demoTrades: 3 });
     const approved = await admin.post(`/api/admin/upgrades/${user.id}/review`, { decision: "approve", note: "Welcome" });
     expect(approved.status).toBe(200);
     const done = (await A.get("/api/trading/upgrade")).body;

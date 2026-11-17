@@ -1,9 +1,10 @@
 import type { Ctx } from "../../context.js";
 import { all, nowIso, one, run } from "../../db/index.js";
 import { badRequest, HttpError, unprocessable } from "../../lib/errors.js";
-import { alpacaBroker } from "./brokers/alpaca.js";
+import { alpacaBroker, futuresDemoOnly } from "./brokers/alpaca.js";
 import { ensureTradingAccount, paperBroker } from "./brokers/paper.js";
 import type { Broker, OrderInput } from "./brokers/types.js";
+import { assetClassOf, FUTURES_BY_SYMBOL, futureMargin, QTY_RULES } from "./instruments.js";
 import { alpacaCredentials, marketFor, normalizeSymbol, type MarketData } from "./market.js";
 import { assertLiveApproved, liveApproved } from "../upgrade.js";
 
@@ -21,6 +22,13 @@ export function tradingSettings(ctx: Ctx, userId: string) {
     alpacaEnv: creds?.env ?? null,
     liveTradingAllowed: ctx.config.ALLOW_LIVE_TRADING,
     dataSource: marketFor(ctx, userId).source,
+    /** Where each market's prices come from, and whether futures can be traded on the current account. */
+    markets: {
+      stock: marketFor(ctx, userId).source,
+      crypto: ctx.config.cryptoData === "coinbase" ? ("coinbase" as const) : ("simulated" as const),
+      future: "simulated" as const,
+      futuresTradable: acct.broker === "paper",
+    },
   };
 }
 
@@ -70,12 +78,21 @@ export interface PlaceOrderRequest {
  */
 export async function placeOrder(ctx: Ctx, userId: string, req: PlaceOrderRequest) {
   const symbol = normalizeSymbol(req.symbol);
-  if (!(req.qty > 0) || req.qty > 1_000_000) throw badRequest("Quantity must be between 0 and 1,000,000");
-  if (Math.round(req.qty * 10000) !== req.qty * 10000) throw badRequest("Quantity supports up to 4 decimal places");
+  const assetClass = assetClassOf(symbol);
+  const rules = QTY_RULES[assetClass];
+  if (!(req.qty > 0) || req.qty > rules.max) throw badRequest(`Quantity must be between 0 and ${rules.max.toLocaleString("en-US")} ${rules.units}`);
+  const scale = 10 ** rules.decimals;
+  if (Math.abs(Math.round(req.qty * scale) - req.qty * scale) > 1e-6) {
+    throw badRequest(rules.decimals === 0 ? "Futures trade in whole contracts" : `Quantity supports up to ${rules.decimals} decimal places`);
+  }
   if (req.type === "limit" && !(req.limitPrice && req.limitPrice > 0)) throw badRequest("Limit orders need a limit price");
 
   const { broker, market } = brokerFor(ctx, userId);
+  if (assetClass === "future" && broker.id !== "paper") throw futuresDemoOnly();
   const quote = await market.quote(symbol);
+  if (assetClass === "crypto" && req.qty * (req.limitPrice ?? quote.price) < 1) {
+    throw badRequest("Crypto orders need to be worth at least $1");
+  }
   const placedBy = req.placedBy ?? "user";
   const source: OrderInput["source"] = req.signalId || placedBy === "autopilot" ? "ai" : "manual";
 
@@ -95,15 +112,19 @@ export async function placeOrder(ctx: Ctx, userId: string, req: PlaceOrderReques
     }
   }
   if (source === "ai") {
-    if (req.side === "buy") {
-      const account = await broker.account();
-      const cap = account.equity * ctx.config.AI_MAX_POSITION_PCT;
-      if (req.qty * (req.limitPrice ?? quote.price) > cap + 0.01) {
-        throw unprocessable(
-          "ai_position_cap",
-          `AI-suggested orders are capped at ${Math.round(ctx.config.AI_MAX_POSITION_PCT * 100)}% of your portfolio ($${cap.toFixed(2)})`,
-        );
+    const account = await broker.account();
+    const cap = account.equity * ctx.config.AI_MAX_POSITION_PCT;
+    const capMsg = `AI-suggested orders are capped at ${Math.round(ctx.config.AI_MAX_POSITION_PCT * 100)}% of your portfolio ($${cap.toFixed(2)})`;
+    if (assetClass === "future") {
+      // Futures: the cap applies to the margin a new or bigger position ties up.
+      const held = account.positions.find((p) => p.symbol === symbol)?.qty ?? 0;
+      const next = held + (req.side === "buy" ? req.qty : -req.qty);
+      if (Math.abs(next) > Math.abs(held)) {
+        const margin = (Math.abs(next) - Math.abs(held)) * futureMargin(FUTURES_BY_SYMBOL.get(symbol)!, quote.price).initial;
+        if (margin > cap + 0.01) throw unprocessable("ai_position_cap", `${capMsg}; this order needs $${margin.toFixed(2)} of margin`);
       }
+    } else if (req.side === "buy" && req.qty * (req.limitPrice ?? quote.price) > cap + 0.01) {
+      throw unprocessable("ai_position_cap", capMsg);
     }
   }
 

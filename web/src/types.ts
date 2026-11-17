@@ -120,9 +120,27 @@ export interface ChatMsg {
   error?: string;
 }
 
+export type AssetClass = "stock" | "crypto" | "future";
+export interface ContractInfo {
+  root: string;
+  exchange: string;
+  category: string;
+  multiplier: number;
+  tickSize: number;
+  tickValue: number;
+  unit: string;
+  marginRate: number;
+  marginPerContract: number;
+  maintenancePerContract: number;
+  leverage: number;
+  month: string;
+  code: string;
+  micro: boolean;
+}
 export interface Quote {
   symbol: string;
   name: string;
+  assetClass: AssetClass;
   price: number;
   prevClose: number;
   change: number;
@@ -130,15 +148,28 @@ export interface Quote {
   dayHigh: number;
   dayLow: number;
   asOf: string;
-  source: "simulated" | "alpaca";
+  source: "simulated" | "alpaca" | "coinbase";
+  hours: string;
+  contract?: ContractInfo;
+}
+export interface Instrument {
+  symbol: string;
+  name: string;
+  assetClass: AssetClass;
+  detail: string;
 }
 export interface Bar { t: string; o: number; h: number; l: number; c: number; v: number }
 export interface Position {
   symbol: string;
+  assetClass: AssetClass;
   qty: number;
+  side: "long" | "short";
   avgCost: number;
   price: number;
   marketValue: number;
+  notional: number;
+  multiplier: number;
+  margin: number;
   costBasis: number;
   unrealizedPl: number;
   unrealizedPlPct: number;
@@ -149,6 +180,7 @@ export interface TradingAccount {
   cash: number;
   equity: number;
   buyingPower: number;
+  marginUsed: number;
   startingCash: number | null;
   totalReturnPct: number | null;
   positions: Position[];
@@ -162,6 +194,7 @@ export interface TradingSettings {
   alpacaEnv: "paper" | "live" | null;
   liveTradingAllowed: boolean;
   dataSource: "simulated" | "alpaca";
+  markets?: { stock: "simulated" | "alpaca"; crypto: "simulated" | "coinbase"; future: "simulated"; futuresTradable: boolean };
 }
 export interface Order {
   id: string;
@@ -174,7 +207,7 @@ export interface Order {
   filledQty: number;
   filledAvgPrice: number | null;
   source: "manual" | "ai";
-  placedBy?: "user" | "autopilot";
+  placedBy?: "user" | "autopilot" | "system";
   rejectReason: string | null;
   createdAt: string;
 }

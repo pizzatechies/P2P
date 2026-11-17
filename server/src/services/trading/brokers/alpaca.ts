@@ -1,9 +1,10 @@
 import type { Ctx } from "../../../context.js";
 import { all, nowIso, one, run } from "../../../db/index.js";
-import { HttpError, notFound } from "../../../lib/errors.js";
+import { HttpError, notFound, unprocessable } from "../../../lib/errors.js";
 import { newId } from "../../../lib/ids.js";
 import type { OrderRow } from "./paper.js";
 import { orderView } from "./paper.js";
+import { assetClassOf } from "../instruments.js";
 import type { AccountView, Broker, OrderInput, OrderView } from "./types.js";
 
 export const ALPACA_PAPER = "https://paper-api.alpaca.markets";
@@ -55,6 +56,18 @@ export async function alpacaRequest<T>(
 
 const num = (s: string | null | undefined) => (s === null || s === undefined || s === "" ? null : Number(s));
 
+/** Alpaca writes crypto as "BTC/USD" (orders) or "BTCUSD" (positions); Aurex uses "BTC-USD". */
+export function fromAlpacaSymbol(symbol: string, assetClass?: string) {
+  if (symbol.includes("/")) return symbol.replace("/", "-");
+  if (assetClass === "crypto" && symbol.endsWith("USD")) return `${symbol.slice(0, -3)}-USD`;
+  return symbol;
+}
+export const toAlpacaSymbol = (symbol: string) => (assetClassOf(symbol) === "crypto" ? symbol.replace("-", "/") : symbol);
+
+/** Thrown for futures on a real (Alpaca) account. */
+export const futuresDemoOnly = () =>
+  unprocessable("futures_demo_only", "Futures trade in the demo account only: Alpaca doesn't offer futures. Switch to your demo account to trade them.");
+
 /**
  * Trades the user's own Alpaca account with their own API keys (paper by default).
  * Live accounts additionally require ALLOW_LIVE_TRADING=true on the server.
@@ -69,7 +82,7 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
   function toView(o: AlpacaOrder, local?: OrderRow): OrderView {
     return {
       id: local?.id ?? o.id,
-      symbol: o.symbol,
+      symbol: fromAlpacaSymbol(o.symbol),
       side: o.side,
       type: o.type === "limit" ? "limit" : "market",
       qty: num(o.qty) ?? 0,
@@ -93,6 +106,7 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
         call<
           {
             symbol: string;
+            asset_class?: string;
             qty: string;
             avg_entry_price: string;
             current_price: string;
@@ -110,30 +124,43 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
         cash: Number(acct.cash),
         equity: Number(acct.equity),
         buyingPower: Number(acct.buying_power),
+        marginUsed: 0,
         startingCash: null,
         totalReturnPct: null,
-        positions: positions.map((p) => ({
-          symbol: p.symbol,
-          qty: Number(p.qty),
-          avgCost: Number(p.avg_entry_price),
-          price: Number(p.current_price),
-          marketValue: Number(p.market_value),
-          costBasis: Number(p.cost_basis),
-          unrealizedPl: Number(p.unrealized_pl),
-          unrealizedPlPct: Math.round(Number(p.unrealized_plpc) * 10000) / 100,
-        })),
+        positions: positions.map((p) => {
+          const symbol = fromAlpacaSymbol(p.symbol, p.asset_class);
+          const qty = Number(p.qty);
+          return {
+            symbol,
+            assetClass: assetClassOf(symbol),
+            qty,
+            side: qty < 0 ? ("short" as const) : ("long" as const),
+            avgCost: Number(p.avg_entry_price),
+            price: Number(p.current_price),
+            marketValue: Number(p.market_value),
+            notional: Math.abs(Number(p.market_value)),
+            multiplier: 1,
+            margin: 0,
+            costBasis: Number(p.cost_basis),
+            unrealizedPl: Number(p.unrealized_pl),
+            unrealizedPlPct: Math.round(Number(p.unrealized_plpc) * 10000) / 100,
+          };
+        }),
       };
     },
 
     async placeOrder(input: OrderInput): Promise<OrderView> {
+      const cls = assetClassOf(input.symbol);
+      if (cls === "future") throw futuresDemoOnly();
       const o = await call<AlpacaOrder>("/v2/orders", {
         method: "POST",
         body: {
-          symbol: input.symbol,
+          symbol: toAlpacaSymbol(input.symbol),
           qty: String(input.qty),
           side: input.side,
           type: input.type,
-          time_in_force: "day",
+          // Crypto trades around the clock, so its orders stay open until filled or canceled.
+          time_in_force: cls === "crypto" ? "gtc" : "day",
           ...(input.type === "limit" ? { limit_price: String(input.limitPrice) } : {}),
         },
       });
