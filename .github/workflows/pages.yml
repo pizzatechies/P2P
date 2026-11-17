@@ -3,7 +3,7 @@ name: Website (GitHub Pages)
 # Publishes the static Aurex website (web/site.html + web/src/site) to GitHub Pages.
 # One-time setup: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 # "Get started" and "Sign in" link to the live app: the repository variable AUREX_APP_URL (Settings ->
-# Secrets and variables -> Actions -> Variables) if set, otherwise the AWS server below.
+# Secrets and variables -> Actions -> Variables) if set, otherwise the live app below.
 
 # Runs on every push, not only website changes: while Pages is also set to build from the branch, GitHub
 # publishes the README as the site on each push, and this deploy has to land after it.
@@ -37,7 +37,7 @@ jobs:
         env:
           SITE_BASE: /${{ github.event.repository.name }}/
           VITE_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-          VITE_APP_URL: ${{ vars.AUREX_APP_URL || 'https://13-50-176-29.sslip.io' }}
+          VITE_APP_URL: ${{ vars.AUREX_APP_URL || 'https://aurex.dpdns.org' }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
