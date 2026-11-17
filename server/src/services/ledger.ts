@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { sealJournal } from "./integrity.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { HttpError } from "../lib/errors.js";
 import { newId } from "../lib/ids.js";
@@ -127,21 +128,31 @@ export function postJournal(ctx: Ctx, input: JournalInput): JournalRow {
   return tx(ctx.db, () => {
     const id = newId("txn");
     const createdAt = nowIso();
-    run(
-      ctx.db,
-      `INSERT INTO journals (id, kind, memo, initiator_id, idempotency_key, metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      id,
-      input.kind,
-      input.memo ?? null,
-      input.initiatorId ?? null,
-      input.idempotencyKey ?? null,
-      JSON.stringify(input.metadata ?? {}),
-      createdAt,
-    );
-
     // Apply debits before credits so a failure surfaces on the paying account.
     const ordered = [...postings].sort((a, b) => a.amount - b.amount);
+    const fields = {
+      id,
+      kind: input.kind,
+      memo: input.memo ?? null,
+      initiator_id: input.initiatorId ?? null,
+      idempotency_key: input.idempotencyKey ?? null,
+      metadata: JSON.stringify(input.metadata ?? {}),
+      created_at: createdAt,
+    };
+    run(
+      ctx.db,
+      `INSERT INTO journals (id, kind, memo, initiator_id, idempotency_key, metadata, created_at, seal)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      fields.id,
+      fields.kind,
+      fields.memo,
+      fields.initiator_id,
+      fields.idempotency_key,
+      fields.metadata,
+      fields.created_at,
+      sealJournal(ctx, fields, ordered.map((p) => ({ account_id: p.accountId, amount: p.amount, currency: p.currency }))),
+    );
+
     for (const p of ordered) {
       const account = one<AccountRow>(ctx.db, "SELECT * FROM accounts WHERE id = ?", p.accountId);
       if (!account) throw new Error(`Unknown account ${p.accountId}`);

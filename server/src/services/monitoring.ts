@@ -228,8 +228,8 @@ export function reviewAlert(ctx: Ctx, adminId: string, id: string, action: "clea
 }
 
 /** Lets every admin know (in-app and by email) about something that needs them. */
-export function notifyAdmins(ctx: Ctx, message: string) {
-  for (const { id } of all<{ id: string }>(ctx.db, "SELECT id FROM users WHERE role = 'admin' AND status = 'active'")) {
+export function notifyAdmins(ctx: Ctx, message: string, exceptUserId?: string) {
+  for (const { id } of all<{ id: string }>(ctx.db, "SELECT id FROM users WHERE role = 'admin' AND status = 'active' AND id <> ?", exceptUserId ?? "")) {
     addAlert(ctx, id, "account", message);
   }
 }

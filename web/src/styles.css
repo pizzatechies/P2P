@@ -640,3 +640,5 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .statement { box-shadow: none !important; border: 0 !important; padding: 0 !important; }
   .statement .table th, .statement .table td { color: #000 !important; }
 }
+
+.warn-text { color: var(--warn, #b7791f); }

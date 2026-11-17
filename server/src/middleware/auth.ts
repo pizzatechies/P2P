@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
+import { parseIpRule } from "../config.js";
+import { BlockList, isIP } from "node:net";
 import type { Ctx } from "../context.js";
 import { forbidden, HttpError, unauthorized } from "../lib/errors.js";
 import { assertRecentAuth } from "../services/security.js";
@@ -70,6 +72,9 @@ export function requireAdmin(ctx: Ctx) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) return next(unauthorized());
     if (req.user.role !== "admin") return next(forbidden("Admins only"));
+    if (!adminIpAllowed(ctx, req.ip)) {
+      return next(new HttpError(403, "admin_ip_blocked", "Admin tools can't be used from this network. Ask another admin to add its address to ADMIN_ALLOWED_IPS."));
+    }
     if (req.user.status !== "active") return next(new HttpError(403, "account_frozen", "This account is frozen"));
     if (ctx.config.REQUIRE_ADMIN_2FA && !req.user.totpEnabled) {
       return next(new HttpError(403, "admin_2fa_required", "Turn on two-factor authentication to use admin tools"));
@@ -128,4 +133,28 @@ export function csrfGuard(req: Request, _res: Response, next: NextFunction) {
     return next(new HttpError(403, "csrf", "Missing CSRF header"));
   }
   next();
+}
+
+const allowLists = new WeakMap<object, BlockList | null>();
+/** True when ADMIN_ALLOWED_IPS is empty or contains the request's address. */
+export function adminIpAllowed(ctx: Ctx, ip: string | undefined) {
+  let list = allowLists.get(ctx.config);
+  if (list === undefined) {
+    list = null;
+    if (ctx.config.adminAllowedIps.length) {
+      list = new BlockList();
+      for (const entry of ctx.config.adminAllowedIps) {
+        const rule = parseIpRule(entry)!;
+        if (rule.prefix === null) list.addAddress(rule.address, rule.family);
+        else list.addSubnet(rule.address, rule.prefix, rule.family);
+      }
+    }
+    allowLists.set(ctx.config, list);
+  }
+  if (!list) return true;
+  if (!ip) return false;
+  const addr = ip.startsWith("::ffff:") && isIP(ip.slice(7)) === 4 ? ip.slice(7) : ip;
+  const family = isIP(addr);
+  if (!family) return false;
+  return list.check(addr, family === 4 ? "ipv4" : "ipv6");
 }

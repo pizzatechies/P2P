@@ -625,4 +625,16 @@ export const migrations: string[] = [
   CREATE INDEX compliance_alerts_status ON compliance_alerts(status, created_at);
   CREATE INDEX compliance_alerts_user ON compliance_alerts(user_id, created_at);
   `,
+  // 11: Tamper evidence. Journals and audit events carry a chained HMAC seal (see services/integrity.ts),
+  //     and neither can be changed or deleted: only the seal may be rewritten (after a key rotation).
+  `
+  ALTER TABLE journals ADD COLUMN seal TEXT;
+  ALTER TABLE audit_events ADD COLUMN seal TEXT;
+  CREATE TRIGGER journals_no_update BEFORE UPDATE OF id, kind, memo, initiator_id, idempotency_key, metadata, created_at ON journals
+    BEGIN SELECT RAISE(ABORT, 'journals are immutable'); END;
+  CREATE TRIGGER journals_no_delete BEFORE DELETE ON journals BEGIN SELECT RAISE(ABORT, 'journals are immutable'); END;
+  CREATE TRIGGER audit_no_update BEFORE UPDATE OF id, user_id, action, ip, details, created_at ON audit_events
+    BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
+  CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
+  `,
 ];

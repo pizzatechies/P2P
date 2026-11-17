@@ -18,6 +18,7 @@ export function SecurityPage() {
         "Two-factor sign-in with any authenticator app; every code works only once, with backup recovery codes",
         "See every signed-in device and sign any of them out; idle sessions end automatically",
         "Alerts for new-device sign-ins, lockouts and every security change",
+        "An alert the first time money is sent to a new destination, so nobody can empty your account quietly",
       ],
     },
     {
@@ -30,7 +31,10 @@ export function SecurityPage() {
         "Withdrawals and large sends need your password (and 2FA code) again, even when you're signed in",
         "After a password change or 2FA removal, money can't leave for 24 hours, so a hijacker can't empty your account",
         "Withdrawals are held aside before payout and returned automatically if a payout fails",
-        "Per-payment and daily limits apply across every currency",
+        "Per-payment and daily limits apply across every currency, and rise only as you verify your identity",
+        "Larger withdrawals are checked by a second person before they're sent; the money is set aside meanwhile",
+        "Customers' money is kept apart from the business's own and reconciled against the bank several times a day",
+        "Every payment and admin action is sealed in a tamper-evident chain, so records can't be changed after the fact",
       ],
     },
     {
@@ -40,7 +44,7 @@ export function SecurityPage() {
         "AI provider and brokerage keys are encrypted with AES-256-GCM and never shown again; encryption keys can be rotated",
         "Strict browser security headers: Content-Security-Policy, HTTPS-only (HSTS), no framing, no caching of account data",
         "Requests from other websites can't act on your account (two layers of CSRF protection)",
-        "Admins must use two-factor sign-in and re-confirm every admin action",
+        "Admins must use two-factor sign-in, re-confirm every admin action, and can't approve their own requests",
         "Automated code scanning and dependency updates; report issues privately via our security policy",
         "AI replies are rendered safely, so model output can't inject code into the page",
       ],

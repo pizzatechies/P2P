@@ -11,6 +11,9 @@ import { reopenAccount } from "../services/account.js";
 import { documentHeaders, limitsFor, listSubmissions, readDocument, reviewSubmission, setLevel } from "../services/kyc.js";
 import { getUserRow } from "../services/users.js";
 import { verifyLedger } from "../services/ledger.js";
+import { recentIntegrity, verifyIntegrity } from "../services/integrity.js";
+import { securityPosture } from "../services/posture.js";
+import { addAlert } from "../services/security.js";
 import {
   entriesCsv,
   journalDetail,
@@ -67,10 +70,23 @@ export function adminRoutes(ctx: Ctx) {
       customerFunds,
       ledger: verifyLedger(ctx),
       tradingRecords: verifyTradingRecords(ctx),
+      integrity: recentIntegrity(ctx),
       pendingPayouts,
       openAlerts,
       safeguarding,
     });
+  });
+
+  /** The security checklist: what's protected and what still needs doing. */
+  r.get("/security", (_req, res) => {
+    res.json(securityPosture(ctx));
+  });
+
+  /** Verifies the sealed chains (ledger and audit log) right now. */
+  r.post("/integrity/verify", (req, res) => {
+    const result = verifyIntegrity(ctx);
+    audit(ctx, req.user!.id, "admin.integrity_verified", { ok: result.ok }, req.ip);
+    res.json({ integrity: result });
   });
 
   // ---- The books: journals, trial balance, end-of-day snapshots, exports ----
@@ -325,6 +341,8 @@ export function adminRoutes(ctx: Ctx) {
     if (target === req.user!.id) throw new HttpError(400, "bad_request", "You can't change your own limits");
     run(ctx.db, "UPDATE users SET limit_tx_usd = ?, limit_daily_usd = ? WHERE id = ?", body.txUsd, body.dailyUsd, target);
     audit(ctx, req.user!.id, "admin.limits_set", { target, ...body }, req.ip);
+    const l = limitsFor(ctx, getUserRow(ctx, target));
+    addAlert(ctx, target, "account", `Your limits were changed by our team: $${l.txUsd.toLocaleString("en-US")} per payment and $${l.dailyUsd.toLocaleString("en-US")} a day.`);
     res.json({ ok: true });
   });
 
@@ -378,6 +396,7 @@ export function adminRoutes(ctx: Ctx) {
     if (Number(changed.changes) === 0) throw notFound("User not found");
     if (status === "frozen") run(ctx.db, "DELETE FROM sessions WHERE user_id = ?", target);
     audit(ctx, req.user!.id, "admin.user_status", { target, status }, req.ip);
+    addAlert(ctx, target, "account", status === "frozen" ? "Your account was frozen by our team. Contact support to find out more." : "Your account is active again.");
     res.json({ ok: true });
   });
 

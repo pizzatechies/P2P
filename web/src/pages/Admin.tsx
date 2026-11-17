@@ -13,6 +13,7 @@ interface Overview {
   systemAccounts: { code: string; currency: string; balance: string }[];
   customerFunds: { currency: string; total: string }[];
   ledger: { ok: boolean; unbalanced: unknown[]; drift: unknown[]; totals: unknown[] };
+  integrity?: { ok: boolean; journals: { checked: number; brokenAt: string | null }; audit: { checked: number; brokenAt: string | null } };
   pendingPayouts?: number;
   openAlerts?: number;
   safeguarding?: { currency: string; status: "covered" | "shortfall" | "unverified"; difference: string }[];
@@ -118,6 +119,11 @@ export function AdminPage() {
             <div className="stat-label">Ledger integrity</div>
             <div className={`stat-value ${o.ledger.ok ? "good" : "bad"}`}>{o.ledger.ok ? "✓ Balanced" : "✗ Mismatch"}</div>
             <div className="stat-sub">{o.journals.toLocaleString()} journals · {o.users} users</div>
+            {o.integrity && (
+              <div className={`small ${o.integrity.ok ? "good" : "bad"}`} style={{ marginTop: 4 }}>
+                {o.integrity.ok ? "✓ Seals intact (books and audit log)" : `✗ Broken seal at ${o.integrity.journals.brokenAt ?? `audit event ${o.integrity.audit.brokenAt}`}`}
+              </div>
+            )}
           </div>
           <div className="card">
             <div className="stat-label">Customer funds held</div>
@@ -150,6 +156,7 @@ export function AdminPage() {
           </div>
         </div>
       )}
+      {!overview.error && <SecurityChecklist />}
       {!overview.error && <PayoutQueue onChange={overview.reload} />}
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
       {!overview.error && <KycQueue />}
@@ -476,6 +483,58 @@ function ComplianceQueue({ onChange }: { onChange: () => void }) {
           <ComplianceAlertRow key={a.id} a={a} onReviewed={() => { list.reload(); onChange(); }} />
         ))}
       </div>
+    </div>
+  );
+}
+
+interface Posture {
+  score: number;
+  failing: number;
+  warnings: number;
+  checks: { id: string; area: string; label: string; status: "pass" | "warn" | "fail"; detail: string; fix?: string }[];
+}
+
+const CHECK_ICON = { pass: "✓", warn: "!", fail: "✗" } as const;
+const CHECK_CLASS = { pass: "good", warn: "warn-text", fail: "bad" } as const;
+
+/** What's protected and what still needs doing, worst first. */
+function SecurityChecklist() {
+  const data = useLoad(() => api.get<Posture>("/api/admin/security"));
+  const d = data.data;
+  if (!d) return null;
+  const open = d.checks.filter((c) => c.status !== "pass");
+  const passed = d.checks.filter((c) => c.status === "pass");
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head">
+        <h2><Icon.Shield size={16} /> Security checklist</h2>
+        <span className={`pill ${d.failing ? "bad" : d.warnings ? "warn" : "good"}`}>
+          {passed.length} of {d.checks.length} in place{d.failing ? ` · ${d.failing} to fix` : ""}
+        </span>
+      </div>
+      {open.length === 0 && <p className="good small" style={{ marginTop: 0 }}>Everything on the list is in place.</p>}
+      <div className="stack-sm">
+        {open.map((c) => (
+          <div key={c.id} className="row" style={{ alignItems: "flex-start", gap: 10, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 10 }}>
+            <strong className={CHECK_CLASS[c.status]} style={{ width: 16, textAlign: "center" }} aria-label={c.status}>{CHECK_ICON[c.status]}</strong>
+            <div className="grow">
+              <div><strong>{c.label}</strong> <span className="faint xs">{c.area}</span></div>
+              <div className="small muted">{c.detail}</div>
+              {c.fix && <div className="small" style={{ marginTop: 2 }}>{c.fix}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {passed.length > 0 && (
+        <details style={{ marginTop: 10 }}>
+          <summary className="small" style={{ cursor: "pointer" }}>{passed.length} in place</summary>
+          <div className="stack-sm" style={{ marginTop: 6 }}>
+            {passed.map((c) => (
+              <div key={c.id} className="small"><span className="good">✓</span> <strong>{c.label}</strong> <span className="muted">· {c.detail}</span></div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

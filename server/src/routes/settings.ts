@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { notifyAdmins } from "../services/monitoring.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { all } from "../db/index.js";
@@ -122,6 +123,7 @@ export function settingsRoutes(ctx: Ctx) {
     const user = claimAdmin(ctx, req.user!.id, code);
     audit(ctx, user.id, "admin.claimed", {}, req.ip);
     addAlert(ctx, user.id, "admin", "This account now has admin access.", req.ip);
+    notifyAdmins(ctx, `@${user.handle} now has admin access. If you didn't expect this, review it under Admin.`, user.id);
     res.json({ user: toAuthUser(user) });
   });
 

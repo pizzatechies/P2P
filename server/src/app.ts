@@ -25,6 +25,7 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { rekeySecrets } from "./services/rekey.js";
 import { assignMissingAccountNumbers } from "./services/users.js";
 import { backfillFills } from "./services/trading/records.js";
+import { sealAtStartup } from "./services/integrity.js";
 
 /** Strips secrets that can appear in URLs (the M-Pesa callback token) before anything is logged. */
 export function redactUrl(url: string) {
@@ -60,6 +61,11 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   const rekey = rekeySecrets(ctx);
   assignMissingAccountNumbers(ctx);
   backfillFills(ctx);
+  const sealing = sealAtStartup(ctx);
+  for (const [chain, state] of Object.entries(sealing)) {
+    if (state === "broken") console.error(`[integrity] the ${chain === "journals" ? "ledger" : "audit log"} chain doesn't verify: records may have been changed outside Aurex`);
+    else if (state !== "ok") console.log(`[integrity] ${chain} ${state}`);
+  }
   if (rekey.rekeyed || rekey.unreadable) {
     console.warn(`[security] re-encrypted ${rekey.rekeyed} secret(s) with the current MASTER_KEY; ${rekey.unreadable} could not be read with any configured key`);
   }

@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { appendAudit } from "./integrity.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { decryptSecret, generateRecoveryCodes, looksLikeRecoveryCode, matchTotp, recoveryCodeHash, safeEqual } from "../lib/crypto.js";
 import { HttpError } from "../lib/errors.js";
@@ -6,7 +7,7 @@ import { emailAlert } from "./email.js";
 import type { UserRow } from "./users.js";
 
 /** Alerts important enough to also email (to verified addresses). */
-const EMAILED = new Set(["new_device", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "admin", "security_hold", "account"]);
+const EMAILED = new Set(["new_payee", "new_device", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "admin", "security_hold", "account"]);
 
 // ---------------------------------------------------------------------------
 // Security alerts: shown in the app (dashboard banner, Settings → Security).
@@ -50,14 +51,7 @@ export function recordFailedAttempt(ctx: Ctx, user: UserRow, ip?: string) {
   const until = new Date(Date.now() + minutes * 60_000).toISOString();
   run(ctx.db, "UPDATE users SET failed_logins = 0, lockouts = ?, locked_until = ? WHERE id = ?", lockouts, until, user.id);
   addAlert(ctx, user.id, "account_locked", `Your account was locked for ${minutes} minutes after ${failures} failed sign-in attempts.`, ip);
-  run(
-    ctx.db,
-    "INSERT INTO audit_events (user_id, action, ip, details, created_at) VALUES (?, 'security.account_locked', ?, ?, ?)",
-    user.id,
-    ip ?? null,
-    JSON.stringify({ minutes }),
-    nowIso(),
-  );
+  appendAudit(ctx, user.id, "security.account_locked", { minutes }, ip);
 }
 
 export function recordSuccessfulAttempt(ctx: Ctx, userId: string) {

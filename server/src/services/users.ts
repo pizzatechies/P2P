@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { appendAudit } from "./integrity.js";
 import type { Ctx } from "../context.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import {
@@ -92,15 +93,7 @@ export function publicProfile(u: Pick<UserRow, "id" | "handle" | "display_name">
 }
 
 export function audit(ctx: Ctx, userId: string | null, action: string, details: Record<string, unknown> = {}, ip?: string) {
-  run(
-    ctx.db,
-    "INSERT INTO audit_events (user_id, action, ip, details, created_at) VALUES (?, ?, ?, ?, ?)",
-    userId,
-    action,
-    ip ?? null,
-    JSON.stringify(details),
-    nowIso(),
-  );
+  appendAudit(ctx, userId, action, details, ip);
 }
 
 export async function registerUser(
@@ -316,7 +309,11 @@ export function userForSessionToken(ctx: Ctx, token: string): { user: UserRow; s
   );
   if (!row) return undefined;
   const now = Date.now();
-  const idleMs = ctx.config.SESSION_IDLE_MINUTES * 60_000;
+  const idleMinutes =
+    row.role === "admin" && ctx.config.ADMIN_SESSION_IDLE_MINUTES > 0
+      ? Math.min(ctx.config.ADMIN_SESSION_IDLE_MINUTES, ctx.config.SESSION_IDLE_MINUTES || Infinity)
+      : ctx.config.SESSION_IDLE_MINUTES;
+  const idleMs = idleMinutes * 60_000;
   const lastSeen = Date.parse(row.last_seen_at ?? row.expires_at);
   if (Date.parse(row.expires_at) <= now || (idleMs > 0 && row.last_seen_at && now - lastSeen > idleMs)) {
     run(ctx.db, "DELETE FROM sessions WHERE id = ?", sessionId);

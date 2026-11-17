@@ -389,6 +389,17 @@ function externalView(r: ExternalRow) {
   };
 }
 
+/** Identifies a payout destination regardless of the name typed for it. */
+function destinationFingerprint(dest: PayoutDestination): string {
+  const detail = Object.entries(dest.details ?? {})
+    .filter(([k]) => /^(iban|accountnumber|email|phonenumber|bic|swift|sortcode|routingnumber)$/i.test(k))
+    .map(([k, v]) => `${k.toLowerCase()}=${String(v).replace(/\s+/g, "").toLowerCase()}`)
+    .sort();
+  return [dest.type, dest.accountNumber, dest.bankCode, dest.email, dest.wallet, dest.country, dest.firstName, dest.lastName, ...detail]
+    .map((v) => String(v ?? "").replace(/\s+/g, "").toLowerCase())
+    .join("|");
+}
+
 /** The last few characters of where a payout went, safe to show in lists. */
 function destinationHint(dest: PayoutDestination): string | null {
   const detail = Object.entries(dest.details ?? {}).find(([k]) => /^(iban|accountnumber|email|phonenumber)$/i.test(k))?.[1];
@@ -627,6 +638,25 @@ export async function withdraw(
     });
     run(ctx.db, "UPDATE external_transfers SET journal_id = ? WHERE id = ?", journal.id, id);
   });
+
+  // A payout to somewhere this customer has never sent money before: tell them (by email too), so a
+  // thief who got into the account can't empty it quietly.
+  const fingerprint = destinationFingerprint(input.destination);
+  const known = all<{ destination: string | null }>(
+    ctx.db,
+    "SELECT destination FROM external_transfers WHERE user_id = ? AND direction = 'withdrawal' AND id <> ? AND status IN ('pending','completed')",
+    user.id,
+    id,
+  ).some((r) => r.destination && destinationFingerprint(JSON.parse(r.destination) as PayoutDestination) === fingerprint);
+  if (!known) {
+    const hint = destinationHint(input.destination);
+    addAlert(
+      ctx,
+      user.id,
+      "new_payee",
+      `A withdrawal of ${currency} ${fromMinor(input.amountMinor, currency)} to a new destination (${input.destination.name}${hint ? ` ${hint.includes("@") ? hint : `••${hint}`}` : ""}) was requested. If this wasn't you, change your password and contact support now.`,
+    );
+  }
 
   // 2) Monitoring, then either hold the payout for a second person or send it now.
   await monitor(ctx, { kind: "withdrawal", userId: user.id, ref: id, currency, amountMinor: input.amountMinor });

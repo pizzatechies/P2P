@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import { z } from "zod";
 
 const bool = z
@@ -23,6 +24,10 @@ const EnvSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().positive().default(72),
   /** Sign out after this many minutes without activity (0 = never). */
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).default(120),
+  /** Admins are signed out sooner when idle (0 = same as everyone). */
+  ADMIN_SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).default(30),
+  /** Comma-separated IP addresses or CIDR ranges allowed to use admin tools (empty = anywhere). */
+  ADMIN_ALLOWED_IPS: z.string().default(""),
   ADMIN_EMAILS: z.string().default(""),
   /**
    * Secret an ADMIN_EMAILS account enters once (Settings → Admin access) to become admin. Without it,
@@ -235,6 +240,8 @@ export interface Config extends Env {
   isTest: boolean;
   masterKey: Buffer;
   adminEmails: Set<string>;
+  /** ADMIN_ALLOWED_IPS, parsed. */
+  adminAllowedIps: string[];
   rails: string[];
   appOrigin: string;
   freeModels: Set<string>;
@@ -320,6 +327,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     );
   }
   if (env.ADMIN_SETUP_CODE && env.ADMIN_SETUP_CODE.length < 16) throw new Error("ADMIN_SETUP_CODE must be at least 16 characters.");
+  for (const entry of list(env.ADMIN_ALLOWED_IPS)) {
+    if (!parseIpRule(entry)) throw new Error(`ADMIN_ALLOWED_IPS: "${entry}" isn't an IP address or CIDR range (e.g. 203.0.113.7 or 198.51.100.0/24).`);
+  }
   if (isProd && rails.includes("sandbox")) {
     console.warn(
       "[config] WARNING: the 'sandbox' payment rail is enabled in production. It credits wallets without moving real money.",
@@ -339,6 +349,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
         .filter(Boolean),
     ),
     rails,
+    adminAllowedIps: list(env.ADMIN_ALLOWED_IPS),
     appOrigin: new URL(env.APP_URL).origin,
     freeModels: new Set(
       env.AI_FREE_MODELS.split(",")
@@ -358,4 +369,15 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     cryptoData: env.CRYPTO_DATA ?? (env.NODE_ENV === "test" ? "simulated" : "coinbase"),
     stockDirectory: env.STOCK_DIRECTORY ?? (env.NODE_ENV === "test" ? "builtin" : "nasdaq"),
   };
+}
+
+/** An IP address or CIDR range from ADMIN_ALLOWED_IPS, or null if it isn't one. */
+export function parseIpRule(entry: string): { address: string; prefix: number | null; family: "ipv4" | "ipv6" } | null {
+  const [address, bits] = entry.trim().split("/");
+  const family = isIP(address);
+  if (!family) return null;
+  if (bits === undefined) return { address, prefix: null, family: family === 4 ? "ipv4" : "ipv6" };
+  const prefix = Number(bits);
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > (family === 4 ? 32 : 128)) return null;
+  return { address, prefix, family: family === 4 ? "ipv4" : "ipv6" };
 }

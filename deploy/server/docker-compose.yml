@@ -21,6 +21,16 @@ services:
       - aurex-data:/data
     expose:
       - "4000"
+    # Locked down: a read-only system, no Linux capabilities beyond the few the entrypoint needs to
+    # hand the data disk to the app's user (it then runs with none), and no way to regain privileges.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     logging: &logs
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
@@ -40,6 +50,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
     logging: *logs
 
   # Streams every database change to S3 (point-in-time restore). Enabled with COMPOSE_PROFILES=backup.
