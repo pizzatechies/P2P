@@ -54,7 +54,30 @@ services without a persistent disk (App Runner, Lightsail containers, Fargate) w
 | Data transfer | the first 100 GB/month out is free |
 | **Total** | **≈ $18/month** |
 
-New AWS accounts get free-tier credits that cover this for a while. `t4g.medium` (4 GB) costs about $12 more per month if you need more headroom. Check current prices with the [AWS Pricing Calculator](https://calculator.aws/).
+`t4g.medium` (4 GB) costs about $12 more per month if you need more headroom. Check current prices with the [AWS Pricing Calculator](https://calculator.aws/).
+
+### On a brand-new AWS account (Free plan)
+
+Accounts opened since July 2025 usually start on the **Free plan**. Aurex runs on it, with these rules:
+
+- **Credits:** $100 when you sign up, plus $20 for each of five activities in the **Explore AWS** box on Console
+  Home (filter: *Earn AWS credits*). Setting up the budget above is one of them. Aurex uses up to about $18 a
+  month of credits.
+- **Nothing is ever charged** on the Free plan. Your credit balance and the days left are on the
+  **Billing and Cost Management** home page.
+- **Server size:** only small sizes are allowed. Keep **InstanceType** at `t4g.small` (or `t3.small`);
+  medium and large sizes fail on the Free plan.
+- **Region:** stay with `eu-west-1` or another standard region. Opt-in regions such as Cape Town cost more
+  and use up the credits faster.
+- **Buying a domain** inside AWS may not be allowed on the Free plan. Buy it from another registrar
+  (Cloudflare, Namecheap…) and point an A record at the server.
+- **The plan ends after up to 6 months**, or sooner if the credits run out. Then **the account closes and
+  Aurex goes offline**. You have 90 days to upgrade and get everything back; after that, AWS deletes the
+  account, including the backups. So, **2–3 weeks before the end** (or when about $20 of credits is left),
+  go to **Billing → Upgrade plan → Upgrade account**. Leftover credits carry over; after them you pay about
+  $18 a month.
+- **Brand-new accounts** can take from a few minutes to a few hours to be fully activated. If the stack fails
+  with *PendingVerification*, wait and create it again (see Troubleshooting).
 
 ---
 
@@ -275,4 +298,7 @@ kept on purpose; delete them by hand (S3 → empty then delete the bucket; Param
 | "Not secure" or no HTTPS | The domain's A record must point to the Elastic IP, and ports 80/443 must be open. See `docker compose logs caddy`. |
 | Build ran out of memory | The installer adds 2 GB of swap; if it still fails, use `t4g.medium`. |
 | Backups not appearing in S3 | The instance role needs the bucket permissions, and the metadata hop limit must be 2. See `docker compose logs litestream`. |
+| Stack failed: *PendingVerification* or "your account is being validated" | A brand-new account isn't fully activated yet. Delete the stack, wait (minutes to a few hours), and create it again. |
+| Stack failed: *VcpuLimitExceeded* | Service Quotas → Amazon EC2 → *Running On-Demand Standard instances* → **Request increase** (ask for 4), then create the stack again. |
+| Stack failed: instance type not allowed or not available | Delete the stack and create it again with **InstanceType** `t3.small`. |
 | Cookies not sticking / can't sign in | Always use the `https://` address in `APP_URL`; production cookies require HTTPS. |
