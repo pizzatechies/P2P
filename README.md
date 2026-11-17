@@ -111,6 +111,43 @@ System accounts: `external` (the outside world), `clearing` (withdrawals in flig
 
 Customers can download their wallet activity for any dates (up to a year) as CSV from Account → Statements, alongside the monthly statements.
 
+### Real money: payout review, monitoring and safeguarding
+
+These provisions matter once real money flows through the rails.
+
+**Payout review (two people for money leaving).** A withdrawal at or over `PAYOUT_REVIEW_USD` ($1,000), or from a customer with an open medium or high monitoring alert, isn't sent straight away:
+
+- The money moves to clearing so it can't be spent twice. The customer sees "In review", and admins get an alert.
+- Under **Admin → Withdrawals to review**, a second admin either approves it (it goes to the payment provider then) or returns the money with a reason the customer sees.
+- Nobody can review their own withdrawal, and decisions need a recent sign-in and are audited.
+- `PAYOUT_REVIEW=false` turns this off.
+
+**Transaction monitoring.** Every deposit, payment and withdrawal is checked against common money-laundering patterns:
+
+| Pattern | Severity |
+|---|---|
+| A single payment at or over `MONITOR_LARGE_USD` ($3,000) | medium |
+| Money withdrawn within a day of arriving (80% or more of it) | high |
+| Three or more payments in a day just under the per-payment limit (structuring) | medium |
+| Paying, or being paid by, 10 or more different people in a day | medium |
+| A withdrawal from an account less than 3 days old | medium |
+
+Alerts appear under **Admin → Monitoring alerts** and on the customer's admin page. An admin clears them with a note, or escalates them (optionally freezing the account). Customers never see alerts: in most AML regimes, telling a customer they're under review ("tipping off") is itself an offence.
+
+**Safeguarding** (Admin → Ledger & records → Safeguarding). Customers' money must be kept apart from the business's own and be there in full.
+
+- **Register where the money is held:** safeguarding bank accounts, mobile-money (e.g. an M-Pesa paybill) and provider balances. Account numbers are stored encrypted, and viewing one is audited.
+- **Record balances:** type them in from statements, or fetch them from **Stripe**, **Wise** and **Flutterwave** with the server's keys.
+- **Reconciliation** compares, per currency, what Aurex owes (every customer wallet plus withdrawals not yet paid out) with the latest balances held:
+  - The result is **covered**, **shortfall** or **not verified** (no account, or a balance older than `SAFEGUARDING_STALE_HOURS`, 48).
+  - It runs every 6 hours and on demand. Results are stored and can't be changed, and a shortfall alerts every admin.
+- **Income to move out:** fees and FX income belong to the business. After moving them from the safeguarding account to the operating account at the bank, record the sweep, which posts an `income_sweep` journal so the books keep matching the money held.
+- **Who holds customers' assets:**
+  - Wallet money is held by Aurex (safeguarded).
+  - Stocks and crypto on real accounts are held by the customer's own Alpaca account.
+  - Linked accounts stay at their bank or broker (read-only).
+  - Demo money is virtual.
+
 **Payment rails** are how money enters and leaves the platform (`server/src/services/rails`):
 
 | Rail | Deposits | Withdrawals | Notes |
@@ -301,13 +338,14 @@ No system can honestly promise to be unhackable. Aurex is built so that a single
 The software is a foundation. Running a real money or brokerage business has requirements that code alone can't meet:
 
 1. **Licensing and partners.** Holding and transmitting customer funds generally needs a money transmitter / e-money / payment institution licence in each jurisdiction, or a regulated partner (a banking-as-a-service provider, or a payments platform with marketplace features such as Stripe Connect). Brokerage likewise needs a broker-dealer or a partner (for example Alpaca's Broker API for multi-user brokerage). Users here trade only their *own* Alpaca accounts.
-2. **KYC/AML.** Aurex collects identity details and documents and ties limits to the verification level (see [Accounts](#accounts-and-identity-verification)), but a person on your team reviews them. For real customers, add a verification provider (Persona, Onfido, Sumsub, …) for document and liveness checks, plus sanctions screening and transaction monitoring, and keep records for as long as your regulator requires.
-3. **Disable the sandbox rail.** Set `PAYMENT_RAILS=stripe` or your licensed rails. The server warns at startup if `sandbox` is enabled in production.
-4. **Secrets.** Set a strong `MASTER_KEY` (`openssl rand -hex 32`) and keep it safe. Losing it makes stored user keys unreadable; rotating it requires re-encryption.
-5. **HTTPS.** Run behind a TLS-terminating proxy with `TRUST_PROXY=true` and `APP_URL=https://…`.
-6. **Scale-out.** SQLite in WAL mode handles a single instance well. For several replicas, move to Postgres (the SQL is portable) and put the rate limiter on a shared store such as Redis.
-7. **Backups.** Back up the database file continuously (for example with Litestream) and test restores.
-8. **Disclosures.** AI trading signals are decision aids, not financial advice. Keep the in-app disclaimers and add your own terms.
+2. **Safeguarding.** Open a designated safeguarding account with your bank for each currency you hold. Register it under Safeguarding, and record its balance every day (or fetch it by API) so reconciliation can prove customers' money is all there. Payout review and transaction monitoring are on by default; tune `PAYOUT_REVIEW_USD` and `MONITOR_LARGE_USD` to your risk appetite and your regulator's expectations.
+3. **KYC/AML.** Aurex collects identity details and documents and ties limits to the verification level (see [Accounts](#accounts-and-identity-verification)), but a person on your team reviews them. For real customers, add a verification provider (Persona, Onfido, Sumsub, …) for document and liveness checks and sanctions screening, consider a dedicated monitoring service as volumes grow, and keep records for as long as your regulator requires.
+4. **Disable the sandbox rail.** Set `PAYMENT_RAILS=stripe` or your licensed rails. The server warns at startup if `sandbox` is enabled in production.
+5. **Secrets.** Set a strong `MASTER_KEY` (`openssl rand -hex 32`) and keep it safe. Losing it makes stored user keys unreadable; rotating it requires re-encryption.
+6. **HTTPS.** Run behind a TLS-terminating proxy with `TRUST_PROXY=true` and `APP_URL=https://…`.
+7. **Scale-out.** SQLite in WAL mode handles a single instance well. For several replicas, move to Postgres (the SQL is portable) and put the rate limiter on a shared store such as Redis.
+8. **Backups.** Back up the database file continuously (for example with Litestream) and test restores.
+9. **Disclosures.** AI trading signals are decision aids, not financial advice. Keep the in-app disclaimers and add your own terms.
 
 ### Website on GitHub Pages
 
@@ -379,7 +417,7 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Trading | `GET /trading/account`, `GET /trading/quote/:symbol`, `GET /trading/bars/:symbol`, `GET/POST/DELETE /trading/watchlist`, `GET/POST /trading/orders`, `POST /trading/orders/:id/cancel`, `POST /trading/analyze`, `GET /trading/signals`, `POST /trading/signals/:id/execute`, `GET /trading/records/{trades,realized,performance,cash}` (`?format=csv` on trades and realized) |
 | Settings | `PATCH /settings/profile`, `POST /settings/password`, `POST /settings/2fa/{setup,confirm,disable}`, `GET/PUT/DELETE /settings/api-keys/:provider`, `PUT/DELETE /trading/alpaca-keys`, `PUT /trading/broker` |
 | Account | `GET /account`, `GET /account/verification`, `PUT /account/verification/:level`, `POST /account/documents/:kind` (raw file body), `GET /account/documents/:id`, `POST /account/verification/:level/submit`, `GET /account/statements`, `GET /account/statements/:period?currency=&format=csv`, `GET /account/activity?from=&to=&currency=`, `GET /account/export`, `POST /account/close` |
-| Admin | `GET /admin/overview`, `GET /admin/users?q=`, `GET /admin/users/:id`, `POST /admin/users/:id/{status,limits,notes,kyc-level}`, `GET /admin/kyc`, `POST /admin/kyc/:id/review`, `GET /admin/kyc/documents/:id`, `GET /admin/ledger/{journals,journals/:id,trial-balance,snapshots,export}`, `GET /admin/trading` |
+| Admin | `GET /admin/overview`, `GET /admin/users?q=`, `GET /admin/users/:id`, `POST /admin/users/:id/{status,limits,notes,kyc-level}`, `GET /admin/kyc`, `POST /admin/kyc/:id/review`, `GET /admin/kyc/documents/:id`, `GET /admin/ledger/{journals,journals/:id,trial-balance,snapshots,export}`, `GET /admin/trading`, `GET /admin/payouts`, `POST /admin/payouts/:id/{approve,reject}`, `GET /admin/compliance`, `POST /admin/compliance/:id`, `GET /admin/safeguarding`, `POST /admin/safeguarding/{accounts,refresh,reconcile,sweep}`, `PATCH /admin/safeguarding/accounts/:id`, `GET/POST /admin/safeguarding/accounts/:id/balances`, `GET /admin/safeguarding/accounts/:id/details` |
 | Connections | `GET /connections/providers`, `GET /connections`, `POST /connections/:provider/start`, `POST /connections/links/:id/complete`, `POST /connections/:id/sync`, `DELETE /connections/:id`, `GET /connections/oauth/:provider/callback` |
 | Payouts | `POST /payments/payout-requirements`, `POST /payments/transfers/:id/refresh` |
 | Academy & upgrade | `GET /learn`, `POST /learn/lessons/:id/quiz`, `POST /trading/account/reset`, `GET/PUT /trading/upgrade`, `POST /trading/upgrade/submit`, `GET /admin/upgrades`, `POST /admin/upgrades/:userId/review` |
@@ -392,4 +430,4 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 npm test
 ```
 
-The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. An accounts suite covers account numbers and their check digit, paying by account number, the identity levels and their limits, document checks, admin review (including no self-review), custom limits, statements and CSV formula neutralising, the data export (no secrets) and closing and reopening an account. A records suite covers trade records and realised profit and loss (average cost, futures flips), the demo cash journal adding up to the cash, immutability, reports and CSVs, performance from the last reset, backfilling older orders, Alpaca executions recorded once, the journal explorer, the trial balance, end-of-day snapshots catching a changed figure, and the audited ledger export. Further suites cover email verification (including Resend delivery and alert emails), the academy (server-side grading, missions), demo resets and the real-account upgrade (checklist, encryption, warnings, admin review, live-key enforcement). A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.
+The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. An accounts suite covers account numbers and their check digit, paying by account number, the identity levels and their limits, document checks, admin review (including no self-review), custom limits, statements and CSV formula neutralising, the data export (no secrets) and closing and reopening an account. A money suite covers payout review (holding, approving, returning, no self-review), the monitoring rules and their review (including that customers never see alerts), safeguarding reconciliation (shortfall, covered, stale statements, immutable records), fetching provider balances, and sweeping fee income with the books still balanced. A records suite covers trade records and realised profit and loss (average cost, futures flips), the demo cash journal adding up to the cash, immutability, reports and CSVs, performance from the last reset, backfilling older orders, Alpaca executions recorded once, the journal explorer, the trial balance, end-of-day snapshots catching a changed figure, and the audited ledger export. Further suites cover email verification (including Resend delivery and alert emails), the academy (server-side grading, missions), demo resets and the real-account upgrade (checklist, encryption, warnings, admin review, live-key enforcement). A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.

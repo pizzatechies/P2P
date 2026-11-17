@@ -13,6 +13,35 @@ interface Overview {
   systemAccounts: { code: string; currency: string; balance: string }[];
   customerFunds: { currency: string; total: string }[];
   ledger: { ok: boolean; unbalanced: unknown[]; drift: unknown[]; totals: unknown[] };
+  pendingPayouts?: number;
+  openAlerts?: number;
+  safeguarding?: { currency: string; status: "covered" | "shortfall" | "unverified"; difference: string }[];
+}
+
+interface PayoutReview {
+  id: string;
+  rail: string;
+  currency: string;
+  amount: string;
+  fee: string;
+  createdAt: string;
+  reasons: string[];
+  destinationName: string | null;
+  destination: { type: string; name: string; accountLast4: string | null; country: string | null } | null;
+  user: { id: string; handle: string; email: string; name: string; kycLevel: number; accountNumber: string | null; since: string };
+}
+
+export interface ComplianceAlert {
+  id: string;
+  rule: string;
+  label: string;
+  severity: "low" | "medium" | "high";
+  summary: string;
+  status: "open" | "cleared" | "escalated";
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  user: { id: string; handle?: string; email?: string; accountNumber?: string | null };
 }
 
 interface AdminUser {
@@ -84,7 +113,7 @@ export function AdminPage() {
         <ErrorText error={overview.error} />
       )}
       {o && (
-        <div className="grid grid-3" style={{ marginBottom: 16 }}>
+        <div className="grid grid-4" style={{ marginBottom: 16 }}>
           <div className="card">
             <div className="stat-label">Ledger integrity</div>
             <div className={`stat-value ${o.ledger.ok ? "good" : "bad"}`}>{o.ledger.ok ? "✓ Balanced" : "✗ Mismatch"}</div>
@@ -98,6 +127,19 @@ export function AdminPage() {
             ))}
           </div>
           <div className="card">
+            <div className="stat-label">Customers' money held</div>
+            {(o.safeguarding ?? []).length === 0 && <div className="stat-sub">No safeguarding accounts recorded</div>}
+            {(o.safeguarding ?? []).map((s) => (
+              <div key={s.currency} className="row between small">
+                <span className="muted">{s.currency}</span>
+                <span className={s.status === "covered" ? "good" : s.status === "shortfall" ? "bad" : "muted"}>
+                  {s.status === "covered" ? "✓ Covered" : s.status === "shortfall" ? `✗ Short ${money(s.difference.replace("-", ""), s.currency)}` : "Not verified"}
+                </span>
+              </div>
+            ))}
+            <Link to="/app/admin/ledger?tab=safeguarding" className="small">Safeguarding →</Link>
+          </div>
+          <div className="card">
             <div className="stat-label">System accounts</div>
             {o.systemAccounts.map((a) => (
               <div key={a.code + a.currency} className="row between small">
@@ -108,6 +150,8 @@ export function AdminPage() {
           </div>
         </div>
       )}
+      {!overview.error && <PayoutQueue onChange={overview.reload} />}
+      {!overview.error && <ComplianceQueue onChange={overview.reload} />}
       {!overview.error && <KycQueue />}
       {!overview.error && <UpgradeQueue />}
       <div className="card flush">
@@ -327,6 +371,109 @@ function KycQueue() {
       <div className="stack">
         {(list.data ?? []).map((s) => (
           <KycSubmissionCard key={s.id} s={s} onReviewed={list.reload} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Withdrawals waiting for a second person before the money is sent. */
+function PayoutQueue({ onChange }: { onChange: () => void }) {
+  const toast = useToast();
+  const list = useLoad(() => api.get<{ payouts: PayoutReview[] }>("/api/admin/payouts").then((r) => r.payouts));
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!list.data || list.data.length === 0) return null;
+  async function decide(p: PayoutReview, approve: boolean) {
+    const note = approve ? undefined : prompt("Why isn't it being sent? (the customer sees this)") ?? "";
+    if (!approve && (!note || note.trim().length < 3)) return;
+    setBusy(p.id);
+    try {
+      const r = await api.post<{ transfer: { status: string; failureReason: string | null } }>(`/api/admin/payouts/${p.id}/${approve ? "approve" : "reject"}`, { note });
+      if (approve) toast(r.transfer.status === "failed" ? `The provider refused it: ${r.transfer.failureReason}. The money was returned.` : `Sent ${money(p.amount, p.currency)} to ${p.destinationName ?? "the customer"}`, r.transfer.status === "failed" ? "error" : undefined);
+      else toast(`Returned ${money(p.amount, p.currency)} to @${p.user.handle}`);
+      list.reload();
+      onChange();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Withdrawals to review</h2><span className="faint small">{list.data.length} waiting</span></div>
+      <p className="muted small" style={{ marginTop: 0 }}>The money is set aside. Approving sends it to the payment provider now; returning puts it back in the customer's wallet. You can't review your own.</p>
+      <div className="stack">
+        {list.data.map((p) => (
+          <div key={p.id} className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
+            <div>
+              <strong className="num">{money(p.amount, p.currency)}</strong> to {p.destinationName ?? "an account"}
+              {p.destination?.accountLast4 && <span className="faint"> ••{p.destination.accountLast4}</span>} via {p.rail}
+              <div className="small">
+                <Link to={`/app/admin/users/${p.user.id}`}>@{p.user.handle}</Link> <span className="faint">· {["Basic", "Verified", "Enhanced"][p.user.kycLevel] ?? p.user.kycLevel} · customer since {new Date(p.user.since).toLocaleDateString()}</span>
+              </div>
+              <div className="faint xs">{p.reasons.join(" · ")} · requested {timeAgo(p.createdAt)}</div>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" disabled={busy === p.id} onClick={() => decide(p, true)}>Approve &amp; send</button>
+              <button className="btn ghost sm" disabled={busy === p.id} onClick={() => decide(p, false)}>Return money</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const SEVERITY_PILL: Record<string, string> = { high: "bad", medium: "warn", low: "" };
+
+/** One monitoring alert, with clear / escalate. Used on the Admin page and a customer's page. */
+export function ComplianceAlertRow({ a, onReviewed, showUser = true }: { a: ComplianceAlert; onReviewed: () => void; showUser?: boolean }) {
+  const toast = useToast();
+  async function review(action: "clear" | "escalate") {
+    const note = prompt(action === "clear" ? "What did you find? (kept in the audit log)" : "Why escalate? (kept in the audit log)");
+    if (!note || note.trim().length < 3) return;
+    const freeze = action === "escalate" && confirm("Freeze the account too? The customer will be signed out and can't move money.");
+    try {
+      await api.post(`/api/admin/compliance/${a.id}`, { action, note, freeze });
+      toast(action === "clear" ? "Alert cleared" : freeze ? "Escalated and account frozen" : "Escalated");
+      onReviewed();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  return (
+    <div className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
+      <div>
+        <span className={`pill ${SEVERITY_PILL[a.severity]}`}>{a.severity}</span> <strong>{a.label}</strong>
+        {showUser && a.user.handle && <> · <Link to={`/app/admin/users/${a.user.id}`}>@{a.user.handle}</Link></>}
+        <div className="small">{a.summary}</div>
+        <div className="faint xs">
+          {timeAgo(a.createdAt)}
+          {a.status !== "open" && ` · ${a.status}${a.reviewNote ? `: ${a.reviewNote}` : ""}`}
+        </div>
+      </div>
+      {a.status !== "cleared" && (
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn secondary sm" onClick={() => review("clear")}>Clear</button>
+          {a.status === "open" && <button className="btn ghost sm" onClick={() => review("escalate")}>Escalate</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Transaction-monitoring alerts waiting for a look. */
+function ComplianceQueue({ onChange }: { onChange: () => void }) {
+  const list = useLoad(() => api.get<{ alerts: ComplianceAlert[] }>("/api/admin/compliance").then((r) => r.alerts));
+  if (!list.data || list.data.length === 0) return null;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Monitoring alerts</h2><span className="faint small">{list.data.length} open</span></div>
+      <p className="muted small" style={{ marginTop: 0 }}>Patterns worth a look. Customers never see these. Withdrawals from a customer with an open medium or high alert wait for review.</p>
+      <div className="stack">
+        {list.data.map((a) => (
+          <ComplianceAlertRow key={a.id} a={a} onReviewed={() => { list.reload(); onChange(); }} />
         ))}
       </div>
     </div>

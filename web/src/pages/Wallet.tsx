@@ -19,6 +19,7 @@ interface ExternalTransfer {
   failureReason: string | null;
   destination: { type: string; name: string; accountLast4: string | null } | null;
   payoutReference: string | null;
+  review?: "required" | "approved" | "rejected" | null;
   createdAt: string;
 }
 
@@ -133,7 +134,10 @@ export function WalletPage() {
                     <div className="small">Pickup reference <strong className="mono">{t.payoutReference}</strong></div>
                   )}
                   {t.failureReason && <div className="error-text">{t.failureReason}</div>}
-                  {t.status === "pending" && t.rail !== "sandbox" && (
+                  {t.status === "pending" && t.review === "required" && (
+                    <div className="faint small">We check larger withdrawals before sending them, usually within one business day. The money is set aside meanwhile.</div>
+                  )}
+                  {t.status === "pending" && t.rail !== "sandbox" && t.review !== "required" && (
                     <button className="btn ghost sm" style={{ marginTop: 4, paddingLeft: 0 }} onClick={() => checkTransfer(t.id)}>
                       Check status
                     </button>
@@ -141,7 +145,7 @@ export function WalletPage() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div className="num" style={{ fontWeight: 600 }}>{money(t.amount, t.currency)}</div>
-                  <StatusPill status={t.status} />
+                  {t.status === "pending" && t.review === "required" ? <span className="pill warn">in review</span> : <StatusPill status={t.status} />}
                 </div>
               </div>
             ))}

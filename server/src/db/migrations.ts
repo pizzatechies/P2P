@@ -546,4 +546,83 @@ export const migrations: string[] = [
   CREATE INDEX journals_kind ON journals(kind, created_at);
   CREATE INDEX entries_created ON entries(created_at);
   `,
+  // 10: Real money: payout review, safeguarding accounts and reconciliation, and transaction monitoring.
+  `
+  -- Withdrawals that wait for a second person before the money is sent. The funds sit in clearing
+  -- meanwhile, so they can't be spent twice; a rejection returns them to the customer.
+  ALTER TABLE external_transfers ADD COLUMN review_status TEXT CHECK (review_status IN ('required','approved','rejected'));
+  ALTER TABLE external_transfers ADD COLUMN review_reasons TEXT;
+  ALTER TABLE external_transfers ADD COLUMN reviewed_by TEXT;
+  ALTER TABLE external_transfers ADD COLUMN reviewed_at TEXT;
+  ALTER TABLE external_transfers ADD COLUMN review_note TEXT;
+  CREATE INDEX external_transfers_review ON external_transfers(created_at) WHERE review_status = 'required';
+
+  -- Where customers' money actually is: safeguarding bank accounts, mobile-money and provider
+  -- balances. Account details (numbers, IBANs) are encrypted with MASTER_KEY.
+  CREATE TABLE safeguarding_accounts (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('bank','mobile_money','payment_provider','custodian','other')),
+    institution TEXT NOT NULL,
+    currency    TEXT NOT NULL,
+    purpose     TEXT NOT NULL DEFAULT 'safeguarding' CHECK (purpose IN ('safeguarding','operating')),
+    source      TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','stripe','wise','flutterwave')),
+    details_enc TEXT,
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_by  TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+  );
+
+  -- Balances as reported by the bank or provider (typed in from a statement, or fetched by API).
+  CREATE TABLE safeguarding_balances (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id    TEXT NOT NULL REFERENCES safeguarding_accounts(id),
+    balance_minor INTEGER NOT NULL,
+    as_of         TEXT NOT NULL,
+    source        TEXT NOT NULL CHECK (source IN ('manual','api')),
+    recorded_by   TEXT,
+    note          TEXT,
+    created_at    TEXT NOT NULL
+  );
+  CREATE INDEX safeguarding_balances_account ON safeguarding_balances(account_id, as_of);
+  CREATE TRIGGER safeguarding_balances_no_update BEFORE UPDATE ON safeguarding_balances BEGIN SELECT RAISE(ABORT, 'recorded balances are immutable'); END;
+  CREATE TRIGGER safeguarding_balances_no_delete BEFORE DELETE ON safeguarding_balances BEGIN SELECT RAISE(ABORT, 'recorded balances are immutable'); END;
+
+  -- Each comparison of what Aurex owes customers with what it actually holds, per currency.
+  CREATE TABLE reconciliations (
+    id               TEXT PRIMARY KEY,
+    run_at           TEXT NOT NULL,
+    run_by           TEXT,
+    currency         TEXT NOT NULL,
+    owed_minor       INTEGER NOT NULL,
+    held_minor       INTEGER NOT NULL,
+    difference_minor INTEGER NOT NULL,
+    status           TEXT NOT NULL CHECK (status IN ('covered','shortfall','unverified')),
+    stale_accounts   INTEGER NOT NULL DEFAULT 0,
+    details          TEXT NOT NULL DEFAULT '{}'
+  );
+  CREATE INDEX reconciliations_run ON reconciliations(run_at);
+  CREATE TRIGGER reconciliations_no_update BEFORE UPDATE ON reconciliations BEGIN SELECT RAISE(ABORT, 'reconciliations are immutable'); END;
+  CREATE TRIGGER reconciliations_no_delete BEFORE DELETE ON reconciliations BEGIN SELECT RAISE(ABORT, 'reconciliations are immutable'); END;
+
+  -- Transaction monitoring: patterns worth a compliance look. Never shown to the customer.
+  CREATE TABLE compliance_alerts (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    rule        TEXT NOT NULL,
+    severity    TEXT NOT NULL CHECK (severity IN ('low','medium','high')),
+    summary     TEXT NOT NULL,
+    details     TEXT NOT NULL DEFAULT '{}',
+    ref         TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','cleared','escalated')),
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    review_note TEXT,
+    created_at  TEXT NOT NULL,
+    UNIQUE (rule, ref)
+  );
+  CREATE INDEX compliance_alerts_status ON compliance_alerts(status, created_at);
+  CREATE INDEX compliance_alerts_user ON compliance_alerts(user_id, created_at);
+  `,
 ];

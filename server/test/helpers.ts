@@ -14,6 +14,7 @@ export function makeApp(env: Record<string, string> = {}) {
     REQUIRE_EMAIL_VERIFICATION: "false",
     // Likewise identity-verification limits: the accounts suite turns them on.
     KYC_LIMITS: "false",
+    PAYOUT_REVIEW: "false",
     ...env,
   });
   return createApp(config, openDb(":memory:"));

@@ -22,6 +22,23 @@ import {
   verifySnapshots,
 } from "../services/ledgerData.js";
 import { rateLimit } from "../lib/rateLimit.js";
+import { listAlerts, reviewAlert } from "../services/monitoring.js";
+import { approvePayout, listPayoutReviews, rejectPayout } from "../services/payments.js";
+import {
+  accountDetails,
+  balanceHistory,
+  createAccount,
+  customerAssets,
+  listAccounts,
+  listReconciliations,
+  recordBalance,
+  refreshProviderBalances,
+  runReconciliation,
+  safeguardingPosition,
+  sweepIncome,
+  unsweptIncome,
+  updateAccount,
+} from "../services/safeguarding.js";
 import { tradeHistory, tradingActivity, verifyTradingRecords } from "../services/trading/records.js";
 import { audit } from "../services/users.js";
 
@@ -40,7 +57,20 @@ export function adminRoutes(ctx: Ctx) {
       ctx.db,
       "SELECT currency, SUM(balance) AS total FROM accounts WHERE owner_type = 'user' GROUP BY currency",
     ).map((a) => ({ currency: a.currency, total: fromMinor(a.total, a.currency) }));
-    res.json({ users, journals, systemAccounts: system, customerFunds, ledger: verifyLedger(ctx), tradingRecords: verifyTradingRecords(ctx) });
+    const pendingPayouts = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM external_transfers WHERE status = 'pending' AND review_status = 'required'")!.n;
+    const openAlerts = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM compliance_alerts WHERE status = 'open'")!.n;
+    const safeguarding = safeguardingPosition(ctx).map((p) => ({ currency: p.currency, status: p.status, difference: p.difference }));
+    res.json({
+      users,
+      journals,
+      systemAccounts: system,
+      customerFunds,
+      ledger: verifyLedger(ctx),
+      tradingRecords: verifyTradingRecords(ctx),
+      pendingPayouts,
+      openAlerts,
+      safeguarding,
+    });
   });
 
   // ---- The books: journals, trial balance, end-of-day snapshots, exports ----
@@ -95,6 +125,107 @@ export function adminRoutes(ctx: Ctx) {
     res.setHeader("Content-Disposition", `attachment; filename="aurex-ledger-${from}-to-${to}.csv"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.send(csv);
+  });
+
+  // ---- Withdrawals waiting for a second person ----
+  r.get("/payouts", (_req, res) => {
+    res.json({ payouts: listPayoutReviews(ctx) });
+  });
+
+  r.post("/payouts/:id/approve", requireRecentAuth(ctx), async (req, res) => {
+    const { note } = parse(z.object({ note: z.string().trim().max(500).optional() }), req.body ?? {});
+    const transfer = await approvePayout(ctx, req.user!.id, String(req.params.id), note);
+    audit(ctx, req.user!.id, "payout.approved", { id: req.params.id, status: transfer.status }, req.ip);
+    res.json({ transfer });
+  });
+
+  r.post("/payouts/:id/reject", requireRecentAuth(ctx), (req, res) => {
+    const { note } = parse(z.object({ note: z.string().trim().min(3).max(500) }), req.body);
+    const transfer = rejectPayout(ctx, req.user!.id, String(req.params.id), note);
+    audit(ctx, req.user!.id, "payout.rejected", { id: req.params.id }, req.ip);
+    res.json({ transfer });
+  });
+
+  // ---- Transaction monitoring ----
+  r.get("/compliance", (req, res) => {
+    const { status, user } = parse(z.object({ status: z.enum(["open", "cleared", "escalated", "all"]).optional(), user: z.string().max(64).optional() }), req.query);
+    res.json({ alerts: listAlerts(ctx, status ?? "open", user) });
+  });
+
+  r.post("/compliance/:id", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(z.object({ action: z.enum(["clear", "escalate"]), note: z.string().trim().min(3).max(1000), freeze: z.boolean().optional() }), req.body);
+    res.json({ alert: reviewAlert(ctx, req.user!.id, String(req.params.id), body.action, body.note, body.freeze ?? false, req.ip) });
+  });
+
+  // ---- Safeguarding: where customers' money is held, and whether it's all there ----
+  const money = z.string().trim().regex(/^-?\d+(\.\d{1,8})?$/, "Use a plain number like 1250.50");
+  r.get("/safeguarding", (_req, res) => {
+    res.json({
+      position: safeguardingPosition(ctx).map(({ owedMinor: _o, heldMinor: _h, differenceMinor: _d, ...p }) => p),
+      accounts: listAccounts(ctx),
+      reconciliations: listReconciliations(ctx),
+      income: unsweptIncome(ctx),
+      assets: customerAssets(ctx),
+      staleAfterHours: ctx.config.SAFEGUARDING_STALE_HOURS,
+    });
+  });
+
+  r.post("/safeguarding/accounts", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(
+      z.object({
+        name: z.string().trim().min(2).max(80),
+        kind: z.enum(["bank", "mobile_money", "payment_provider", "custodian", "other"]),
+        institution: z.string().trim().min(2).max(80),
+        currency: z.string().trim().length(3),
+        purpose: z.enum(["safeguarding", "operating"]).optional(),
+        source: z.enum(["manual", "stripe", "wise", "flutterwave"]).optional(),
+        details: z.string().trim().max(200).optional(),
+      }),
+      req.body,
+    );
+    res.status(201).json({ account: createAccount(ctx, req.user!.id, body, req.ip) });
+  });
+
+  r.patch("/safeguarding/accounts/:id", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(
+      z.object({
+        name: z.string().trim().min(2).max(80).optional(),
+        active: z.boolean().optional(),
+        purpose: z.enum(["safeguarding", "operating"]).optional(),
+        details: z.string().trim().max(200).nullable().optional(),
+      }),
+      req.body,
+    );
+    res.json({ account: updateAccount(ctx, req.user!.id, String(req.params.id), body, req.ip) });
+  });
+
+  r.get("/safeguarding/accounts/:id/details", requireRecentAuth(ctx), (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ details: accountDetails(ctx, req.user!.id, String(req.params.id), req.ip) });
+  });
+
+  r.get("/safeguarding/accounts/:id/balances", (req, res) => {
+    res.json({ balances: balanceHistory(ctx, String(req.params.id)) });
+  });
+
+  r.post("/safeguarding/accounts/:id/balances", (req, res) => {
+    const body = parse(z.object({ balance: money, asOf: z.string().min(10).max(40), note: z.string().trim().max(300).optional() }), req.body);
+    res.status(201).json({ account: recordBalance(ctx, req.user!.id, String(req.params.id), body.balance, body.asOf, "manual", body.note) });
+  });
+
+  r.post("/safeguarding/refresh", async (req, res) => {
+    const results = await refreshProviderBalances(ctx);
+    audit(ctx, req.user!.id, "safeguarding.refreshed", { accounts: results.length }, req.ip);
+    res.json({ results });
+  });
+
+  r.post("/safeguarding/reconcile", (req, res) => {
+    res.json(runReconciliation(ctx, req.user!.id));
+  });
+
+  r.post("/safeguarding/sweep", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(z.object({ from: z.enum(["fees", "fx"]), currency: z.string().trim().length(3), amount: money, note: z.string().trim().max(140).default("") }), req.body);
+    res.status(201).json(sweepIncome(ctx, req.user!.id, body.from, body.currency, body.amount, body.note, req.ip));
   });
 
   // ---- Trading records across the platform ----
@@ -172,6 +303,7 @@ export function adminRoutes(ctx: Ctx) {
         fills: tradeHistory(ctx, id, { limit: 25 }).fills,
         realApplication: one(ctx.db, "SELECT status, submitted_at AS submittedAt, reviewed_at AS reviewedAt FROM live_applications WHERE user_id = ?", id) ?? null,
       },
+      compliance: listAlerts(ctx, "all", id),
       sessions: all(ctx.db, "SELECT created_at AS createdAt, expires_at AS expiresAt, ip, user_agent AS userAgent FROM sessions WHERE user_id = ? ORDER BY created_at DESC", id),
       events: all(ctx.db, "SELECT action, ip, details, created_at AS createdAt FROM audit_events WHERE user_id = ? ORDER BY id DESC LIMIT 40", id),
       notes: all(

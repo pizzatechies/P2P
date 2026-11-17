@@ -399,8 +399,13 @@ export function WithdrawDialog({ onClose, onDone }: { onClose: () => void; onDon
     setBusy(true);
     setError(null);
     try {
-      const r = await api.post<{ transfer: { payoutReference: string | null } }>("/api/payments/withdrawals", { rail, amount, currency, idempotencyKey: key, destination: destination() });
+      const r = await api.post<{ transfer: { payoutReference: string | null; review?: string | null } }>("/api/payments/withdrawals", { rail, amount, currency, idempotencyKey: key, destination: destination() });
       onDone();
+      if (r.transfer.review === "required") {
+        toast(`Withdrawal of ${money(amount, currency)} is being checked. We'll send it shortly; the money is set aside meanwhile.`);
+        onClose();
+        return;
+      }
       if (r.transfer.payoutReference) {
         setPickup({ reference: r.transfer.payoutReference, amount, currency, name: `${dest.firstName} ${dest.lastName}`.trim() });
         return;

@@ -58,6 +58,14 @@ const EnvSchema = z.object({
   TIER1_DAILY_USD: z.coerce.number().positive().default(5_000),
   /** Approve identity submissions automatically (development and demos only). */
   KYC_AUTO_APPROVE: bool.default(false),
+  /** Hold withdrawals for an admin's approval when they're large or the customer has an open monitoring alert. */
+  PAYOUT_REVIEW: bool.default(true),
+  /** Withdrawals at or above this (USD-equivalent) wait for approval. */
+  PAYOUT_REVIEW_USD: z.coerce.number().positive().default(1000),
+  /** Transaction monitoring flags single payments at or above this (USD-equivalent). */
+  MONITOR_LARGE_USD: z.coerce.number().positive().default(3000),
+  /** A safeguarding balance older than this no longer counts as verified. */
+  SAFEGUARDING_STALE_HOURS: z.coerce.number().positive().default(48),
   /** Countries where real accounts may be opened (ISO codes, comma-separated). Empty = any. */
   LIVE_COUNTRIES: z.string().default(""),
   /** Demo trades a user must complete before applying for a real account. */

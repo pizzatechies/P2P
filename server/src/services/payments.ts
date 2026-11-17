@@ -14,6 +14,8 @@ import {
 import { getRail, getRails } from "./rails/index.js";
 import type { PayoutDestination } from "./rails/types.js";
 import { limitsFor } from "./kyc.js";
+import { hasOpenSeriousAlert, monitor, notifyAdmins } from "./monitoring.js";
+import { addAlert } from "./security.js";
 import { findUserByIdentifier, getUserRow, publicProfile, type UserRow } from "./users.js";
 
 // ---------------------------------------------------------------------------
@@ -156,6 +158,7 @@ export async function sendMoney(
     }
     return postTransfer(ctx, sender, recipient, currency, input.amountMinor, input.memo?.trim() || null, input.idempotencyKey ?? null);
   });
+  await monitor(ctx, { kind: "transfer", userId: sender.id, recipientId: recipient.id, ref: journal.id, currency, amountMinor: input.amountMinor });
   return transferView(ctx, journal);
 }
 
@@ -263,7 +266,7 @@ export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
   assertActive(requester, "recipient");
   await checkLimits(ctx, userId, req.currency, req.amount);
 
-  tx(ctx.db, () => {
+  const journalId = tx(ctx.db, () => {
     const fresh = loadRequest(ctx, requestId);
     if (fresh.status !== "pending") throw unprocessable("request_closed", `This request is already ${fresh.status}`);
     const journal = postTransfer(ctx, payer, requester, req.currency, req.amount, req.memo, `request:${req.id}`, {
@@ -276,7 +279,9 @@ export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
       nowIso(),
       req.id,
     );
+    return journal.id;
   });
+  await monitor(ctx, { kind: "transfer", userId: payer.id, recipientId: requester.id, ref: journalId, currency: req.currency, amountMinor: req.amount });
   return requestView(ctx, loadRequest(ctx, requestId));
 }
 
@@ -353,6 +358,11 @@ interface ExternalRow {
   failure_reason: string | null;
   journal_id: string | null;
   payout_reference: string | null;
+  review_status: "required" | "approved" | "rejected" | null;
+  review_reasons: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -372,6 +382,8 @@ function externalView(r: ExternalRow) {
     destination: dest ? { type: dest.type, name: dest.name, accountLast4: destinationHint(dest), wallet: dest.wallet ?? null, country: dest.country ?? null } : null,
     /** What the recipient needs to collect the money (e.g. a MoneyGram reference number). Only shown to the owner. */
     payoutReference: r.payout_reference ?? null,
+    /** "required" while a withdrawal waits for a second person to approve it. */
+    review: r.review_status ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -413,6 +425,7 @@ export async function refreshExternal(ctx: Ctx, id: string, userId?: string) {
   const ext = loadExternal(ctx, id);
   if (userId && ext.user_id !== userId) throw notFound("Transfer not found");
   if (ext.status !== "pending") return externalView(ext);
+  if (ext.review_status === "required") return externalView(ext); // not sent to the provider yet
   const rail = getRails(ctx).get(ext.rail);
   if (ext.direction === "deposit" && rail?.checkDeposit) {
     const state = await rail.checkDeposit({ externalId: ext.id, providerRef: ext.provider_ref, currency: ext.currency, amount: ext.amount });
@@ -438,7 +451,7 @@ export function startReconciler(ctx: Ctx, everyMs = 5 * 60_000) {
     try {
       const rows = all<{ id: string }>(
         ctx.db,
-        "SELECT id FROM external_transfers WHERE status = 'pending' AND created_at < ? AND created_at > ? ORDER BY updated_at LIMIT 50",
+        "SELECT id FROM external_transfers WHERE status = 'pending' AND (review_status IS NULL OR review_status <> 'required') AND created_at < ? AND created_at > ? ORDER BY updated_at LIMIT 50",
         new Date(Date.now() - 2 * 60_000).toISOString(),
         new Date(Date.now() - 30 * 86_400_000).toISOString(),
       );
@@ -518,10 +531,12 @@ export async function deposit(ctx: Ctx, input: { userId: string; rail: string; c
 
 /** Credits the wallet for a confirmed deposit. Idempotent: safe to call again for webhook retries. */
 export function completeDeposit(ctx: Ctx, externalId: string) {
-  return tx(ctx.db, () => {
+  let credited: ExternalRow | null = null;
+  const view = tx(ctx.db, () => {
     const ext = loadExternal(ctx, externalId);
     if (ext.direction !== "deposit") throw new Error("Not a deposit");
     if (ext.status !== "pending") return externalView(ext);
+    credited = ext;
     const journal = postJournal(ctx, {
       kind: "deposit",
       initiatorId: ext.user_id,
@@ -541,6 +556,9 @@ export function completeDeposit(ctx: Ctx, externalId: string) {
     );
     return externalView(loadExternal(ctx, ext.id));
   });
+  const c = credited as ExternalRow | null;
+  if (c) void monitor(ctx, { kind: "deposit", userId: c.user_id, ref: c.id, currency: c.currency, amountMinor: c.amount });
+  return view;
 }
 
 export function failDeposit(ctx: Ctx, externalId: string, reason: string) {
@@ -610,15 +628,40 @@ export async function withdraw(
     run(ctx.db, "UPDATE external_transfers SET journal_id = ? WHERE id = ?", journal.id, id);
   });
 
-  // 2) Ask the rail to pay out, then settle or reverse.
+  // 2) Monitoring, then either hold the payout for a second person or send it now.
+  await monitor(ctx, { kind: "withdrawal", userId: user.id, ref: id, currency, amountMinor: input.amountMinor });
+  const reasons = await payoutReviewReasons(ctx, user.id, currency, input.amountMinor);
+  if (reasons.length) {
+    run(ctx.db, "UPDATE external_transfers SET review_status = 'required', review_reasons = ?, updated_at = ? WHERE id = ?", JSON.stringify(reasons), nowIso(), id);
+    notifyAdmins(ctx, `A withdrawal of ${currency} ${fromMinor(input.amountMinor, currency)} by @${user.handle} is waiting for your review (Admin → Payouts).`);
+    return externalView(loadExternal(ctx, id));
+  }
+  return sendPayout(ctx, id);
+}
+
+/** Why a withdrawal needs a second person before the money leaves (empty: it doesn't). */
+async function payoutReviewReasons(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
+  if (!ctx.config.PAYOUT_REVIEW) return [];
+  const reasons: string[] = [];
+  const usd = await toUsdMinor(ctx, currency, amountMinor);
+  if (usd >= Math.round(ctx.config.PAYOUT_REVIEW_USD * 100)) reasons.push(`At or over $${ctx.config.PAYOUT_REVIEW_USD.toLocaleString("en-US")}`);
+  if (hasOpenSeriousAlert(ctx, userId)) reasons.push("Open transaction-monitoring alert");
+  return reasons;
+}
+
+/** Asks the rail to pay out a held withdrawal, then settles it or returns the money. */
+async function sendPayout(ctx: Ctx, id: string) {
+  const ext = loadExternal(ctx, id);
+  const rail = getRail(ctx, ext.rail, "withdrawal", ext.currency);
+  const destination = JSON.parse(ext.destination ?? "{}") as PayoutDestination;
   let result;
   try {
     result = await rail.createPayout!({
       externalId: id,
-      userId: user.id,
-      currency,
-      amount: input.amountMinor,
-      destination: input.destination,
+      userId: ext.user_id,
+      currency: ext.currency,
+      amount: ext.amount,
+      destination,
     });
   } catch (err) {
     result = { status: "failed" as const, failureReason: (err as Error).message };
@@ -644,6 +687,67 @@ export async function withdraw(
     });
   }
   return externalView(final);
+}
+
+/** Withdrawals waiting for a second person, oldest first. */
+export function listPayoutReviews(ctx: Ctx) {
+  return all<ExternalRow & { handle: string; email: string; display_name: string; kyc_level: number; account_number: string | null; user_created_at: string }>(
+    ctx.db,
+    `SELECT t.*, u.handle, u.email, u.display_name, u.kyc_level, u.account_number, u.created_at AS user_created_at
+     FROM external_transfers t JOIN users u ON u.id = t.user_id
+     WHERE t.direction = 'withdrawal' AND t.status = 'pending' AND t.review_status = 'required' ORDER BY t.created_at`,
+  ).map((r) => ({
+    ...externalView(r),
+    reasons: JSON.parse(r.review_reasons ?? "[]") as string[],
+    destinationName: r.destination ? (JSON.parse(r.destination) as PayoutDestination).name : null,
+    user: { id: r.user_id, handle: r.handle, email: r.email, name: r.display_name, kycLevel: r.kyc_level, accountNumber: r.account_number, since: r.user_created_at },
+  }));
+}
+
+function loadForReview(ctx: Ctx, adminId: string, id: string) {
+  const ext = loadExternal(ctx, id);
+  if (ext.direction !== "withdrawal" || ext.status !== "pending" || ext.review_status !== "required") {
+    throw unprocessable("not_in_review", "This withdrawal isn't waiting for review");
+  }
+  if (ext.user_id === adminId) throw forbidden("Someone else must review your own withdrawal");
+  return ext;
+}
+
+/** A second person approves a held withdrawal: it's sent to the payment provider now. */
+export async function approvePayout(ctx: Ctx, adminId: string, id: string, note?: string) {
+  loadForReview(ctx, adminId, id);
+  const claimed = run(
+    ctx.db,
+    "UPDATE external_transfers SET review_status = 'approved', reviewed_by = ?, reviewed_at = ?, review_note = ?, updated_at = ? WHERE id = ? AND review_status = 'required'",
+    adminId,
+    nowIso(),
+    note?.trim().slice(0, 500) || null,
+    nowIso(),
+    id,
+  );
+  if (Number(claimed.changes) === 0) throw unprocessable("not_in_review", "Someone else already reviewed this withdrawal");
+  return sendPayout(ctx, id).catch((err: unknown) => {
+    if (err instanceof HttpError && err.code === "payout_failed") return externalView(loadExternal(ctx, id));
+    throw err;
+  });
+}
+
+/** A second person refuses a held withdrawal: the money goes back to the customer's wallet. */
+export function rejectPayout(ctx: Ctx, adminId: string, id: string, note: string) {
+  const ext = loadForReview(ctx, adminId, id);
+  if (note.trim().length < 3) throw badRequest("Say why, for the customer");
+  run(
+    ctx.db,
+    "UPDATE external_transfers SET review_status = 'rejected', reviewed_by = ?, reviewed_at = ?, review_note = ?, updated_at = ? WHERE id = ?",
+    adminId,
+    nowIso(),
+    note.trim().slice(0, 500),
+    nowIso(),
+    id,
+  );
+  reverseWithdrawal(ctx, id, `Not approved: ${note.trim().slice(0, 200)}`);
+  addAlert(ctx, ext.user_id, "account", `Your withdrawal of ${ext.currency} ${fromMinor(ext.amount, ext.currency)} wasn't sent and the money is back in your wallet: ${note.trim().slice(0, 200)}`);
+  return externalView(loadExternal(ctx, id));
 }
 
 export function settleWithdrawal(ctx: Ctx, externalId: string) {

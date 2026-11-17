@@ -4,7 +4,7 @@ import { api } from "../api";
 import { Empty, ErrorText, Field } from "../components/ui";
 import { money, timeAgo, usd } from "../format";
 import { useAuth, useLoad, useToast } from "../state";
-import { KycSubmissionCard, type KycSubmission } from "./Admin";
+import { KycSubmissionCard, type KycSubmission, ComplianceAlertRow, type ComplianceAlert } from "./Admin";
 
 interface Detail {
   user: {
@@ -32,6 +32,7 @@ interface Detail {
   sessions: { createdAt: string; expiresAt: string; ip: string | null; userAgent: string | null }[];
   events: { action: string; ip: string | null; details: string; createdAt: string }[];
   notes: { id: number; note: string; createdAt: string; author: string | null }[];
+  compliance?: ComplianceAlert[];
 }
 
 const LEVELS = ["Basic", "Verified identity", "Enhanced"];
@@ -200,6 +201,17 @@ export function AdminUserPage() {
             </div>
             <Notes d={d.data} onSaved={() => d.reload()} />
           </div>
+
+          {d.data.compliance && d.data.compliance.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-head"><h2>Monitoring alerts</h2><span className="faint small">Never shown to the customer</span></div>
+              <div className="stack">
+                {d.data.compliance.map((a) => (
+                  <ComplianceAlertRow key={a.id} a={a} showUser={false} onReviewed={() => d.reload()} />
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-2">
             <div className="card flush">
