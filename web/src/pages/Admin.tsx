@@ -72,6 +72,7 @@ export function AdminPage() {
           <h1>Admin</h1>
           <p className="muted">Ledger health, customer funds and accounts.</p>
         </div>
+        <Link className="btn secondary sm" to="/app/admin/ledger">Ledger &amp; records</Link>
       </div>
       {overview.error && /two-factor/i.test(overview.error) ? (
         <div className="banner">

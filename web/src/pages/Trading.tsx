@@ -78,9 +78,12 @@ export function TradingPage() {
             <Link to="/app/settings#trading" className="small">Broker settings</Link>
           </p>
         </div>
-        {settings?.broker === "paper" && (
-          <button className="btn secondary sm" onClick={resetPaper}>Restart demo account</button>
-        )}
+        <div className="row wrap" style={{ gap: 8 }}>
+          <Link className="btn secondary sm" to="/app/trading/records">Records &amp; P&amp;L</Link>
+          {settings?.broker === "paper" && (
+            <button className="btn ghost sm" onClick={resetPaper}>Restart demo account</button>
+          )}
+        </div>
       </div>
 
       {chart.data && <MarketBanner quote={chart.data.quote} futuresTradable={settings?.markets?.futuresTradable ?? true} />}

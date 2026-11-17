@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api, upload } from "../api";
+import { api, upload, downloadFile } from "../api";
 import { Icon } from "../components/icons";
 import { Empty, ErrorText, Field, Modal } from "../components/ui";
 import { COUNTRIES } from "../countries";
@@ -482,7 +482,34 @@ function StatementsCard() {
         </div>
       )}
       <p className="faint xs" style={{ marginBottom: 0 }}>Each statement shows your opening balance, every payment, deposit, withdrawal and conversion, and your closing balance. Open one to print it or save it as a PDF.</p>
+      {c && <RangeDownload currency={c} />}
     </div>
+  );
+}
+
+/** Wallet activity for any dates (up to a year), as CSV. */
+function RangeDownload({ currency }: { currency: string }) {
+  const toast = useToast();
+  const today = new Date().toISOString().slice(0, 10);
+  const [from, setFrom] = useState(`${today.slice(0, 4)}-01-01`);
+  const [to, setTo] = useState(today);
+  return (
+    <details style={{ marginTop: 10 }}>
+      <summary className="small" style={{ cursor: "pointer" }}>Download activity for other dates</summary>
+      <div className="row wrap" style={{ alignItems: "flex-end", marginTop: 8 }}>
+        <Field label="From"><input className="input" type="date" value={from} max={today} onChange={(e) => setFrom(e.target.value)} /></Field>
+        <Field label="To"><input className="input" type="date" value={to} max={today} onChange={(e) => setTo(e.target.value)} /></Field>
+        <button
+          className="btn secondary"
+          style={{ marginBottom: 2 }}
+          disabled={!from || !to}
+          onClick={() => downloadFile(`/api/account/activity?from=${from}&to=${to}&currency=${currency}`, `aurex-activity-${currency}.csv`).catch((e) => toast((e as Error).message, "error"))}
+        >
+          Download {currency} CSV
+        </button>
+      </div>
+      <p className="faint xs" style={{ margin: "4px 0 0" }}>Up to a year at a time.</p>
+    </details>
   );
 }
 

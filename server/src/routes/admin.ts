@@ -11,6 +11,18 @@ import { reopenAccount } from "../services/account.js";
 import { documentHeaders, limitsFor, listSubmissions, readDocument, reviewSubmission, setLevel } from "../services/kyc.js";
 import { getUserRow } from "../services/users.js";
 import { verifyLedger } from "../services/ledger.js";
+import {
+  entriesCsv,
+  journalDetail,
+  ledgerSnapshots,
+  listJournals,
+  snapshotLedger,
+  trialBalance,
+  trialBalanceCsv,
+  verifySnapshots,
+} from "../services/ledgerData.js";
+import { rateLimit } from "../lib/rateLimit.js";
+import { tradeHistory, tradingActivity, verifyTradingRecords } from "../services/trading/records.js";
 import { audit } from "../services/users.js";
 
 export function adminRoutes(ctx: Ctx) {
@@ -28,7 +40,67 @@ export function adminRoutes(ctx: Ctx) {
       ctx.db,
       "SELECT currency, SUM(balance) AS total FROM accounts WHERE owner_type = 'user' GROUP BY currency",
     ).map((a) => ({ currency: a.currency, total: fromMinor(a.total, a.currency) }));
-    res.json({ users, journals, systemAccounts: system, customerFunds, ledger: verifyLedger(ctx) });
+    res.json({ users, journals, systemAccounts: system, customerFunds, ledger: verifyLedger(ctx), tradingRecords: verifyTradingRecords(ctx) });
+  });
+
+  // ---- The books: journals, trial balance, end-of-day snapshots, exports ----
+  const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use dates like 2026-11-17");
+  const exportLimiter = rateLimit({ name: "admin-export", windowMs: 60 * 60_000, max: ctx.config.isTest ? 10_000 : 20, key: (req) => req.user!.id });
+  const JournalQuery = z.object({
+    kind: z.string().trim().max(40).optional(),
+    from: day.optional(),
+    to: day.optional(),
+    user: z.string().trim().max(64).optional(),
+    currency: z.string().trim().length(3).optional(),
+    q: z.string().trim().max(100).optional(),
+    before: z.string().datetime().optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+  });
+
+  r.get("/ledger/journals", (req, res) => {
+    const q = parse(JournalQuery, req.query);
+    res.json(listJournals(ctx, { ...q, userId: q.user }));
+  });
+
+  r.get("/ledger/journals/:id", (req, res) => {
+    res.json({ journal: journalDetail(ctx, String(req.params.id)) });
+  });
+
+  r.get("/ledger/trial-balance", (req, res) => {
+    const { asOf, format } = parse(z.object({ asOf: day.optional(), format: z.enum(["json", "csv"]).optional() }), req.query);
+    const tb = trialBalance(ctx, asOf);
+    if (format === "csv") {
+      audit(ctx, req.user!.id, "admin.ledger_exported", { report: "trial_balance", asOf: asOf ?? null }, req.ip);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="aurex-trial-balance-${asOf ?? new Date().toISOString().slice(0, 10)}.csv"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(trialBalanceCsv(tb));
+      return;
+    }
+    res.json({ trialBalance: tb });
+  });
+
+  r.get("/ledger/snapshots", (req, res) => {
+    const { currency, days } = parse(z.object({ currency: z.string().trim().length(3).optional(), days: z.coerce.number().int().min(1).max(3660).optional() }), req.query);
+    snapshotLedger(ctx); // bring it up to yesterday first
+    res.json({ snapshots: ledgerSnapshots(ctx, currency, days ?? 90), verification: verifySnapshots(ctx) });
+  });
+
+  /** Every ledger entry in a date range as CSV, for accounting software. Exports are audited. */
+  r.get("/ledger/export", exportLimiter, requireRecentAuth(ctx), (req, res) => {
+    const { from, to, kind } = parse(z.object({ from: day, to: day, kind: z.string().trim().max(40).optional() }), req.query);
+    const csv = entriesCsv(ctx, from, to, kind);
+    audit(ctx, req.user!.id, "admin.ledger_exported", { report: "entries", from, to, kind: kind ?? null }, req.ip);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="aurex-ledger-${from}-to-${to}.csv"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(csv);
+  });
+
+  // ---- Trading records across the platform ----
+  r.get("/trading", (req, res) => {
+    const { days } = parse(z.object({ days: z.coerce.number().int().min(1).max(365).optional() }), req.query);
+    res.json(tradingActivity(ctx, days ?? 30));
   });
 
   /** Newest accounts, or a search by name, handle, email or account number. */
@@ -97,6 +169,7 @@ export function adminRoutes(ctx: Ctx) {
         account: one(ctx.db, "SELECT broker, cash_cents / 100.0 AS cash, starting_cents / 100.0 AS startingCash FROM trading_accounts WHERE user_id = ?", id) ?? null,
         positions: all(ctx.db, "SELECT symbol, qty, avg_cost AS avgCost FROM positions WHERE user_id = ? ORDER BY symbol", id),
         orders: one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM orders WHERE user_id = ?", id)!.n,
+        fills: tradeHistory(ctx, id, { limit: 25 }).fills,
         realApplication: one(ctx.db, "SELECT status, submitted_at AS submittedAt, reviewed_at AS reviewedAt FROM live_applications WHERE user_id = ?", id) ?? null,
       },
       sessions: all(ctx.db, "SELECT created_at AS createdAt, expires_at AS expiresAt, ip, user_agent AS userAgent FROM sessions WHERE user_id = ? ORDER BY created_at DESC", id),

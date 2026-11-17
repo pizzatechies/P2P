@@ -63,6 +63,39 @@ export async function upload<T>(url: string, file: Blob): Promise<T> {
   return data as T;
 }
 
+/**
+ * Downloads a file (CSV exports). Asks the user to confirm it's them first if the server needs a
+ * recent sign-in, then saves the response under the server's filename.
+ */
+export async function downloadFile(url: string, fallbackName: string, retried = false): Promise<void> {
+  const res = await fetch(url, { credentials: "same-origin", headers: { Accept: "text/csv, application/json" } });
+  if (!res.ok) {
+    const text = await res.text();
+    let err: { code?: string; message?: string } = {};
+    try {
+      err = JSON.parse(text)?.error ?? {};
+    } catch {
+      /* not JSON */
+    }
+    if (res.status === 401 && err.code === "reauth_required" && reauthHandler && !retried) {
+      reauthPending ??= reauthHandler().finally(() => {
+        reauthPending = null;
+      });
+      if (await reauthPending) return downloadFile(url, fallbackName, true);
+    }
+    throw new ApiError(res.status, err.code ?? "error", err.message ?? `Download failed (${res.status})`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  const blobUrl = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+}
+
 export const api = {
   get: <T>(url: string) => request<T>("GET", url),
   post: <T>(url: string, body: unknown = {}) => request<T>("POST", url, body),

@@ -4,6 +4,7 @@ import { notFound, unprocessable } from "../../../lib/errors.js";
 import { newId } from "../../../lib/ids.js";
 import { assetClassOf, FUTURES_BY_SYMBOL, futureMargin, type FutureSpec } from "../instruments.js";
 import type { MarketData } from "../market.js";
+import { recordCash, recordFill } from "../records.js";
 import type { AccountView, Broker, OrderInput, OrderView, PositionView } from "./types.js";
 
 interface TradingAccountRow {
@@ -72,6 +73,7 @@ export function ensureTradingAccount(ctx: Ctx, userId: string): TradingAccountRo
       cents,
       nowIso(),
     );
+    recordCash(ctx, userId, "opening", cents, { memo: "Demo account opened" });
     for (const s of ["SPY", "AAPL", "MSFT", "NVDA", "BTC-USD", "ES=F"]) {
       run(ctx.db, "INSERT OR IGNORE INTO watchlist (user_id, symbol, created_at) VALUES (?, ?, ?)", userId, s, nowIso());
     }
@@ -120,6 +122,19 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
   }
 
   const accountRow = () => one<TradingAccountRow>(ctx.db, "SELECT * FROM trading_accounts WHERE user_id = ?", userId)!;
+  const fillBase = (order: OrderRow, price: number) => ({
+    userId,
+    broker: "paper" as const,
+    accountType: "demo" as const,
+    orderRef: order.id,
+    orderId: order.id,
+    symbol: order.symbol,
+    side: order.side,
+    qty: order.qty,
+    price,
+    placedBy: order.placed_by ?? "user",
+    source: order.source,
+  });
   /** Cash free for new purchases or new futures margin. */
   const available = (acct: TradingAccountRow, book: FuturesBook) => acct.cash_cents + book.unrealizedCents - book.marginCents;
 
@@ -138,11 +153,13 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
         const cur = pos?.qty ?? 0;
         const next = cur + signed;
         let realized = 0;
+        let closedQty = 0;
         let avg = pos?.avg_cost ?? price;
         if (Math.abs(cur) < EPS || Math.sign(cur) === Math.sign(signed)) {
           avg = (Math.abs(cur) * (pos?.avg_cost ?? 0) + Math.abs(signed) * price) / Math.abs(next);
         } else {
           const closing = Math.min(Math.abs(cur), Math.abs(signed));
+          closedQty = closing;
           realized = (price - avg) * closing * spec.multiplier * Math.sign(cur);
           if (Math.abs(signed) > Math.abs(cur) + EPS) avg = price; // flipped from long to short or back
         }
@@ -170,6 +187,15 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
           );
         }
         if (realized) run(ctx.db, "UPDATE trading_accounts SET cash_cents = cash_cents + ? WHERE user_id = ?", toCents(realized), userId);
+        const fillId = recordFill(ctx, {
+          ...fillBase(order, price),
+          closedQty,
+          realizedCents: toCents(realized),
+          positionAfter: Math.abs(next) < EPS ? 0 : next,
+          avgCostAfter: Math.abs(next) < EPS ? null : avg,
+          cashAfterCents: accountRow().cash_cents,
+        });
+        recordCash(ctx, userId, "futures_pl", toCents(realized), { fillId, memo: `${closedQty} ${order.symbol} closed` });
       } else {
         const notional = toCents(order.qty * price);
         if (order.side === "buy") {
@@ -187,6 +213,8 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
             nowIso(),
           );
           run(ctx.db, "UPDATE trading_accounts SET cash_cents = cash_cents - ? WHERE user_id = ?", notional, userId);
+          const fillId = recordFill(ctx, { ...fillBase(order, price), positionAfter: newQty, avgCostAfter: newAvg, cashAfterCents: accountRow().cash_cents });
+          recordCash(ctx, userId, "buy", -notional, { fillId, memo: `Bought ${order.qty} ${order.symbol}` });
         } else {
           if (!pos || pos.qty + EPS < order.qty) {
             throw unprocessable("insufficient_shares", `You only hold ${pos?.qty ?? 0} ${order.symbol}`);
@@ -195,6 +223,18 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
           if (remaining <= EPS) run(ctx.db, "DELETE FROM positions WHERE user_id = ? AND symbol = ?", userId, order.symbol);
           else run(ctx.db, "UPDATE positions SET qty = ?, updated_at = ? WHERE user_id = ? AND symbol = ?", remaining, nowIso(), userId, order.symbol);
           run(ctx.db, "UPDATE trading_accounts SET cash_cents = cash_cents + ? WHERE user_id = ?", notional, userId);
+          // Average-cost method: the closed shares cost what the position's average cost says.
+          const costBasis = toCents(order.qty * pos.avg_cost);
+          const fillId = recordFill(ctx, {
+            ...fillBase(order, price),
+            closedQty: order.qty,
+            costBasisCents: costBasis,
+            realizedCents: notional - costBasis,
+            positionAfter: remaining <= EPS ? 0 : remaining,
+            avgCostAfter: remaining <= EPS ? null : pos.avg_cost,
+            cashAfterCents: accountRow().cash_cents,
+          });
+          recordCash(ctx, userId, "sell", notional, { fillId, memo: `Sold ${order.qty} ${order.symbol}` });
         }
       }
       run(
@@ -386,9 +426,10 @@ export function paperBroker(ctx: Ctx, userId: string, market: MarketData): Broke
 export function resetPaperAccount(ctx: Ctx, userId: string, startingCash = ctx.config.PAPER_STARTING_CASH) {
   const cents = toCents(startingCash);
   tx(ctx.db, () => {
-    ensureTradingAccount(ctx, userId);
+    const before = ensureTradingAccount(ctx, userId).cash_cents;
     run(ctx.db, "DELETE FROM positions WHERE user_id = ?", userId);
     run(ctx.db, "UPDATE orders SET status = 'canceled', updated_at = ? WHERE user_id = ? AND broker = 'paper' AND status = 'new'", nowIso(), userId);
     run(ctx.db, "UPDATE trading_accounts SET cash_cents = ?, starting_cents = ? WHERE user_id = ?", cents, cents, userId);
+    recordCash(ctx, userId, "reset", cents - before, { memo: `Demo account reset to $${(cents / 100).toLocaleString("en-US")}` });
   });
 }

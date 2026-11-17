@@ -456,4 +456,94 @@ export const migrations: string[] = [
   );
   CREATE INDEX account_notes_user ON account_notes(user_id, id);
   `,
+  // 9: Trading and ledger records: every trade execution, the demo trading account's cash journal,
+  //    daily portfolio valuations and end-of-day ledger snapshots.
+  `
+  -- One row per executed order (orders here fill in full; a broker order that was partly filled and
+  -- then ended is recorded with what filled). realized_pl_cents is NULL when it can't be known
+  -- (a broker account whose earlier history Aurex never saw).
+  CREATE TABLE trade_fills (
+    id                 TEXT PRIMARY KEY,
+    user_id            TEXT NOT NULL REFERENCES users(id),
+    broker             TEXT NOT NULL CHECK (broker IN ('paper','alpaca')),
+    account_type       TEXT NOT NULL CHECK (account_type IN ('demo','real')),
+    order_ref          TEXT NOT NULL,          -- Aurex order id (paper) or the broker's order id
+    order_id           TEXT,                   -- Aurex order id when the order was placed through Aurex
+    symbol             TEXT NOT NULL,
+    asset_class        TEXT NOT NULL CHECK (asset_class IN ('stock','crypto','future')),
+    side               TEXT NOT NULL CHECK (side IN ('buy','sell')),
+    qty                REAL NOT NULL CHECK (qty > 0),
+    price              REAL NOT NULL CHECK (price > 0),
+    multiplier         REAL NOT NULL DEFAULT 1,
+    notional_cents     INTEGER NOT NULL,       -- qty x price x multiplier
+    fee_cents          INTEGER NOT NULL DEFAULT 0,
+    closed_qty         REAL NOT NULL DEFAULT 0, -- how much of an existing position this fill closed
+    cost_basis_cents   INTEGER,                -- cost of the closed part (stocks and crypto)
+    realized_pl_cents  INTEGER,
+    position_after     REAL,
+    avg_cost_after     REAL,
+    cash_after_cents   INTEGER,
+    placed_by          TEXT NOT NULL DEFAULT 'user',
+    source             TEXT NOT NULL DEFAULT 'manual',
+    executed_at        TEXT NOT NULL,
+    UNIQUE (user_id, broker, order_ref)
+  );
+  CREATE INDEX trade_fills_user ON trade_fills(user_id, executed_at);
+  CREATE INDEX trade_fills_time ON trade_fills(executed_at);
+  CREATE TRIGGER trade_fills_no_update BEFORE UPDATE ON trade_fills BEGIN SELECT RAISE(ABORT, 'trade records are immutable'); END;
+  CREATE TRIGGER trade_fills_no_delete BEFORE DELETE ON trade_fills BEGIN SELECT RAISE(ABORT, 'trade records are immutable'); END;
+
+  -- Every change to the demo trading account's cash, with the balance after it. The entries for an
+  -- account always add up to trading_accounts.cash_cents.
+  CREATE TABLE trading_cash_entries (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             TEXT NOT NULL REFERENCES users(id),
+    kind                TEXT NOT NULL CHECK (kind IN ('opening','buy','sell','futures_pl','fee','reset')),
+    amount_cents        INTEGER NOT NULL,
+    balance_after_cents INTEGER NOT NULL,
+    fill_id             TEXT,
+    memo                TEXT,
+    created_at          TEXT NOT NULL
+  );
+  CREATE INDEX trading_cash_entries_user ON trading_cash_entries(user_id, id);
+  CREATE TRIGGER trading_cash_no_update BEFORE UPDATE ON trading_cash_entries BEGIN SELECT RAISE(ABORT, 'trading cash entries are immutable'); END;
+  CREATE TRIGGER trading_cash_no_delete BEFORE DELETE ON trading_cash_entries BEGIN SELECT RAISE(ABORT, 'trading cash entries are immutable'); END;
+  INSERT INTO trading_cash_entries (user_id, kind, amount_cents, balance_after_cents, memo, created_at)
+    SELECT user_id, 'opening', cash_cents, cash_cents, 'Balance when trading records began', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    FROM trading_accounts;
+
+  -- What each portfolio was worth at the end of each day (the last valuation that day, UTC).
+  CREATE TABLE portfolio_snapshots (
+    user_id          TEXT NOT NULL REFERENCES users(id),
+    day              TEXT NOT NULL,
+    broker           TEXT NOT NULL,
+    equity_cents     INTEGER NOT NULL,
+    cash_cents       INTEGER NOT NULL,
+    positions_cents  INTEGER NOT NULL,
+    unrealized_cents INTEGER NOT NULL,
+    positions        INTEGER NOT NULL,
+    updated_at       TEXT NOT NULL,
+    PRIMARY KEY (user_id, broker, day)
+  );
+
+  -- End-of-day ledger totals per currency, by kind of account, with the integrity result. Built from
+  -- the immutable entries, so any past day can be recomputed and compared.
+  CREATE TABLE ledger_snapshots (
+    day              TEXT NOT NULL,
+    currency         TEXT NOT NULL,
+    customer_cents   INTEGER NOT NULL,   -- what Aurex owes its customers (sum of wallet balances)
+    external_cents   INTEGER NOT NULL,
+    clearing_cents   INTEGER NOT NULL,
+    fees_cents       INTEGER NOT NULL,
+    fx_cents         INTEGER NOT NULL,
+    journals         INTEGER NOT NULL,   -- journals posted that day in this currency
+    volume_cents     INTEGER NOT NULL,   -- money moved that day (sum of credits)
+    balanced         INTEGER NOT NULL,   -- 1 when every account type sums to zero
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (day, currency)
+  );
+  CREATE INDEX journals_created ON journals(created_at);
+  CREATE INDEX journals_kind ON journals(kind, created_at);
+  CREATE INDEX entries_created ON entries(created_at);
+  `,
 ];

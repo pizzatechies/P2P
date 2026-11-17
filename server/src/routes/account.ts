@@ -5,7 +5,7 @@ import { badRequest } from "../lib/errors.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { parse } from "../lib/validate.js";
 import { clearSessionCookie, requireAuth, requireRecentAuth } from "../middleware/auth.js";
-import { accountOverview, buildStatement, closeAccount, closureBlockers, exportData, statementCsv, statementPeriods } from "../services/account.js";
+import { accountOverview, buildRangeStatement, buildStatement, closeAccount, closureBlockers, exportData, statementCsv, statementPeriods } from "../services/account.js";
 import { documentHeaders, readDocument, saveDetails, submitLevel, uploadDocument, verificationOverview, type DocKind } from "../services/kyc.js";
 import { audit } from "../services/users.js";
 
@@ -70,10 +70,24 @@ export function accountRoutes(ctx: Ctx) {
     if (req.query.format === "csv") {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
       res.setHeader("Content-Disposition", `attachment; filename="aurex-statement-${st.period}-${st.currency}.csv"`);
+      res.setHeader("Cache-Control", "private, no-store");
       res.send(statementCsv(st));
       return;
     }
     res.json({ statement: st });
+  });
+
+  /** Wallet activity for any date range (up to a year): ?from=2026-01-01&to=2026-03-31&currency=USD, as CSV. */
+  r.get("/activity", (req, res) => {
+    const st = buildRangeStatement(ctx, req.user!.id, String(req.query.from ?? ""), String(req.query.to ?? ""), String(req.query.currency ?? ""));
+    if (req.query.format === "json") {
+      res.json({ statement: st });
+      return;
+    }
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="aurex-activity-${st.currency}-${String(req.query.from)}-to-${String(req.query.to)}.csv"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(statementCsv(st));
   });
 
   // ---- Your data ----

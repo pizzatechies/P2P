@@ -24,6 +24,7 @@ import { tradingRoutes } from "./routes/trading.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { rekeySecrets } from "./services/rekey.js";
 import { assignMissingAccountNumbers } from "./services/users.js";
+import { backfillFills } from "./services/trading/records.js";
 
 /** Strips secrets that can appear in URLs (the M-Pesa callback token) before anything is logged. */
 export function redactUrl(url: string) {
@@ -58,6 +59,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
 
   const rekey = rekeySecrets(ctx);
   assignMissingAccountNumbers(ctx);
+  backfillFills(ctx);
   if (rekey.rekeyed || rekey.unreadable) {
     console.warn(`[security] re-encrypted ${rekey.rekeyed} secret(s) with the current MASTER_KEY; ${rekey.unreadable} could not be read with any configured key`);
   }

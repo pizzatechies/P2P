@@ -7,6 +7,7 @@ import type { Broker, OrderInput } from "./brokers/types.js";
 import { assetClassOf, FUTURES_BY_SYMBOL, futureMargin, QTY_RULES } from "./instruments.js";
 import { alpacaCredentials, marketFor, normalizeSymbol, type MarketData } from "./market.js";
 import { assertLiveApproved, liveApproved } from "../upgrade.js";
+import { snapshotPortfolio } from "./records.js";
 
 export function tradingSettings(ctx: Ctx, userId: string) {
   const acct = ensureTradingAccount(ctx, userId);
@@ -173,4 +174,51 @@ export async function addToWatchlist(ctx: Ctx, userId: string, raw: string) {
 
 export function removeFromWatchlist(ctx: Ctx, userId: string, raw: string) {
   run(ctx.db, "DELETE FROM watchlist WHERE user_id = ? AND symbol = ?", userId, normalizeSymbol(raw));
+}
+
+// ---------------------------------------------------------------------------
+// Daily valuations
+// ---------------------------------------------------------------------------
+/**
+ * Values every active portfolio once a day, so performance charts have a point for each day even
+ * when the customer doesn't open the app. Started from index.ts (not in tests).
+ */
+export function startPortfolioSnapshots(ctx: Ctx, everyMs = 30 * 60_000) {
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      const due = all<{ user_id: string }>(
+        ctx.db,
+        `SELECT t.user_id FROM trading_accounts t JOIN users u ON u.id = t.user_id
+         WHERE u.status = 'active' AND u.closed_at IS NULL
+           AND (EXISTS (SELECT 1 FROM positions p WHERE p.user_id = t.user_id) OR t.broker = 'alpaca'
+                OR EXISTS (SELECT 1 FROM trade_fills f WHERE f.user_id = t.user_id AND f.executed_at > ?))
+           AND NOT EXISTS (SELECT 1 FROM portfolio_snapshots s WHERE s.user_id = t.user_id AND s.broker = t.broker AND s.day = ?)
+         LIMIT 50`,
+        new Date(Date.now() - 90 * 86_400_000).toISOString(),
+        day,
+      );
+      for (const { user_id } of due) {
+        try {
+          const { broker } = brokerFor(ctx, user_id);
+          snapshotPortfolio(ctx, user_id, await broker.account());
+        } catch (err) {
+          console.warn(`[snapshots] ${user_id}: ${(err as Error).message}`);
+        }
+      }
+    } finally {
+      busy = false;
+    }
+  };
+  const first = setTimeout(() => void tick(), 60_000);
+  first.unref();
+  const timer = setInterval(() => void tick(), everyMs);
+  timer.unref();
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
 }

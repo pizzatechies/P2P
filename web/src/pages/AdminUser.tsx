@@ -28,7 +28,7 @@ interface Detail {
   balances: { currency: string; balance: string }[];
   activity: { date: string; kind: string; description: string | null; currency: string; amount: string; reference: string }[];
   transfers: { id: string; direction: string; rail: string; currency: string; amount: number; status: string; failureReason: string | null; createdAt: string }[];
-  trading: { account: { broker: string; cash: number; startingCash: number } | null; positions: { symbol: string; qty: number; avgCost: number }[]; orders: number; realApplication: { status: string } | null };
+  trading: { account: { broker: string; cash: number; startingCash: number } | null; positions: { symbol: string; qty: number; avgCost: number }[]; orders: number; realApplication: { status: string } | null; fills?: { id: string; executedAt: string; symbol: string; side: string; qty: number; price: number; notional: number; accountType: string; realizedPl: number | null }[] };
   sessions: { createdAt: string; expiresAt: string; ip: string | null; userAgent: string | null }[];
   events: { action: string; ip: string | null; details: string; createdAt: string }[];
   notes: { id: number; note: string; createdAt: string; author: string | null }[];
@@ -174,7 +174,27 @@ export function AdminUserPage() {
                   <div><span>Orders</span><strong>{d.data.trading.orders}</strong></div>
                   <div><span>Real-account application</span><strong>{d.data.trading.realApplication?.status ?? "—"}</strong></div>
                 </div>
-              ) : (
+              ) : null}
+              {d.data.trading.fills && d.data.trading.fills.length > 0 && (
+                <div className="table-wrap" style={{ marginTop: 10 }}>
+                  <table className="table">
+                    <thead><tr><th>Recent trades</th><th className="r">Value</th><th className="r">Realised</th></tr></thead>
+                    <tbody>
+                      {d.data.trading.fills.slice(0, 10).map((f) => (
+                        <tr key={f.id}>
+                          <td className="small">
+                            <span className={f.side === "buy" ? "good" : "bad"}>{f.side}</span> {f.qty} <strong>{f.symbol}</strong> @ {f.price}
+                            <div className="faint xs">{new Date(f.executedAt).toLocaleString()} · {f.accountType}</div>
+                          </td>
+                          <td className="r num">{usd(f.notional)}</td>
+                          <td className="r num">{f.realizedPl === null ? "—" : usd(f.realizedPl, true)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {!d.data.trading.account && (
                 <Empty>Hasn't opened trading.</Empty>
               )}
             </div>

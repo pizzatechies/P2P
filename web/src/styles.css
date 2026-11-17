@@ -37,6 +37,8 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  --div-pos: #2a78d6;
+  --div-neg: #e34948;
   --spark: #7d7663;
 
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -72,6 +74,8 @@
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
+  --div-pos: #3987e5;
+  --div-neg: #e66767;
   --spark: #968d7a;
 }
 

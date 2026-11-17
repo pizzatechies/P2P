@@ -5,6 +5,7 @@ import { newId } from "../../../lib/ids.js";
 import type { OrderRow } from "./paper.js";
 import { orderView } from "./paper.js";
 import { assetClassOf } from "../instruments.js";
+import { recordFill } from "../records.js";
 import type { AccountView, Broker, OrderInput, OrderView } from "./types.js";
 
 export const ALPACA_PAPER = "https://paper-api.alpaca.markets";
@@ -21,7 +22,13 @@ interface AlpacaOrder {
   filled_qty: string;
   filled_avg_price: string | null;
   created_at: string;
+  updated_at?: string | null;
+  filled_at?: string | null;
+  asset_class?: string;
 }
+
+/** Order states after which nothing more fills. */
+const FINAL = new Set(["filled", "canceled", "expired", "rejected"]);
 
 export async function alpacaRequest<T>(
   base: string,
@@ -95,6 +102,42 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
       rejectReason: null,
       createdAt: o.created_at,
     };
+  }
+
+  /**
+   * Brings Aurex's copy of an order up to date and records its execution once it's final. Profit or
+   * loss stays unknown: Aurex may not have seen the account's earlier trades (Alpaca reports it per position).
+   */
+  function syncOrder(o: AlpacaOrder, local: OrderRow | undefined) {
+    const filledQty = num(o.filled_qty) ?? 0;
+    const avg = num(o.filled_avg_price);
+    if (local && (local.status !== o.status || local.filled_qty !== filledQty)) {
+      run(
+        ctx.db,
+        "UPDATE orders SET status = ?, filled_qty = ?, filled_avg_price = ?, updated_at = ? WHERE id = ?",
+        o.status,
+        filledQty,
+        avg,
+        nowIso(),
+        local.id,
+      );
+    }
+    if (!FINAL.has(o.status) || !(filledQty > 0) || !avg) return;
+    recordFill(ctx, {
+      userId,
+      broker: "alpaca",
+      accountType: creds.env === "live" ? "real" : "demo",
+      orderRef: o.id,
+      orderId: local?.id ?? null,
+      symbol: fromAlpacaSymbol(o.symbol, o.asset_class),
+      side: o.side,
+      qty: filledQty,
+      price: avg,
+      realizedCents: null,
+      placedBy: local?.placed_by ?? "user",
+      source: local?.source ?? "manual",
+      executedAt: o.filled_at ?? o.updated_at ?? o.created_at,
+    });
   }
 
   return {
@@ -193,6 +236,7 @@ export function alpacaBroker(ctx: Ctx, userId: string, creds: { keyId: string; s
       const locals = new Map(
         all<OrderRow>(ctx.db, "SELECT * FROM orders WHERE user_id = ? AND broker = 'alpaca'", userId).map((o) => [o.broker_order_id, o]),
       );
+      for (const o of remote) syncOrder(o, locals.get(o.id));
       return remote.map((o) => toView(o, locals.get(o.id)));
     },
 

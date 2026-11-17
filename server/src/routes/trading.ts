@@ -28,6 +28,16 @@ import {
   tradingSettings,
 } from "../services/trading/index.js";
 import { marketFor, normalizeSymbol, searchInstruments } from "../services/trading/market.js";
+import {
+  cashJournal,
+  performance,
+  realizedCsv,
+  realizedReport,
+  snapshotPortfolio,
+  tradeHistory,
+  tradesCsv,
+  tradingYears,
+} from "../services/trading/records.js";
 import { audit } from "../services/users.js";
 
 const OrderBody = z.object({
@@ -85,6 +95,23 @@ const AutopilotBody = z.object({
   allowLive: z.boolean().optional(),
 });
 
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use dates like 2026-11-01");
+const HistoryQuery = z.object({
+  from: day.optional(),
+  to: day.optional(),
+  symbol: z.string().trim().max(16).optional(),
+  assetClass: z.enum(["stock", "crypto", "future"]).optional(),
+  accountType: z.enum(["demo", "real"]).optional(),
+  before: z.string().datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  format: z.enum(["json", "csv"]).optional(),
+});
+const RealizedQuery = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+  accountType: z.enum(["demo", "real"]).optional(),
+  format: z.enum(["json", "csv"]).optional(),
+});
+
 const AlpacaKeysBody = z.object({
   keyId: z.string().trim().min(10).max(100),
   secretKey: z.string().trim().min(10).max(200),
@@ -99,7 +126,54 @@ export function tradingRoutes(ctx: Ctx) {
   r.get("/account", async (req, res) => {
     const settings = tradingSettings(ctx, req.user!.id);
     const { broker } = brokerFor(ctx, req.user!.id);
-    res.json({ settings, account: await broker.account() });
+    const account = await broker.account();
+    try {
+      snapshotPortfolio(ctx, req.user!.id, account);
+    } catch (err) {
+      console.warn("[trading] snapshot failed:", (err as Error).message);
+    }
+    res.json({ settings, account });
+  });
+
+  // ---- Trading records: executions, realised profit and loss, performance, demo cash journal ----
+  const recordsLimiter = rateLimit({ name: "trading-records", windowMs: 60_000, max: ctx.config.isTest ? 10_000 : 60, key: (req) => req.user!.id });
+
+  r.get("/records/trades", recordsLimiter, (req, res) => {
+    const q = parse(HistoryQuery, req.query);
+    const filters = { ...q, symbol: q.symbol ? normalizeSymbol(q.symbol) : undefined };
+    if (q.format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="aurex-trades${q.from ? `-${q.from}` : ""}${q.to ? `-to-${q.to}` : ""}.csv"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(tradesCsv(ctx, req.user!.id, filters));
+      return;
+    }
+    res.json(tradeHistory(ctx, req.user!.id, filters));
+  });
+
+  r.get("/records/realized", recordsLimiter, (req, res) => {
+    const q = parse(RealizedQuery, req.query);
+    const settings = tradingSettings(ctx, req.user!.id);
+    const years = tradingYears(ctx, req.user!.id);
+    const year = q.year ?? years[0] ?? new Date().getUTCFullYear();
+    const report = realizedReport(ctx, req.user!.id, year, q.accountType ?? settings.accountType);
+    if (q.format === "csv") {
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="aurex-realised-pl-${year}-${report.accountType}.csv"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(realizedCsv(report));
+      return;
+    }
+    res.json({ years, report });
+  });
+
+  r.get("/records/performance", recordsLimiter, (req, res) => {
+    const settings = tradingSettings(ctx, req.user!.id);
+    res.json({ performance: performance(ctx, req.user!.id, settings.broker, settings.accountType) });
+  });
+
+  r.get("/records/cash", recordsLimiter, (req, res) => {
+    res.json({ entries: cashJournal(ctx, req.user!.id) });
   });
 
   /** Starts the demo account over, optionally with a different virtual balance ($1,000 to $1,000,000). */

@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { toCsv } from "../lib/csv.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { badRequest, notFound, unprocessable } from "../lib/errors.js";
 import { assertCurrency, fromMinor } from "../lib/money.js";
@@ -87,12 +88,29 @@ function describe(ctx: Ctx, userId: string, row: StatementRow) {
 export function buildStatement(ctx: Ctx, userId: string, period: string, rawCurrency: string) {
   if (!PERIOD_RE.test(period)) throw badRequest("Use a month like 2026-11");
   if (period > new Date().toISOString().slice(0, 7)) throw badRequest("That month hasn't started yet");
+  return statementFor(ctx, userId, rawCurrency, monthStart(period), monthStart(nextMonth(period)), period);
+}
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Wallet activity between two days (inclusive, UTC), in the statement's format: up to a year at a time. */
+export function buildRangeStatement(ctx: Ctx, userId: string, fromDay: string, toDay: string, rawCurrency: string) {
+  if (!DAY_RE.test(fromDay) || !DAY_RE.test(toDay) || Number.isNaN(Date.parse(fromDay)) || Number.isNaN(Date.parse(toDay))) {
+    throw badRequest("Use dates like 2026-11-01");
+  }
+  if (toDay < fromDay) throw badRequest("The end date is before the start date");
+  if (fromDay > new Date().toISOString().slice(0, 10)) throw badRequest("That date hasn't happened yet");
+  const from = `${fromDay}T00:00:00.000Z`;
+  const to = new Date(Date.parse(`${toDay}T00:00:00.000Z`) + 86_400_000).toISOString();
+  if (Date.parse(to) - Date.parse(from) > 367 * 86_400_000) throw badRequest("Choose at most a year at a time");
+  return statementFor(ctx, userId, rawCurrency, from, to, `${fromDay} to ${toDay}`);
+}
+
+function statementFor(ctx: Ctx, userId: string, rawCurrency: string, from: string, to: string, period: string) {
   const currency = assertCurrency(rawCurrency).code;
   const user = getUserRow(ctx, userId);
   const account = one<{ id: string }>(ctx.db, "SELECT id FROM accounts WHERE owner_type = 'user' AND user_id = ? AND currency = ?", userId, currency);
   if (!account) throw notFound(`You don't have a ${currency} wallet`);
-  const from = monthStart(period);
-  const to = monthStart(nextMonth(period));
   const opening = one<{ s: number | null }>(ctx.db, "SELECT SUM(amount) AS s FROM entries WHERE account_id = ? AND created_at < ?", account.id, from)!.s ?? 0;
   const rows = all<StatementRow>(
     ctx.db,
@@ -135,11 +153,6 @@ export function buildStatement(ctx: Ctx, userId: string, period: string, rawCurr
   };
 }
 
-const csvCell = (v: unknown) => {
-  const s = v === null || v === undefined ? "" : String(v);
-  // Quote everything; neutralise spreadsheet formulas (CSV injection).
-  return `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
-};
 
 export function statementCsv(st: ReturnType<typeof buildStatement>) {
   const head = [
@@ -156,7 +169,7 @@ export function statementCsv(st: ReturnType<typeof buildStatement>) {
     ["Date (UTC)", "Description", "Reference", "Money in", "Money out", "Balance"],
   ];
   const body = st.lines.map((l) => [l.date.replace("T", " ").slice(0, 19), l.description, l.reference, l.moneyIn ?? "", l.moneyOut ?? "", l.balance]);
-  return [...head, ...body].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  return toCsv([...head, ...body]);
 }
 
 // ---------------------------------------------------------------------------
