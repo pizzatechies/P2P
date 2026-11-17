@@ -1,17 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { AboutPage } from "./site/About";
-import { DemoPage } from "./site/Demo";
-import { FeaturesPage } from "./site/Features";
-import { HomePage } from "./site/Home";
-import { PricingPage } from "./site/Pricing";
-import { SecurityPage } from "./site/Security";
-import { SiteLayout } from "./site/SiteLayout";
-import { applyTheme, AuthProvider, ToastProvider } from "./state";
+import { BrowserRouter } from "react-router-dom";
+import { SiteApp } from "./site/SiteApp";
+import { applyTheme } from "./state";
 import "./styles.css";
 
 // Static marketing website (GitHub Pages). Same pages as the app's public site, no API.
+// Each page's HTML is also pre-rendered at build time (site-prerender.tsx), so it shows even where
+// JavaScript is off or limited; when the script runs, it takes over from that HTML.
 try {
   applyTheme(localStorage.getItem("aurex-theme") === "dark" ? "dark" : "light");
 } catch {
@@ -21,21 +17,7 @@ try {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-      <AuthProvider>
-        <ToastProvider>
-          <Routes>
-            <Route element={<SiteLayout />}>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/features" element={<FeaturesPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
-              <Route path="/security" element={<SecurityPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/demo" element={<DemoPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
-        </ToastProvider>
-      </AuthProvider>
+      <SiteApp />
     </BrowserRouter>
   </StrictMode>,
 );
