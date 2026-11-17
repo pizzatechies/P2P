@@ -131,8 +131,10 @@ describe("upgrading to a real account", () => {
   };
   const ack = { riskOfLoss: true, notAdvice: true, ownAccount: true, accurate: true };
 
-  async function readyUser(app: ReturnType<typeof makeApp>["app"]) {
+  async function readyUser(app: ReturnType<typeof makeApp>["app"], ctx: ReturnType<typeof makeApp>["ctx"]) {
     const { A, res, user } = await register(app, "upgrader");
+    // Identity verification has its own suite; here it's simply marked done.
+    ctx.db.prepare("UPDATE users SET kyc_level = 1 WHERE id = ?").run(user.id);
     await A.post("/api/auth/email/verify", { code: res.body.emailVerification.devCode });
     const setup = await A.post("/api/settings/2fa/setup");
     await A.post("/api/settings/2fa/confirm", { code: totp(setup.body.secret) });
@@ -151,7 +153,7 @@ describe("upgrading to a real account", () => {
     await fresh.put("/api/trading/upgrade", application);
     expect((await fresh.post("/api/trading/upgrade/submit", ack)).body.error.code).toBe("checklist_incomplete");
 
-    const { A, user } = await readyUser(app);
+    const { A, user } = await readyUser(app, ctx);
     const saved = await A.put("/api/trading/upgrade", application);
     expect(saved.body.status).toBe("draft");
     expect(saved.body.checklist.every((c: { done: boolean }) => c.done)).toBe(true);
@@ -185,8 +187,8 @@ describe("upgrading to a real account", () => {
   });
 
   it("warns about risky answers, requires that the warnings are acknowledged, and can auto-approve", async () => {
-    const { app } = makeApp({ REQUIRE_EMAIL_VERIFICATION: "true", LIVE_UPGRADE_AUTO_APPROVE: "true" });
-    const { A } = await readyUser(app);
+    const { app, ctx } = makeApp({ REQUIRE_EMAIL_VERIFICATION: "true", LIVE_UPGRADE_AUTO_APPROVE: "true" });
+    const { A } = await readyUser(app, ctx);
     const risky = { ...application, experience: "none", objective: "speculation", liquidNetWorth: "under_10k" };
     const saved = (await A.put("/api/trading/upgrade", risky)).body;
     expect(saved.assessment.result).toBe("warning");

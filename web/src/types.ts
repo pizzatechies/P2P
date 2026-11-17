@@ -9,6 +9,7 @@ export interface User {
   totpEnabled: boolean;
   emailVerified: boolean;
   status: string;
+  accountNumber?: string | null;
   createdAt: string;
 }
 

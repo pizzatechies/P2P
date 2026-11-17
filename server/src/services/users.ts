@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { Ctx } from "../context.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import {
@@ -47,6 +48,10 @@ export interface UserRow {
   security_hold_until: string | null;
   password_changed_at: string | null;
   email_verified_at: string | null;
+  account_number: string | null;
+  closed_at: string | null;
+  limit_tx_usd: number | null;
+  limit_daily_usd: number | null;
 }
 
 export interface AuthUser {
@@ -60,6 +65,7 @@ export interface AuthUser {
   totpEnabled: boolean;
   emailVerified: boolean;
   status: "active" | "frozen";
+  accountNumber: string | null;
   createdAt: string;
 }
 
@@ -75,6 +81,7 @@ export function toAuthUser(u: UserRow): AuthUser {
     totpEnabled: u.totp_enabled === 1,
     emailVerified: Boolean(u.email_verified_at),
     status: u.status,
+    accountNumber: u.account_number,
     createdAt: u.created_at,
   };
 }
@@ -115,8 +122,8 @@ export async function registerUser(
   return tx(ctx.db, () => {
     run(
       ctx.db,
-      `INSERT INTO users (id, email, handle, display_name, password_hash, role, default_currency, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, email, handle, display_name, password_hash, role, default_currency, account_number, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       email,
       handle,
@@ -124,10 +131,43 @@ export async function registerUser(
       passwordHash,
       role,
       currency,
+      newAccountNumber(ctx),
       nowIso(),
     );
     return getUserRow(ctx, id);
   });
+}
+
+/** Luhn check digit, so a mistyped account number is caught before money moves. */
+export function luhnDigit(digits: string) {
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[digits.length - 1 - i]);
+    if (i % 2 === 0) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+  }
+  return String((10 - (sum % 10)) % 10);
+}
+
+export const validAccountNumber = (n: string) => /^[1-9]\d{9}$/.test(n) && luhnDigit(n.slice(0, 9)) === n[9];
+
+/** A unique 10-digit Aurex account number: 9 random digits (no leading zero) and a check digit. */
+export function newAccountNumber(ctx: Ctx) {
+  for (;;) {
+    const body = String(randomInt(1, 10)) + String(randomInt(0, 100_000_000)).padStart(8, "0");
+    const n = body + luhnDigit(body);
+    if (!one(ctx.db, "SELECT 1 FROM users WHERE account_number = ?", n)) return n;
+  }
+}
+
+/** Gives accounts created before account numbers existed one each (runs at startup). */
+export function assignMissingAccountNumbers(ctx: Ctx) {
+  const missing = all<{ id: string }>(ctx.db, "SELECT id FROM users WHERE account_number IS NULL");
+  for (const { id } of missing) run(ctx.db, "UPDATE users SET account_number = ? WHERE id = ?", newAccountNumber(ctx), id);
+  return missing.length;
 }
 
 export function getUserRow(ctx: Ctx, id: string): UserRow {
@@ -141,6 +181,9 @@ export function findUserByIdentifier(ctx: Ctx, identifier: string): UserRow | un
   const raw = identifier.trim();
   if (!raw) return undefined;
   if (raw.startsWith("usr_")) return one<UserRow>(ctx.db, "SELECT * FROM users WHERE id = ?", raw);
+  // An Aurex account number, typed with or without spaces.
+  const digits = raw.replace(/[\s-]/g, "");
+  if (/^\d{10}$/.test(digits)) return validAccountNumber(digits) ? one<UserRow>(ctx.db, "SELECT * FROM users WHERE account_number = ?", digits) : undefined;
   if (raw.includes("@") && !raw.startsWith("@")) {
     // Paying by email only finds verified addresses, so nobody can intercept money by registering
     // someone else's email first.
@@ -158,13 +201,14 @@ export function searchUsers(ctx: Ctx, query: string, excludeId: string) {
     ctx.db,
     `SELECT id, handle, display_name FROM users
      WHERE id <> ? AND status = 'active' AND (handle LIKE ? ESCAPE '\\' OR lower(display_name) LIKE ? ESCAPE '\\'
-       OR (email = ? AND (email_verified_at IS NOT NULL OR ? = 0)))
+       OR (email = ? AND (email_verified_at IS NOT NULL OR ? = 0)) OR account_number = ?)
      ORDER BY handle LIMIT 8`,
     excludeId,
     like,
     like,
     q,
     ctx.config.requireEmailVerification ? 1 : 0,
+    q.replace(/[\s-]/g, ""),
   ).map(publicProfile);
 }
 
@@ -195,6 +239,9 @@ export async function authenticate(
   if (!user || !ok) {
     if (user) recordFailedAttempt(ctx, user, ip);
     throw unauthorized("Email or password is incorrect");
+  }
+  if (user.closed_at) {
+    throw new HttpError(403, "account_closed", `This account was closed on ${user.closed_at.slice(0, 10)}. Contact support if you'd like to reopen it.`);
   }
   if (user.status !== "active") throw new HttpError(403, "account_frozen", "This account is frozen. Contact support.");
   let secondFactor: AuthResult["secondFactor"] = null;

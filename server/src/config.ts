@@ -49,6 +49,15 @@ const EnvSchema = z.object({
   // ---- Real (live) trading accounts ----
   /** Approve upgrade applications automatically instead of waiting for an admin. */
   LIVE_UPGRADE_AUTO_APPROVE: bool.default(false),
+  /** Limits by identity-verification level. Off: everyone gets MAX_TX_USD / DAILY_LIMIT_USD. */
+  KYC_LIMITS: bool.default(true),
+  /** Level 0 (email only) and level 1 (identity verified) limits in USD; level 2 uses MAX_TX_USD / DAILY_LIMIT_USD. */
+  TIER0_TX_USD: z.coerce.number().positive().default(200),
+  TIER0_DAILY_USD: z.coerce.number().positive().default(500),
+  TIER1_TX_USD: z.coerce.number().positive().default(2_000),
+  TIER1_DAILY_USD: z.coerce.number().positive().default(5_000),
+  /** Approve identity submissions automatically (development and demos only). */
+  KYC_AUTO_APPROVE: bool.default(false),
   /** Countries where real accounts may be opened (ISO codes, comma-separated). Empty = any. */
   LIVE_COUNTRIES: z.string().default(""),
   /** Demo trades a user must complete before applying for a real account. */

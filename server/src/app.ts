@@ -10,6 +10,7 @@ import { openDb, type DB } from "./db/index.js";
 import { HttpError } from "./lib/errors.js";
 import { rateLimit } from "./lib/rateLimit.js";
 import { csrfGuard, loadSession, originGuard } from "./middleware/auth.js";
+import { accountRoutes } from "./routes/account.js";
 import { adminRoutes } from "./routes/admin.js";
 import { aiRoutes } from "./routes/ai.js";
 import { authRoutes } from "./routes/auth.js";
@@ -22,6 +23,7 @@ import { settingsRoutes } from "./routes/settings.js";
 import { tradingRoutes } from "./routes/trading.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { rekeySecrets } from "./services/rekey.js";
+import { assignMissingAccountNumbers } from "./services/users.js";
 
 /** Strips secrets that can appear in URLs (the M-Pesa callback token) before anything is logged. */
 export function redactUrl(url: string) {
@@ -55,6 +57,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   const app = express();
 
   const rekey = rekeySecrets(ctx);
+  assignMissingAccountNumbers(ctx);
   if (rekey.rekeyed || rekey.unreadable) {
     console.warn(`[security] re-encrypted ${rekey.rekeyed} secret(s) with the current MASTER_KEY; ${rekey.unreadable} could not be read with any configured key`);
   }
@@ -133,6 +136,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   app.use("/api/auth", authRoutes(ctx));
   app.use("/api/public", publicRoutes(ctx));
   app.use("/api/settings", settingsRoutes(ctx));
+  app.use("/api/account", accountRoutes(ctx));
   app.use("/api/payments", paymentRoutes(ctx));
   app.use("/api/connections", connectionRoutes(ctx));
   app.use("/api/ai", aiRoutes(ctx));

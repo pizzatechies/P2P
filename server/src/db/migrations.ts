@@ -405,4 +405,55 @@ export const migrations: string[] = [
   );
   CREATE INDEX live_applications_status ON live_applications(status, submitted_at);
   `,
+  // 8: Real-account provisions: account numbers, identity verification (KYC) with limit tiers,
+  //    per-user limit overrides, account closure and admin notes.
+  `
+  ALTER TABLE users ADD COLUMN account_number TEXT;
+  CREATE UNIQUE INDEX users_account_number ON users(account_number) WHERE account_number IS NOT NULL;
+  ALTER TABLE users ADD COLUMN closed_at TEXT;
+  -- Admin overrides of the verification-level limits (USD); NULL means "use the level's limits".
+  ALTER TABLE users ADD COLUMN limit_tx_usd REAL;
+  ALTER TABLE users ADD COLUMN limit_daily_usd REAL;
+
+  -- Identity verification. Level 1: identity (ID document and selfie). Level 2: enhanced (proof of
+  -- address and source of funds). Personal details are encrypted with MASTER_KEY (AES-256-GCM).
+  CREATE TABLE kyc_submissions (
+    id            TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    level         INTEGER NOT NULL CHECK (level IN (1, 2)),
+    status        TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','submitted','approved','rejected')),
+    data_enc      TEXT,
+    submitted_at  TEXT,
+    reviewed_at   TEXT,
+    reviewer_id   TEXT,
+    review_note   TEXT,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+  );
+  CREATE INDEX kyc_submissions_user ON kyc_submissions(user_id, level, created_at);
+  CREATE INDEX kyc_submissions_status ON kyc_submissions(status, submitted_at);
+
+  -- Identity documents (ID photos, selfie, proof of address), encrypted at rest.
+  CREATE TABLE kyc_documents (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL CHECK (kind IN ('id_front','id_back','selfie','proof_of_address')),
+    mime        TEXT NOT NULL,
+    size        INTEGER NOT NULL,
+    sha256      TEXT NOT NULL,
+    data_enc    TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX kyc_documents_user ON kyc_documents(user_id, kind, created_at);
+
+  -- Internal notes admins keep on an account.
+  CREATE TABLE account_notes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    author_id   TEXT NOT NULL,
+    note        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX account_notes_user ON account_notes(user_id, id);
+  `,
 ];

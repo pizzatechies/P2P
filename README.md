@@ -4,7 +4,8 @@ Peer-to-peer payments, a multi-provider AI hub and AI-assisted trading in stocks
 
 | | |
 |---|---|
-| **Payments** | Multi-currency wallets (19 currencies), send by @handle or email, request money, currency conversion, deposits and withdrawals through pluggable payment rails, all on a double-entry ledger |
+| **Accounts** | Every customer gets a 10-digit account number (with a check digit). Identity verification in three levels raises limits as customers prove who they are, with documents reviewed by your team. Monthly statements (printable, PDF or CSV), a full download of the customer's data, and self-service account closure that keeps the records the law needs |
+| **Payments** | Multi-currency wallets (19 currencies), send by @handle, email or account number, request money, currency conversion, deposits and withdrawals through pluggable payment rails, all on a double-entry ledger |
 | **AI Hub** | Chat with Claude, GPT, Gemini, Mistral, Llama (Groq/Together), Grok, DeepSeek, OpenRouter's catalogue, Perplexity and self-hosted Ollama models. Responses stream live, conversations are saved, a compare mode runs up to 4 models side by side, and users can bring their own encrypted keys |
 | **AI Autopilot** | Optional: the AI trades for the user on a schedule, strictly inside limits they set (per position, total invested, trades per day, minimum confidence, daily loss stop), or proposes trades for one-tap approval |
 | **Reach** | Installable app (add to home screen, works offline for the app shell), shareable pay links that sign new people up and land them on the payment, WhatsApp sharing, and a free daily AI allowance |
@@ -96,7 +97,7 @@ Every money movement is a **journal** of signed **entries**. For each currency t
 - Ledger entries are immutable: database triggers reject `UPDATE`/`DELETE`, and corrections are new journals.
 - Transfers, conversions and withdrawals accept an **idempotency key**, so a retried request never pays twice.
 - Withdrawals move funds into a `clearing` account *before* calling the payment rail, then settle or reverse.
-- Per-transaction and rolling 24h limits are applied in USD-equivalent.
+- Per-transaction and rolling 24h limits are applied in USD-equivalent, and depend on the customer's verification level (see [Accounts](#accounts-and-identity-verification)).
 - `GET /api/admin/overview` (and the Admin page) runs a full integrity check: journals balance, cached balances match entries, and system totals net to zero.
 
 System accounts: `external` (the outside world), `clearing` (withdrawals in flight), `fees`, `fx`.
@@ -109,6 +110,33 @@ System accounts: `external` (the outside world), `clearing` (withdrawals in flig
 | `stripe` | Stripe Checkout | – | Wallet credited only from the signed `checkout.session.completed` webhook. Point Stripe at `POST /api/webhooks/stripe` |
 
 Rails included: `sandbox`, `stripe`, `flutterwave`, `mpesa`, `mtn-momo`, `paypal`, `wise`, `skrill` and `moneygram` (see [Connections](#connections)). To add another rail, implement the `PaymentRail` interface in `rails/types.ts` and register it in `rails/index.ts`. The ledger and UI don't change.
+
+### Accounts and identity verification
+
+Everything about a customer's account lives on the **Account** page (click your name in the sidebar).
+
+**Account numbers.** Each customer gets a 10-digit number, shown as `1234 567 890`. The last digit is a Luhn check digit, so a mistyped number is rejected instead of paying a stranger. People can pay an account number the same way they pay an @handle or email. Accounts created before this feature get a number on the next start.
+
+**Identity verification (KYC)** has three levels. Limits are in US-dollar equivalent and apply to each payment, withdrawal and deposit, and to the rolling 24 hours:
+
+| Level | What the customer provides | Per payment | Per 24 hours |
+|---|---|---|---|
+| 0 · Basic | Email sign-up | `TIER0_TX_USD` ($200) | `TIER0_DAILY_USD` ($500) |
+| 1 · Verified identity | Legal name, date of birth (18+), nationality, phone, home address, an ID document (passport, national ID or driving licence; front, plus back for cards), and a selfie holding the ID | `TIER1_TX_USD` ($2,000) | `TIER1_DAILY_USD` ($5,000) |
+| 2 · Enhanced | Occupation, source of funds, expected monthly volume, whether they hold a public role (PEP), and a proof of address from the last 3 months | `MAX_TX_USD` ($10,000) | `DAILY_LIMIT_USD` ($25,000) |
+
+- Details and documents are encrypted with AES-256-GCM (and re-encrypted when `MASTER_KEY` rotates). Uploads are checked by their content, not their name: JPEG, PNG, WebP or PDF, 1 KB to 5 MB, and a selfie must be a photo.
+- Submissions go to **Admin → Identity verification**. Reviewers see the details and the documents, and approve or send back with a note the customer sees. Opening a document is written to the audit log, and nobody can review their own submission.
+- `KYC_AUTO_APPROVE=true` approves complete submissions instantly. Use it only for testing, or once a verification provider makes the decision for you.
+- `KYC_LIMITS=false` turns the levels off and applies `MAX_TX_USD` / `DAILY_LIMIT_USD` to everyone. Admin accounts are never tiered.
+
+**Statements.** Customers pick a month and a wallet and get the opening balance, every movement and the closing balance, built from the ledger. The page prints cleanly, so "Save as PDF" in the browser gives a PDF statement, and there's a CSV download. Cells that would start a spreadsheet formula are neutralised.
+
+**Your data.** "Download my data" exports a JSON file with the profile, verification details, wallets, transactions, payment requests, deposits and withdrawals, linked accounts, trading, AI conversations, academy progress and security history. Password hashes, 2FA secrets and API keys are never included. It needs a recent sign-in and is rate-limited.
+
+**Closing an account.** The customer types their @handle to confirm. Closing is blocked while money is left in any wallet, a deposit or withdrawal is in flight, the account is an admin, or a live brokerage is connected. It signs them out everywhere and deletes AI chats, keys, linked accounts and the watchlist. The ledger, verification records and audit trail are kept, as financial law requires. An admin can reopen a closed account.
+
+**Admin tools.** Admin → Customers searches by name, @handle, email or account number. Each customer has a page with their profile, balances, limits, verification (with documents), recent activity, deposits and withdrawals, trading, sessions, security events and internal notes. From there an admin can freeze or reopen the account, set custom limits (leave them empty to use the level's default), set the verification level by hand with a reason, and add notes. Every view and change is audited.
 
 ### AI Hub
 
@@ -255,7 +283,7 @@ No system can honestly promise to be unhackable. Aurex is built so that a single
 The software is a foundation. Running a real money or brokerage business has requirements that code alone can't meet:
 
 1. **Licensing and partners.** Holding and transmitting customer funds generally needs a money transmitter / e-money / payment institution licence in each jurisdiction, or a regulated partner (a banking-as-a-service provider, or a payments platform with marketplace features such as Stripe Connect). Brokerage likewise needs a broker-dealer or a partner (for example Alpaca's Broker API for multi-user brokerage). Users here trade only their *own* Alpaca accounts.
-2. **KYC/AML.** Add identity verification (Persona, Onfido, Sumsub, …), sanctions screening and transaction monitoring. The schema has a `kyc_level` column; tie limits to it.
+2. **KYC/AML.** Aurex collects identity details and documents and ties limits to the verification level (see [Accounts](#accounts-and-identity-verification)), but a person on your team reviews them. For real customers, add a verification provider (Persona, Onfido, Sumsub, …) for document and liveness checks, plus sanctions screening and transaction monitoring, and keep records for as long as your regulator requires.
 3. **Disable the sandbox rail.** Set `PAYMENT_RAILS=stripe` or your licensed rails. The server warns at startup if `sandbox` is enabled in production.
 4. **Secrets.** Set a strong `MASTER_KEY` (`openssl rand -hex 32`) and keep it safe. Losing it makes stored user keys unreadable; rotating it requires re-encryption.
 5. **HTTPS.** Run behind a TLS-terminating proxy with `TRUST_PROXY=true` and `APP_URL=https://…`.
@@ -332,7 +360,8 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | AI | `GET /ai/providers`, `GET /ai/providers/:id/models`, `POST /ai/chat` (SSE), `POST /ai/compare` (SSE), `GET/DELETE /ai/conversations/:id` |
 | Trading | `GET /trading/account`, `GET /trading/quote/:symbol`, `GET /trading/bars/:symbol`, `GET/POST/DELETE /trading/watchlist`, `GET/POST /trading/orders`, `POST /trading/orders/:id/cancel`, `POST /trading/analyze`, `GET /trading/signals`, `POST /trading/signals/:id/execute` |
 | Settings | `PATCH /settings/profile`, `POST /settings/password`, `POST /settings/2fa/{setup,confirm,disable}`, `GET/PUT/DELETE /settings/api-keys/:provider`, `PUT/DELETE /trading/alpaca-keys`, `PUT /trading/broker` |
-| Admin | `GET /admin/overview`, `GET /admin/users`, `POST /admin/users/:id/status` |
+| Account | `GET /account`, `GET /account/verification`, `PUT /account/verification/:level`, `POST /account/documents/:kind` (raw file body), `GET /account/documents/:id`, `POST /account/verification/:level/submit`, `GET /account/statements`, `GET /account/statements/:period?currency=&format=csv`, `GET /account/export`, `POST /account/close` |
+| Admin | `GET /admin/overview`, `GET /admin/users?q=`, `GET /admin/users/:id`, `POST /admin/users/:id/{status,limits,notes,kyc-level}`, `GET /admin/kyc`, `POST /admin/kyc/:id/review`, `GET /admin/kyc/documents/:id` |
 | Connections | `GET /connections/providers`, `GET /connections`, `POST /connections/:provider/start`, `POST /connections/links/:id/complete`, `POST /connections/:id/sync`, `DELETE /connections/:id`, `GET /connections/oauth/:provider/callback` |
 | Payouts | `POST /payments/payout-requirements`, `POST /payments/transfers/:id/refresh` |
 | Academy & upgrade | `GET /learn`, `POST /learn/lessons/:id/quiz`, `POST /trading/account/reset`, `GET/PUT /trading/upgrade`, `POST /trading/upgrade/submit`, `GET /admin/upgrades`, `POST /admin/upgrades/:userId/review` |
@@ -345,4 +374,4 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 npm test
 ```
 
-The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. Further suites cover email verification (including Resend delivery and alert emails), the academy (server-side grading, missions), demo resets and the real-account upgrade (checklist, encryption, warnings, admin review, live-key enforcement). A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.
+The suite covers money parsing and formatting, password hashing, encryption, TOTP (RFC 6238 vectors), and ledger invariants after every scenario. It also covers transfers, idempotent retries, fees, payment requests (including double-pay protection), FX, withdrawals with failed-payout reversal, limits, and Stripe webhook signatures with replay. On the AI side: provider resolution, SSE streaming, and key secrecy. On trading: paper buy/sell, limit orders, and AI signal guardrails. Connections and payment rails are tested against stub servers that answer like the Plaid, Salt Edge, SnapTrade, Coinbase, Flutterwave, Daraja (M-Pesa), MTN MoMo, PayPal, Wise, Skrill and MoneyGram APIs. An accounts suite covers account numbers and their check digit, paying by account number, the identity levels and their limits, document checks, admin review (including no self-review), custom limits, statements and CSV formula neutralising, the data export (no secrets) and closing and reopening an account. Further suites cover email verification (including Resend delivery and alert emails), the academy (server-side grading, missions), demo resets and the real-account upgrade (checklist, encryption, warnings, admin review, live-key enforcement). A security suite covers password rules and the breach check, lockouts, 2FA replay and recovery codes, re-authentication, security holds, sessions and idle timeout, admin 2FA and the setup code, headers, Origin checks, the `__Host-` cookie and `MASTER_KEY` rotation. They cover link and OAuth flows (state checks, refresh-token rotation), cross-user isolation, forged and early webhooks, underpaid deposits, and failed-payout refunds.

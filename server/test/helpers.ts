@@ -12,6 +12,8 @@ export function makeApp(env: Record<string, string> = {}) {
     PAYMENT_RAILS: "sandbox",
     // Most suites test other things; the email suite turns verification on.
     REQUIRE_EMAIL_VERIFICATION: "false",
+    // Likewise identity-verification limits: the accounts suite turns them on.
+    KYC_LIMITS: "false",
     ...env,
   });
   return createApp(config, openDb(":memory:"));

@@ -46,6 +46,23 @@ async function request<T>(method: string, url: string, body?: unknown, retried =
   return data as T;
 }
 
+/** Uploads a file as the raw request body (identity documents). */
+export async function upload<T>(url: string, file: Blob): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { Accept: "application/json", "Content-Type": file.type || "application/octet-stream", "X-Aurex-CSRF": "1" },
+    body: file,
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!res.ok) {
+    const err = data?.error ?? {};
+    throw new ApiError(res.status, err.code ?? "error", err.message ?? (res.status === 413 ? "That file is larger than 5 MB" : `Upload failed (${res.status})`));
+  }
+  return data as T;
+}
+
 export const api = {
   get: <T>(url: string) => request<T>("GET", url),
   post: <T>(url: string, body: unknown = {}) => request<T>("POST", url, body),

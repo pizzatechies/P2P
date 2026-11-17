@@ -2,7 +2,10 @@ import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { AccountPage } from "./pages/Account";
 import { AdminPage } from "./pages/Admin";
+import { AdminUserPage } from "./pages/AdminUser";
+import { StatementPage } from "./pages/Statement";
 import { AIHubPage } from "./pages/AIHub";
 import { ConnectionsPage, ConnectSandboxPage } from "./pages/Connections";
 import { LoginPage, RegisterPage } from "./pages/Auth";
@@ -99,6 +102,9 @@ createRoot(document.getElementById("root")!).render(
               <Route path="upgrade" element={<UpgradePage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="admin" element={<AdminPage />} />
+              <Route path="admin/users/:id" element={<AdminUserPage />} />
+              <Route path="account" element={<AccountPage />} />
+              <Route path="statement" element={<StatementPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

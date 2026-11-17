@@ -112,6 +112,13 @@ export function DashboardPage() {
         </div>
       )}
       {verifying && <VerifyEmailDialog initialDevCode={verifying.devCode} onClose={closeVerify} />}
+      {user && user.kycLevel === 0 && user.role !== "admin" && (
+        <Link to="/app/account#verification" className="banner" style={{ color: "var(--text)" }}>
+          <Icon.Shield size={16} />
+          <span className="grow"><strong>Verify your identity</strong> to raise your sending and withdrawal limits. It takes about 5 minutes.</span>
+          <span className="small">Verify</span>
+        </Link>
+      )}
 
       {unreadAlerts.length > 0 && (
         <Link to="/app/settings#security" className="banner" style={{ color: "var(--text)" }}>

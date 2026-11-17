@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../components/icons";
 import { VerifyEmailDialog } from "../components/verifyEmail";
@@ -23,6 +23,12 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="stack" style={{ gap: 16 }}>
+        <Link to="/app/account" className="banner" style={{ color: "var(--text)" }}>
+          <span className="grow">
+            <strong>Account &amp; verification</strong> · your account number, limits, identity verification, statements, data download and closing your account
+          </span>
+          <span className="small">Open</span>
+        </Link>
         <SecurityCenter data={security.data} reload={security.reload} />
         <div className="grid grid-2">
           <ProfileCard />

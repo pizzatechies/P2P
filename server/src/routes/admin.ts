@@ -7,6 +7,9 @@ import { fromMinor } from "../lib/money.js";
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireRecentAuth } from "../middleware/auth.js";
 import { listApplications, reviewApplication } from "../services/upgrade.js";
+import { reopenAccount } from "../services/account.js";
+import { documentHeaders, limitsFor, listSubmissions, readDocument, reviewSubmission, setLevel } from "../services/kyc.js";
+import { getUserRow } from "../services/users.js";
 import { verifyLedger } from "../services/ledger.js";
 import { audit } from "../services/users.js";
 
@@ -28,19 +31,144 @@ export function adminRoutes(ctx: Ctx) {
     res.json({ users, journals, systemAccounts: system, customerFunds, ledger: verifyLedger(ctx) });
   });
 
-  r.get("/users", (_req, res) => {
+  /** Newest accounts, or a search by name, handle, email or account number. */
+  r.get("/users", (req, res) => {
+    const q = String(req.query.q ?? "").trim().toLowerCase().slice(0, 100);
+    const cols =
+      "id, email, handle, display_name AS displayName, role, status, kyc_level AS kycLevel, account_number AS accountNumber, closed_at AS closedAt, created_at AS createdAt";
+    const like = `%${q.replace(/^@/, "").replace(/[%_\\]/g, (c) => "\\" + c)}%`;
+    const digits = q.replace(/[\s-]/g, "");
+    const users = q
+      ? all(
+          ctx.db,
+          `SELECT ${cols} FROM users WHERE lower(email) LIKE ? ESCAPE '\\' OR lower(handle) LIKE ? ESCAPE '\\' OR lower(display_name) LIKE ? ESCAPE '\\' OR account_number = ?
+           ORDER BY created_at DESC LIMIT 50`,
+          like,
+          like,
+          like,
+          digits,
+        )
+      : all(ctx.db, `SELECT ${cols} FROM users ORDER BY created_at DESC LIMIT 200`);
+    res.json({ users });
+  });
+
+  /** Everything about one account, for support and compliance. Viewing it is audited. */
+  r.get("/users/:id", (req, res) => {
+    const user = getUserRow(ctx, String(req.params.id));
+    const id = user.id;
+    audit(ctx, req.user!.id, "admin.user_viewed", { target: id }, req.ip);
+    const balances = all<{ currency: string; balance: number }>(ctx.db, "SELECT currency, balance FROM accounts WHERE owner_type = 'user' AND user_id = ? ORDER BY currency", id).map((a) => ({
+      currency: a.currency,
+      balance: fromMinor(a.balance, a.currency),
+    }));
+    const activity = all<{ created_at: string; amount: number; currency: string; kind: string; memo: string | null; journal_id: string }>(
+      ctx.db,
+      `SELECT e.created_at, e.amount, e.currency, j.kind, j.memo, e.journal_id FROM entries e JOIN accounts a ON a.id = e.account_id JOIN journals j ON j.id = e.journal_id
+       WHERE a.owner_type = 'user' AND a.user_id = ? ORDER BY e.id DESC LIMIT 50`,
+      id,
+    ).map((e) => ({ date: e.created_at, kind: e.kind, description: e.memo, currency: e.currency, amount: fromMinor(e.amount, e.currency), reference: e.journal_id }));
     res.json({
-      users: all(
+      user: {
+        id,
+        email: user.email,
+        emailVerified: Boolean(user.email_verified_at),
+        handle: user.handle,
+        displayName: user.display_name,
+        role: user.role,
+        status: user.closed_at ? "closed" : user.status,
+        closedAt: user.closed_at,
+        accountNumber: user.account_number,
+        kycLevel: user.kyc_level,
+        twoFactor: user.totp_enabled === 1,
+        createdAt: user.created_at,
+        lockedUntil: user.locked_until,
+        securityHoldUntil: user.security_hold_until,
+      },
+      limits: { ...limitsFor(ctx, user), overrideTxUsd: user.limit_tx_usd, overrideDailyUsd: user.limit_daily_usd },
+      verification: listSubmissions(ctx, "all").filter((s) => s.user.id === id),
+      balances,
+      activity,
+      transfers: all(
         ctx.db,
-        "SELECT id, email, handle, display_name AS displayName, role, status, kyc_level AS kycLevel, created_at AS createdAt FROM users ORDER BY created_at DESC LIMIT 200",
+        "SELECT id, direction, rail, currency, amount, status, failure_reason AS failureReason, created_at AS createdAt FROM external_transfers WHERE user_id = ? ORDER BY created_at DESC LIMIT 25",
+        id,
+      ),
+      trading: {
+        account: one(ctx.db, "SELECT broker, cash_cents / 100.0 AS cash, starting_cents / 100.0 AS startingCash FROM trading_accounts WHERE user_id = ?", id) ?? null,
+        positions: all(ctx.db, "SELECT symbol, qty, avg_cost AS avgCost FROM positions WHERE user_id = ? ORDER BY symbol", id),
+        orders: one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM orders WHERE user_id = ?", id)!.n,
+        realApplication: one(ctx.db, "SELECT status, submitted_at AS submittedAt, reviewed_at AS reviewedAt FROM live_applications WHERE user_id = ?", id) ?? null,
+      },
+      sessions: all(ctx.db, "SELECT created_at AS createdAt, expires_at AS expiresAt, ip, user_agent AS userAgent FROM sessions WHERE user_id = ? ORDER BY created_at DESC", id),
+      events: all(ctx.db, "SELECT action, ip, details, created_at AS createdAt FROM audit_events WHERE user_id = ? ORDER BY id DESC LIMIT 40", id),
+      notes: all(
+        ctx.db,
+        `SELECT n.id, n.note, n.created_at AS createdAt, u.handle AS author FROM account_notes n LEFT JOIN users u ON u.id = n.author_id
+         WHERE n.user_id = ? ORDER BY n.id DESC`,
+        id,
       ),
     });
+  });
+
+  /** Per-user limits (USD). null returns the user to their verification level's limits. */
+  r.post("/users/:id/limits", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(
+      z.object({ txUsd: z.number().positive().max(10_000_000).nullable(), dailyUsd: z.number().positive().max(100_000_000).nullable() }),
+      req.body,
+    );
+    const target = getUserRow(ctx, String(req.params.id)).id;
+    if (target === req.user!.id) throw new HttpError(400, "bad_request", "You can't change your own limits");
+    run(ctx.db, "UPDATE users SET limit_tx_usd = ?, limit_daily_usd = ? WHERE id = ?", body.txUsd, body.dailyUsd, target);
+    audit(ctx, req.user!.id, "admin.limits_set", { target, ...body }, req.ip);
+    res.json({ ok: true });
+  });
+
+  r.post("/users/:id/notes", (req, res) => {
+    const { note } = parse(z.object({ note: z.string().trim().min(1).max(2000) }), req.body);
+    const target = getUserRow(ctx, String(req.params.id)).id;
+    run(ctx.db, "INSERT INTO account_notes (user_id, author_id, note, created_at) VALUES (?, ?, ?, ?)", target, req.user!.id, note, new Date().toISOString());
+    audit(ctx, req.user!.id, "admin.note_added", { target }, req.ip);
+    res.status(201).json({ ok: true });
+  });
+
+  /** Set a verification level directly (for example, identity checked in person). */
+  r.post("/users/:id/kyc-level", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(z.object({ level: z.union([z.literal(0), z.literal(1), z.literal(2)]), note: z.string().trim().min(3).max(500) }), req.body);
+    setLevel(ctx, req.user!.id, String(req.params.id), body.level, body.note, req.ip);
+    res.json({ ok: true });
+  });
+
+  // ---- Identity verification queue ----
+  r.get("/kyc", (req, res) => {
+    const status = req.query.status === "all" ? "all" : "submitted";
+    audit(ctx, req.user!.id, "admin.kyc_viewed", { status }, req.ip);
+    res.json({ submissions: listSubmissions(ctx, status) });
+  });
+
+  r.post("/kyc/:id/review", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(z.object({ decision: z.enum(["approve", "reject"]), note: z.string().trim().max(500).optional() }), req.body);
+    reviewSubmission(ctx, req.user!.id, String(req.params.id), body.decision, body.note, req.ip);
+    res.json({ submissions: listSubmissions(ctx, "submitted") });
+  });
+
+  /** A customer's identity document, decrypted for review. Every view is audited. */
+  r.get("/kyc/documents/:id", (req, res) => {
+    const doc = readDocument(ctx, String(req.params.id));
+    audit(ctx, req.user!.id, "admin.kyc_document_viewed", { documentId: req.params.id, target: doc.userId, kind: doc.kind }, req.ip);
+    res.set(documentHeaders(doc));
+    res.send(doc.bytes);
   });
 
   r.post("/users/:id/status", requireRecentAuth(ctx), (req, res) => {
     const { status } = parse(z.object({ status: z.enum(["active", "frozen"]) }), req.body);
     const target = String(req.params.id);
     if (target === req.user!.id) throw new HttpError(400, "bad_request", "You can't change your own account's status");
+    // Setting a closed account back to active reopens it.
+    if (status === "active" && one(ctx.db, "SELECT 1 FROM users WHERE id = ? AND closed_at IS NOT NULL", target)) {
+      reopenAccount(ctx, req.user!.id, target, req.ip);
+      res.json({ ok: true });
+      return;
+    }
     const changed = run(ctx.db, "UPDATE users SET status = ? WHERE id = ?", status, target);
     if (Number(changed.changes) === 0) throw notFound("User not found");
     if (status === "frozen") run(ctx.db, "DELETE FROM sessions WHERE user_id = ?", target);

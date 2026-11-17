@@ -23,9 +23,9 @@ export function FeaturesPage() {
       <Section id="payments">
         <div className="split">
           <div>
-            <SectionHead eyebrow="Payments" title="Pay anyone, in their currency" lead="Send money by @handle or email in seconds, keep balances in several currencies, and settle up without awkward reminders." />
+            <SectionHead eyebrow="Payments" title="Pay anyone, in their currency" lead="Send money by @handle, email or account number in seconds, keep balances in several currencies, and settle up without awkward reminders." />
             <ul className="check-list">
-              <Check>Send by @handle or email, with a note for what it's for</Check>
+              <Check>Send by @handle, email or your 10-digit account number, with a note for what it's for</Check>
               <Check>Request money and let friends pay with one tap</Check>
               <Check>Hold {meta?.currencies.length ?? 19} currencies, including USD, EUR, GBP, KES, ZMW, NGN and ZAR</Check>
               <Check>Convert between them at the market rate plus a {spread}% spread, shown before you confirm</Check>
@@ -200,6 +200,10 @@ export function FeaturesPage() {
             ["Works on any screen", "Designed for phones first, roomy on desktops."],
             ["Activity log", "See every sign-in and sensitive change on your account."],
             ["Two-factor sign-in", "Protect your account with any authenticator app."],
+            ["Verified accounts", "Verify your identity in about 5 minutes to raise your limits. Your documents are encrypted."],
+            ["Monthly statements", "Print one, save it as a PDF or download a CSV for your accountant."],
+            ["Your data, your call", "Download everything we hold about you, or close your account yourself."],
+            ["Account numbers", "Every account gets a number with a check digit, so a typo never pays a stranger."],
           ].map(([t, d]) => (
             <div key={t} className="mini">
               <h3>{t}</h3>

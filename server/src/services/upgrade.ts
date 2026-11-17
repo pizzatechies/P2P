@@ -109,6 +109,13 @@ export function checklist(ctx: Ctx, userId: string) {
       link: "/app/settings#security",
     },
     { id: "two_factor", label: "Turn on two-factor authentication", done: user.totp_enabled === 1, hint: "Protects real money even if your password leaks.", link: "/app/settings#two-factor" },
+    {
+      id: "identity",
+      label: "Verify your identity",
+      done: user.kyc_level >= 1,
+      hint: "An ID document, a selfie and your address, reviewed by our team.",
+      link: "/app/account#verification",
+    },
     { id: "lessons", label: `Pass all ${REQUIRED_LESSONS.length} core academy quizzes`, done: passed >= REQUIRED_LESSONS.length, hint: `${passed} of ${REQUIRED_LESSONS.length} passed (80% needed on each).`, link: "/app/learn" },
     { id: "practice", label: `Make ${need} trades in your demo account`, done: trades >= need, hint: `${Math.min(trades, need)} of ${need} done.`, link: "/app/trading" },
     { id: "profile", label: "Complete your profile and questionnaire", done: Boolean(row?.data_enc), hint: "About 2 minutes. Your details are encrypted.", link: "/app/upgrade#application" },

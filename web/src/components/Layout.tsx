@@ -55,13 +55,13 @@ export function Layout() {
           )}
         </nav>
         <div className="sidebar-foot">
-          <div className="user-chip">
+          <NavLink to="/app/account" className="user-chip" title="Your account" style={{ color: "inherit", textDecoration: "none" }}>
             <span className="avatar">{initials(user.displayName)}</span>
             <div className="who grow">
               <div style={{ fontWeight: 600, fontSize: 14 }}>{user.displayName}</div>
-              <div className="faint xs">@{user.handle}</div>
+              <div className="faint xs">@{user.handle} · Account</div>
             </div>
-          </div>
+          </NavLink>
           <div className="row" style={{ gap: 4 }}>
             {install.kind === "prompt" && (
               <button className="btn ghost icon-btn" title="Install Aurex as an app" aria-label="Install Aurex as an app" onClick={install.install}>

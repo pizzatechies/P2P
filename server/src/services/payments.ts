@@ -13,17 +13,17 @@ import {
 } from "./ledger.js";
 import { getRail, getRails } from "./rails/index.js";
 import type { PayoutDestination } from "./rails/types.js";
+import { limitsFor } from "./kyc.js";
 import { findUserByIdentifier, getUserRow, publicProfile, type UserRow } from "./users.js";
 
 // ---------------------------------------------------------------------------
 // Risk limits
 // ---------------------------------------------------------------------------
-async function checkLimits(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
-  const usd = await toUsdMinor(ctx, currency, amountMinor);
-  const maxTx = Math.round(ctx.config.MAX_TX_USD * 100);
-  if (usd > maxTx) {
-    throw unprocessable("limit_exceeded", `Single payments are limited to $${ctx.config.MAX_TX_USD.toLocaleString("en-US")} (USD equivalent)`);
-  }
+const verifyHint = (level: number, tiered: boolean) =>
+  tiered && level < 2 ? ` Verify your ${level === 0 ? "identity" : "address and source of funds"} under Account to raise it.` : "";
+
+/** Money sent or withdrawn in the last 24 hours, in US cents. */
+export async function dailyOutflowUsdMinor(ctx: Ctx, userId: string) {
   const since = new Date(Date.now() - 24 * 3600_000).toISOString();
   const outflows = all<{ currency: string; total: number }>(
     ctx.db,
@@ -39,12 +39,26 @@ async function checkLimits(ctx: Ctx, userId: string, currency: string, amountMin
   );
   let usedUsd = 0;
   for (const o of outflows) usedUsd += await toUsdMinor(ctx, o.currency, o.total);
-  const daily = Math.round(ctx.config.DAILY_LIMIT_USD * 100);
+  return usedUsd;
+}
+
+/** Per-payment and 24-hour limits, which depend on the user's verification level (or an admin override). */
+async function checkLimits(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
+  const limits = limitsFor(ctx, getUserRow(ctx, userId));
+  const usd = await toUsdMinor(ctx, currency, amountMinor);
+  if (usd > Math.round(limits.txUsd * 100)) {
+    throw unprocessable(
+      "limit_exceeded",
+      `Single payments are limited to $${limits.txUsd.toLocaleString("en-US")} (USD equivalent) on your account.${verifyHint(limits.level, limits.tiered)}`,
+    );
+  }
+  const usedUsd = await dailyOutflowUsdMinor(ctx, userId);
+  const daily = Math.round(limits.dailyUsd * 100);
   if (usedUsd + usd > daily) {
     const left = Math.max(0, daily - usedUsd);
     throw unprocessable(
       "limit_exceeded",
-      `This would exceed your 24-hour limit of $${ctx.config.DAILY_LIMIT_USD.toLocaleString("en-US")}. You can send about $${fromMinor(left, "USD")} more today.`,
+      `This would exceed your 24-hour limit of $${limits.dailyUsd.toLocaleString("en-US")}. You can send about $${fromMinor(left, "USD")} more today.${verifyHint(limits.level, limits.tiered)}`,
     );
   }
 }
@@ -459,8 +473,12 @@ export async function deposit(ctx: Ctx, input: { userId: string; rail: string; c
   const rail = getRail(ctx, input.rail, "deposit", currency);
   const user = getUserRow(ctx, input.userId);
   assertActive(user, "sender");
-  if ((await toUsdMinor(ctx, currency, input.amountMinor)) > ctx.config.MAX_TX_USD * 100) {
-    throw unprocessable("limit_exceeded", `Deposits are limited to $${ctx.config.MAX_TX_USD.toLocaleString("en-US")} at a time`);
+  const depositLimits = limitsFor(ctx, user);
+  if ((await toUsdMinor(ctx, currency, input.amountMinor)) > depositLimits.txUsd * 100) {
+    throw unprocessable(
+      "limit_exceeded",
+      `Deposits are limited to $${depositLimits.txUsd.toLocaleString("en-US")} at a time on your account.${verifyHint(depositLimits.level, depositLimits.tiered)}`,
+    );
   }
 
   const id = newId("ext");
