@@ -34,6 +34,7 @@ const RegisterBody = z.object({
   displayName: z.string().trim().min(1).max(60),
   password,
   defaultCurrency: z.string().length(3).optional(),
+  inviteCode: z.string().trim().max(40).optional(),
 });
 
 const LoginBody = z.object({

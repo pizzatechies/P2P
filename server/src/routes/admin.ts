@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createInvite, inviteFromWaitlist, listInvites, listWaitlist, revokeInvite, signupStatus } from "../services/beta.js";
 import { listStatus, refreshSanctionsLists, screenName } from "../services/sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
@@ -161,6 +162,25 @@ export function adminRoutes(ctx: Ctx) {
     const transfer = rejectPayout(ctx, req.user!.id, String(req.params.id), note);
     audit(ctx, req.user!.id, "payout.rejected", { id: req.params.id }, req.ip);
     res.json({ transfer });
+  });
+
+  // ---- Beta access: invites and the waitlist ----
+  r.get("/beta", (_req, res) => {
+    res.json({ ...signupStatus(ctx), maxUsers: ctx.config.MAX_USERS, customers: one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM users WHERE role <> 'admin'")!.n, invites: listInvites(ctx), waitlist: listWaitlist(ctx) });
+  });
+
+  r.post("/beta/invites", (req, res) => {
+    const body = parse(z.object({ label: z.string().trim().max(80).optional(), maxUses: z.coerce.number().int().min(1).max(1000).optional(), expiresInDays: z.coerce.number().int().min(1).max(365).optional() }), req.body ?? {});
+    res.status(201).json(createInvite(ctx, req.user!.id, body, req.ip));
+  });
+
+  r.post("/beta/invites/:id/revoke", (req, res) => {
+    revokeInvite(ctx, req.user!.id, String(req.params.id), req.ip);
+    res.json({ ok: true });
+  });
+
+  r.post("/beta/waitlist/:id/invite", async (req, res) => {
+    res.status(201).json(await inviteFromWaitlist(ctx, req.user!.id, String(req.params.id), req.ip));
   });
 
   // ---- Sanctions screening ----

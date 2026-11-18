@@ -139,6 +139,10 @@ const EnvSchema = z.object({
   /** Crypto prices: live from Coinbase's public market data (no key needed), or the simulator. */
   CRYPTO_DATA: z.enum(["coinbase", "simulated"]).optional(),
   COINBASE_EXCHANGE_URL: z.string().url().default("https://api.exchange.coinbase.com"),
+  /** Who can sign up: anyone, only with an invite code (others join a waitlist), or nobody new. */
+  REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
+  /** Maximum number of customer accounts (0 = no cap); further sign-ups join the waitlist. */
+  MAX_USERS: z.coerce.number().int().min(0).default(0),
   /** Screen customers and payout recipients against the UN and OFAC sanctions lists (downloaded daily). */
   SANCTIONS_SCREENING: bool.default(true),
   SANCTIONS_UN_URL: z.string().url().default("https://scsanctions.un.org/resources/xml/en/consolidated.xml"),

@@ -157,6 +157,7 @@ export function AdminPage() {
         </div>
       )}
       {!overview.error && <SecurityChecklist />}
+      {!overview.error && <BetaCard />}
       {!overview.error && <PayoutQueue onChange={overview.reload} />}
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
       {!overview.error && <SanctionsCard />}
@@ -640,5 +641,112 @@ function SanctionsCard() {
         </div>
       ))}
     </div>
+  );
+}
+
+interface BetaData {
+  mode: "open" | "invite" | "closed";
+  full: boolean;
+  maxUsers: number;
+  customers: number;
+  invites: { id: string; hint: string; label: string | null; maxUses: number; uses: number; expiresAt: string | null; status: string; createdAt: string }[];
+  waitlist: { id: string; email: string; name: string | null; createdAt: string; invitedAt: string | null; joinedAt: string | null }[];
+}
+
+const MODE_TEXT = { open: "Open: anyone can sign up", invite: "Invite-only: others join the waitlist", closed: "Closed: no new sign-ups" } as const;
+
+/** Who can sign up: invite codes and the waitlist (REGISTRATION_MODE, MAX_USERS). */
+function BetaCard() {
+  const toast = useToast();
+  const data = useLoad(() => api.get<BetaData>("/api/admin/beta"));
+  const [label, setLabel] = useState("");
+  const [uses, setUses] = useState("1");
+  const [days, setDays] = useState("30");
+  const [fresh, setFresh] = useState<{ code: string; link?: string; emailed?: boolean; label: string } | null>(null);
+  const d = data.data;
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const r = await api.post<{ code: string }>("/api/admin/beta/invites", { label: label || undefined, maxUses: Number(uses) || 1, expiresInDays: Number(days) || undefined });
+      setFresh({ code: r.code, label: label || "Invite", link: `${location.origin}/register?invite=${r.code}` });
+      setLabel("");
+      data.reload();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+  async function invite(id: string, who: string) {
+    try {
+      const r = await api.post<{ code: string; link: string; emailed: boolean }>(`/api/admin/beta/waitlist/${id}/invite`);
+      setFresh({ code: r.code, link: r.link, emailed: r.emailed, label: who });
+      data.reload();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+  async function revoke(id: string) {
+    if (!confirm("Revoke this invite code? Nobody else can sign up with it.")) return;
+    await api.post(`/api/admin/beta/invites/${id}/revoke`).catch((e) => toast((e as Error).message, "error"));
+    data.reload();
+  }
+  if (!d) return null;
+  const waiting = d.waitlist.filter((w) => !w.invitedAt);
+  return (
+    <details className="card" style={{ marginBottom: 16 }} open={d.mode !== "open" && waiting.length > 0}>
+      <summary style={{ cursor: "pointer" }}>
+        <strong>Beta access</strong>{" "}
+        <span className="faint small">· {MODE_TEXT[d.mode]} · {d.customers} customer{d.customers === 1 ? "" : "s"}{d.maxUsers ? ` of ${d.maxUsers}` : ""}{waiting.length ? ` · ${waiting.length} waiting` : ""}</span>
+      </summary>
+      <p className="muted small">Set REGISTRATION_MODE (open, invite or closed) and MAX_USERS in the server settings. Admin addresses can always sign up.</p>
+      {fresh && (
+        <div className="banner info" style={{ alignItems: "center" }}>
+          <span className="grow small">
+            Invite for <strong>{fresh.label}</strong>: <strong className="mono">{fresh.code}</strong>
+            {fresh.emailed ? " · emailed to them" : fresh.link ? <> · share this link: <span className="mono xs">{fresh.link}</span></> : null}
+            <div className="faint xs">The code is shown only now.</div>
+          </span>
+          <button className="btn sm secondary" onClick={() => navigator.clipboard?.writeText(fresh.link ?? fresh.code).then(() => toast("Copied"))}>Copy</button>
+        </div>
+      )}
+      <form className="row wrap" style={{ gap: 8, alignItems: "flex-end", margin: "8px 0 12px" }} onSubmit={create}>
+        <Field label="Who it's for"><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Pilot group A" /></Field>
+        <Field label="Uses"><input className="input" inputMode="numeric" style={{ width: 80 }} value={uses} onChange={(e) => setUses(e.target.value.replace(/\D/g, ""))} /></Field>
+        <Field label="Expires in (days)"><input className="input" inputMode="numeric" style={{ width: 110 }} value={days} onChange={(e) => setDays(e.target.value.replace(/\D/g, ""))} /></Field>
+        <button className="btn sm" style={{ marginBottom: 4 }}>Create invite code</button>
+      </form>
+      {waiting.length > 0 && (
+        <div className="table-wrap" style={{ marginBottom: 12 }}>
+          <table className="table">
+            <thead><tr><th>Waitlist</th><th className="hide-sm">Joined</th><th /></tr></thead>
+            <tbody>
+              {waiting.slice(0, 50).map((w) => (
+                <tr key={w.id}>
+                  <td>{w.name ?? "—"} <div className="faint xs">{w.email}</div></td>
+                  <td className="hide-sm faint small">{timeAgo(w.createdAt)}</td>
+                  <td className="r"><button className="btn sm secondary" onClick={() => invite(w.id, w.name ?? w.email)}>Invite</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {d.invites.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Invite</th><th className="r">Used</th><th>Status</th><th /></tr></thead>
+            <tbody>
+              {d.invites.slice(0, 50).map((i) => (
+                <tr key={i.id}>
+                  <td><span className="mono">{i.hint}…</span> <span className="faint small">{i.label ?? ""}</span><div className="faint xs">{i.expiresAt ? `expires ${new Date(i.expiresAt).toLocaleDateString()}` : "no expiry"}</div></td>
+                  <td className="r num">{i.uses} / {i.maxUses}</td>
+                  <td><span className={`pill ${i.status === "active" ? "good" : ""}`}>{i.status}</span></td>
+                  <td className="r">{i.status === "active" && <button className="btn ghost sm" onClick={() => revoke(i.id)}>Revoke</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </details>
   );
 }

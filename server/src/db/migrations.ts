@@ -670,4 +670,36 @@ export const migrations: string[] = [
   );
   CREATE INDEX sanctions_checks_user ON sanctions_checks(user_id, created_at);
   `,
+  // 13: A controlled launch: invite codes (stored hashed), who used them, and a waitlist.
+  `
+  CREATE TABLE invite_codes (
+    id         TEXT PRIMARY KEY,
+    code_hash  TEXT NOT NULL UNIQUE,
+    hint       TEXT NOT NULL,
+    label      TEXT,
+    max_uses   INTEGER NOT NULL CHECK (max_uses > 0),
+    uses       INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT,
+    revoked_at TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    CHECK (uses <= max_uses)
+  );
+  CREATE TABLE invite_redemptions (
+    invite_id  TEXT NOT NULL REFERENCES invite_codes(id),
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (invite_id, user_id)
+  );
+  CREATE TABLE waitlist (
+    id         TEXT PRIMARY KEY,
+    email      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name       TEXT,
+    country    TEXT,
+    created_at TEXT NOT NULL,
+    invited_at TEXT,
+    invite_id  TEXT,
+    joined_at  TEXT
+  );
+  `,
 ];

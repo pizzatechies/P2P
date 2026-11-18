@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { admitSignup, recordRedemption } from "./beta.js";
 import { appendAudit } from "./integrity.js";
 import type { Ctx } from "../context.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
@@ -98,13 +99,15 @@ export function audit(ctx: Ctx, userId: string | null, action: string, details: 
 
 export async function registerUser(
   ctx: Ctx,
-  input: { email: string; handle: string; displayName: string; password: string; defaultCurrency?: string },
+  input: { email: string; handle: string; displayName: string; password: string; defaultCurrency?: string; inviteCode?: string },
 ): Promise<UserRow> {
   const email = input.email.trim().toLowerCase();
   const handle = input.handle.trim().replace(/^@/, "").toLowerCase();
   const currency = assertCurrency(input.defaultCurrency ?? "USD").code;
 
   if (one(ctx.db, "SELECT 1 FROM users WHERE email = ?", email)) throw conflict("An account with that email already exists");
+  // Beta gate first (cheap), and again inside the transaction where the invite use is claimed.
+  if (ctx.config.REGISTRATION_MODE === "closed" && !ctx.config.adminEmails.has(email)) admitSignup(ctx, email, input.inviteCode);
   if (one(ctx.db, "SELECT 1 FROM users WHERE handle = ?", handle)) throw conflict("That handle is taken");
   await assertStrongPassword(ctx.config, input.password, { email, handle, displayName: input.displayName });
 
@@ -113,6 +116,7 @@ export async function registerUser(
   // Production never trusts an email address alone for admin rights (it isn't verified): see claimAdmin().
   const role = ctx.config.adminAutoPromote && ctx.config.adminEmails.has(email) ? "admin" : "user";
   return tx(ctx.db, () => {
+    const { inviteId } = admitSignup(ctx, email, input.inviteCode);
     run(
       ctx.db,
       `INSERT INTO users (id, email, handle, display_name, password_hash, role, default_currency, account_number, created_at)
@@ -127,6 +131,7 @@ export async function registerUser(
       newAccountNumber(ctx),
       nowIso(),
     );
+    if (inviteId) recordRedemption(ctx, inviteId, id);
     return getUserRow(ctx, id);
   });
 }
