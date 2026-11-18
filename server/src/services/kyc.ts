@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook } from "./smileid.js";
 import { screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
@@ -88,6 +89,10 @@ interface SubmissionRow {
   review_note: string | null;
   created_at: string;
   updated_at: string;
+  provider?: string | null;
+  provider_job_id?: string | null;
+  provider_status?: string | null;
+  provider_result?: string | null;
 }
 
 interface DocRow {
@@ -253,7 +258,7 @@ export function readDocument(ctx: Ctx, docId: string, ownerId?: string) {
   return { mime: row.mime, kind: row.kind, userId: row.user_id, bytes: Buffer.from(decryptSecret(row.data_enc, ctx.config.masterKey), "base64") };
 }
 
-export function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: string) {
+export async function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: string) {
   const sub = latest(ctx, userId, level);
   if (!sub || sub.status !== "draft" || !sub.data_enc) throw unprocessable("details_missing", "Fill in and save your details first");
   const data = decryptData<Level1Data>(ctx, sub);
@@ -263,7 +268,17 @@ export function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: string)
   run(ctx.db, "UPDATE kyc_submissions SET status = 'submitted', submitted_at = ?, updated_at = ? WHERE id = ?", nowIso(), nowIso(), sub.id);
   audit(ctx, userId, "kyc.submitted", { level, submissionId: sub.id }, ip);
   const flagged = level === 1 && data?.legalName ? screenForCustomer(ctx, userId, data.legalName, "legal_name", Number(data.dateOfBirth?.slice(0, 4)) || null).length > 0 : false;
-  if (ctx.config.KYC_AUTO_APPROVE && !flagged && !underSanctionsReview(ctx, userId)) applyReview(ctx, null, sub.id, "approve", "Approved automatically (KYC_AUTO_APPROVE)", ip);
+  // With Smile ID, the ID number is checked against government records; approval waits for that result.
+  let checking = false;
+  if (level === 1 && data && smileConfigured(ctx)) {
+    const user = getUserRow(ctx, userId);
+    const started = await startEnhancedKyc(ctx, userId, sub.id, data as unknown as IdentityDetails, user.email).catch((err: Error) => ({ started: false as const, reason: err.message }));
+    checking = started.started;
+    if (!started.started) {
+      run(ctx.db, "UPDATE kyc_submissions SET provider = 'smileid', provider_status = 'skipped', provider_result = ? WHERE id = ?", JSON.stringify({ status: "skipped", reason: started.reason }), sub.id);
+    }
+  }
+  if (ctx.config.KYC_AUTO_APPROVE && !checking && !flagged && !underSanctionsReview(ctx, userId)) applyReview(ctx, null, sub.id, "approve", "Approved automatically (KYC_AUTO_APPROVE)", ip);
   return verificationOverview(ctx, userId);
 }
 
@@ -323,6 +338,7 @@ export function listSubmissions(ctx: Ctx, status: "submitted" | "all" = "submitt
       reviewNote: r.review_note,
       user: { id: r.user_id, email: r.email, handle: r.handle, displayName: r.display_name, kycLevel: r.kyc_level },
       data,
+      check: r.provider ? { provider: r.provider, status: r.provider_status, result: r.provider_result ? (JSON.parse(r.provider_result) as Record<string, unknown>) : null } : null,
       documents: requiredDocs(r.level, r.level === 1 ? (data as Level1Data | null) : null).map((kind) => {
         const d = docs.get(kind);
         return { kind, label: DOC_LABEL[kind], id: d?.id ?? null, mime: d?.mime ?? null, size: d?.size ?? null, uploadedAt: d?.created_at ?? null };
@@ -369,4 +385,26 @@ export function documentHeaders(doc: { kind: string; mime: string }): Record<str
     "Cache-Control": "private, no-store",
     "Cross-Origin-Resource-Policy": "same-origin",
   };
+}
+
+/** The identity details of a submission (decrypted), for comparing with a government record. */
+export function submissionIdentity(ctx: Ctx, submissionId: string): IdentityDetails | null {
+  const row = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE id = ?", submissionId);
+  return row ? decryptData<IdentityDetails>(ctx, row) : null;
+}
+
+/**
+ * A Smile ID result arrived: record it, and approve automatically when the government record confirms
+ * this person (SMILEID_AUTO_APPROVE) and nothing else needs a human. Everything else waits for review,
+ * with the result shown to the reviewer.
+ */
+export function applySmileResult(ctx: Ctx, payload: SmileWebhook) {
+  const out = recordSmileResult(ctx, payload, (id) => submissionIdentity(ctx, id));
+  if (!out) return null;
+  audit(ctx, null, "kyc.government_check", { submissionId: out.submissionId, status: out.result.status, verified: out.verified });
+  const sub = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE id = ?", out.submissionId)!;
+  if (out.verified && sub.status === "submitted" && (ctx.config.SMILEID_AUTO_APPROVE || ctx.config.KYC_AUTO_APPROVE) && !underSanctionsReview(ctx, out.userId)) {
+    applyReview(ctx, null, sub.id, "approve", "Approved automatically: ID confirmed against government records (Smile ID), name and date of birth match");
+  }
+  return out;
 }

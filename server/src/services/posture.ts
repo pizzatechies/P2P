@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { smileConfigured } from "./smileid.js";
 import { listStatus } from "./sanctions.js";
 import { all, one } from "../db/index.js";
 import { recentIntegrity } from "./integrity.js";
@@ -155,6 +156,18 @@ export function securityPosture(ctx: Ctx) {
     fix: "Under Ledger & records → Safeguarding, register the accounts holding customers' money and record their balances daily.",
   });
 
+  add({
+    id: "id_checks",
+    area: "Money",
+    label: "ID numbers are checked against government records",
+    status: smileConfigured(ctx) ? (c.SMILEID_ENV === "production" ? "pass" : "warn") : "warn",
+    detail: smileConfigured(ctx)
+      ? c.SMILEID_ENV === "production"
+        ? "Smile ID checks each ID number with the issuing government and Aurex compares the name and date of birth."
+        : "Smile ID is connected in sandbox mode: results are test data."
+      : "Reviewers compare documents by eye; nothing checks the ID number with the government.",
+    fix: "Set SMILEID_PARTNER_ID and SMILEID_API_KEY (and SMILEID_ENV=production once tested), and add /api/webhooks/smileid as your callback URL in the Smile ID portal.",
+  });
   const lists = listStatus(ctx);
   const loaded = lists.filter((l) => l.entries > 0);
   const stale = loaded.filter((l) => !l.fetchedAt || Date.now() - Date.parse(l.fetchedAt) > 3 * 86_400_000);

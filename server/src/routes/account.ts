@@ -54,9 +54,9 @@ export function accountRoutes(ctx: Ctx) {
     res.send(doc.bytes);
   });
 
-  r.post("/verification/:level/submit", (req, res) => {
+  r.post("/verification/:level/submit", async (req, res) => {
     const level = parse(Level, req.params.level);
-    res.json(submitLevel(ctx, req.user!.id, level, req.ip));
+    res.json(await submitLevel(ctx, req.user!.id, level, req.ip));
   });
 
   // ---- Statements ----

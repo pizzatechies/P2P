@@ -28,7 +28,12 @@ export async function stub(handler: Handler) {
       const url = new URL(req.url!, "http://stub");
       let body: unknown;
       if (raw) {
-        body = (req.headers["content-type"] ?? "").includes("x-www-form-urlencoded") ? Object.fromEntries(new URLSearchParams(raw)) : JSON.parse(raw);
+        const type = req.headers["content-type"] ?? "";
+        body = type.includes("x-www-form-urlencoded")
+          ? Object.fromEntries(new URLSearchParams(raw))
+          : type.includes("multipart/form-data")
+            ? parseMultipart(raw, /boundary=(?:"([^"]+)"|([^;]+))/.exec(type)?.slice(1).find(Boolean) ?? "")
+            : JSON.parse(raw);
       }
       const rec: Recorded = { method: req.method!, path: req.url!, route: url.pathname, query: url.searchParams, headers: req.headers, body };
       calls.push(rec);
@@ -52,3 +57,13 @@ export async function stub(handler: Handler) {
 afterAll(async () => {
   await Promise.all(servers.splice(0).map((s) => new Promise<void>((r) => s.close(() => r()))));
 });
+
+/** Text fields of a multipart/form-data body (enough for API stubs; files are kept as text). */
+function parseMultipart(raw: string, boundary: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of raw.split(`--${boundary}`)) {
+    const m = /name="([^"]+)"[^\r\n]*\r\n(?:[^\r\n]+\r\n)*\r\n([\s\S]*?)\r\n$/.exec(part);
+    if (m) out[m[1]] = m[2];
+  }
+  return out;
+}

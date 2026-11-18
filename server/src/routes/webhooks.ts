@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { applySmileResult } from "../services/kyc.js";
+import { verifySmileSignature, type SmileWebhook } from "../services/smileid.js";
 import type { Ctx } from "../context.js";
 import { safeEqual } from "../lib/crypto.js";
 import { findPendingLink, finalizeLink, retryPendingLink } from "../services/connections/store.js";
@@ -33,6 +35,21 @@ function jsonBody<T>(raw: unknown): T | null {
 export function webhookRoutes(ctx: Ctx) {
   const r = Router();
   const recheck = (id: string, label: string) => refreshExternal(ctx, id).catch((err) => console.warn(`[${label} webhook] ${(err as Error).message}`));
+
+  /** Smile ID results (identity checks against government records). Signed with the account's API key. */
+  r.post("/smileid", (req, res) => {
+    if (!verifySmileSignature(ctx, req.get("Response-Signature") ?? undefined, req.get("Response-Timestamp") ?? undefined)) {
+      res.status(401).json({ error: { code: "bad_signature", message: "Invalid signature" } });
+      return;
+    }
+    const payload = jsonBody<SmileWebhook>(req.body);
+    if (!payload) {
+      res.status(400).json({ error: { code: "bad_request", message: "Expected JSON" } });
+      return;
+    }
+    applySmileResult(ctx, payload);
+    res.json({ received: true });
+  });
 
   r.post("/stripe", (req, res) => {
     const secret = ctx.config.STRIPE_WEBHOOK_SECRET;

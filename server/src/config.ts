@@ -139,6 +139,15 @@ const EnvSchema = z.object({
   /** Crypto prices: live from Coinbase's public market data (no key needed), or the simulator. */
   CRYPTO_DATA: z.enum(["coinbase", "simulated"]).optional(),
   COINBASE_EXCHANGE_URL: z.string().url().default("https://api.exchange.coinbase.com"),
+  /** Smile ID: check ID numbers against government records (Enhanced KYC). Set both to switch it on. */
+  SMILEID_PARTNER_ID: optionalString,
+  SMILEID_API_KEY: optionalString,
+  SMILEID_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  SMILEID_BASE_URL: optionalString,
+  /** Approve identity level 1 automatically when Smile ID confirms the ID and the name and birth date match. */
+  SMILEID_AUTO_APPROVE: bool.default(false),
+  /** Your privacy policy's address, sent to Smile ID as the consent notice (defaults to APP_URL/privacy). */
+  SMILEID_PRIVACY_URL: optionalString,
   /** Aurex Pro: a monthly plan paid from the wallet (bigger AI allowance, Autopilot, more Web3 wallets). */
   PRO_ENABLED: bool.default(false),
   PRO_PRICE: z.coerce.number().positive().default(4.99),

@@ -720,4 +720,12 @@ export const migrations: string[] = [
   );
   CREATE INDEX subscriptions_due ON subscriptions(current_period_end) WHERE status <> 'canceled';
   `,
+  // 15: Identity checks against government records (Smile ID): the job and its outcome per submission.
+  `
+  ALTER TABLE kyc_submissions ADD COLUMN provider TEXT;
+  ALTER TABLE kyc_submissions ADD COLUMN provider_job_id TEXT;
+  ALTER TABLE kyc_submissions ADD COLUMN provider_status TEXT;
+  ALTER TABLE kyc_submissions ADD COLUMN provider_result TEXT;
+  CREATE INDEX kyc_submissions_provider_job ON kyc_submissions(provider_job_id) WHERE provider_job_id IS NOT NULL;
+  `,
 ];

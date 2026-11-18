@@ -68,6 +68,7 @@ export interface KycSubmission {
   user: { id: string; email: string; handle: string; displayName: string; kycLevel: number };
   data: Record<string, unknown> | null;
   documents: { kind: string; label: string; id: string | null; mime: string | null; size: number | null; uploadedAt: string | null }[];
+  check?: { provider: string; status: string | null; result: { status?: string; reason?: string | null; message?: string | null; nameMatch?: number | null; dobMatch?: boolean | null; recordName?: string | null; recordDob?: string | null } | null } | null;
 }
 
 export function AdminPage() {
@@ -345,6 +346,7 @@ export function KycSubmissionCard({ s, onReviewed }: { s: KycSubmission; onRevie
         )}
       </div>
       {s.reviewNote && <div className="small muted" style={{ marginTop: 6 }}>Note: {s.reviewNote}</div>}
+      {s.check && <GovernmentCheck check={s.check} />}
       {s.data && (
         <div className="kv" style={{ marginTop: 8 }}>
           {Object.entries(s.data).filter(([k, v]) => v !== "" && k !== "address").map(([k, v]) => (
@@ -748,5 +750,26 @@ function BetaCard() {
         </div>
       )}
     </details>
+  );
+}
+
+/** What the government record said (Smile ID), next to what the customer entered. */
+function GovernmentCheck({ check }: { check: NonNullable<KycSubmission["check"]> }) {
+  const r = check.result;
+  const status = check.status ?? r?.status ?? "pending";
+  const tone = status === "clear" && r?.nameMatch !== undefined && (r?.nameMatch ?? 0) >= 0.85 && r?.dobMatch !== false ? "good" : status === "pending" || status === "skipped" ? "" : "bad";
+  return (
+    <div className="small" style={{ marginTop: 8, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8 }}>
+      <strong>Government record check</strong> <span className="faint xs">({check.provider === "smileid" ? "Smile ID" : check.provider})</span>{" "}
+      <span className={`pill ${tone}`}>{status === "pending" ? "waiting for result" : status === "skipped" ? "not checked" : status}</span>
+      {r?.reason && <span className="faint"> · {String(r.reason).replace(/_/g, " ")}</span>}
+      {r && (r.nameMatch !== undefined && r.nameMatch !== null || r.dobMatch !== undefined && r.dobMatch !== null) && (
+        <div style={{ marginTop: 4 }}>
+          {r.nameMatch !== null && r.nameMatch !== undefined && <span className={r.nameMatch >= 0.85 ? "good" : "bad"}>Name {Math.round(r.nameMatch * 100)}% match</span>}
+          {r.dobMatch !== null && r.dobMatch !== undefined && <span className={r.dobMatch ? "good" : "bad"}> · birth date {r.dobMatch ? "matches" : "differs"}</span>}
+          {r.recordName && <div className="faint xs">On record: {r.recordName}{r.recordDob ? `, born ${r.recordDob}` : ""}</div>}
+        </div>
+      )}
+    </div>
   );
 }
