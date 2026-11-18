@@ -702,4 +702,22 @@ export const migrations: string[] = [
     joined_at  TEXT
   );
   `,
+  // 14: Aurex Pro subscriptions, paid monthly from the wallet (each charge is a "subscription" journal).
+  `
+  CREATE TABLE subscriptions (
+    user_id              TEXT PRIMARY KEY REFERENCES users(id),
+    status               TEXT NOT NULL CHECK (status IN ('active','past_due','canceled')),
+    currency             TEXT,
+    amount_minor         INTEGER,
+    started_at           TEXT NOT NULL,
+    current_period_end   TEXT NOT NULL,
+    cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+    comped               INTEGER NOT NULL DEFAULT 0,
+    failed_attempts      INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at      TEXT,
+    last_charge_journal  TEXT,
+    updated_at           TEXT NOT NULL
+  );
+  CREATE INDEX subscriptions_due ON subscriptions(current_period_end) WHERE status <> 'canceled';
+  `,
 ];

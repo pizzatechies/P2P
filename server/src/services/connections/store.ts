@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { perksFor } from "../pro.js";
 import type { Ctx } from "../../context.js";
 import { all, nowIso, one, run, tx } from "../../db/index.js";
 import { decryptSecret, encryptSecret } from "../../lib/crypto.js";
@@ -148,7 +149,10 @@ export async function addWatchWallet(ctx: Ctx, userId: string, rawAddress: strin
   if (!ctx.config.WEB3_WALLETS) throw new HttpError(422, "provider_not_configured", "Web3 wallets aren't enabled on this server");
   const { chain, address } = parseAddress(rawAddress);
   const count = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM linked_connections WHERE user_id = ? AND provider = 'web3'", userId)!.n;
-  if (count >= MAX_WALLETS) throw new HttpError(422, "too_many_wallets", `You can watch up to ${MAX_WALLETS} wallets`);
+  const limit = Math.min(MAX_WALLETS, perksFor(ctx, userId).web3Wallets);
+  if (count >= limit) {
+    throw new HttpError(422, "too_many_wallets", limit < MAX_WALLETS ? `The free plan watches up to ${limit} wallets; Aurex Pro watches up to ${MAX_WALLETS}.` : `You can watch up to ${limit} wallets`);
+  }
   // Identifies the wallet for duplicate checks without storing the address in the clear.
   const externalId = `${chain}:${createHmac("sha256", ctx.config.masterKey).update(`web3:${chain}:${address}`).digest("base64url").slice(0, 32)}`;
   if (one(ctx.db, "SELECT 1 FROM linked_connections WHERE user_id = ? AND provider = 'web3' AND external_id = ?", userId, externalId)) {

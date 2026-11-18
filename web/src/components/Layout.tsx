@@ -28,7 +28,7 @@ export function ThemeButton() {
 }
 
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, meta } = useAuth();
   const navigate = useNavigate();
   const install = useInstall();
   const online = useOnline();
@@ -47,6 +47,12 @@ export function Layout() {
               <span className="label">{label}</span>
             </NavLink>
           ))}
+          {meta?.pro && (
+            <NavLink to="/app/pro" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} title="Aurex Pro">
+              <Icon.Sparkle />
+              <span className="label">Aurex Pro</span>
+            </NavLink>
+          )}
           {user.role === "admin" && (
             <NavLink to="/app/admin" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} title="Admin">
               <Icon.Admin />

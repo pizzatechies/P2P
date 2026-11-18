@@ -7,6 +7,7 @@ import { AdminPage } from "./pages/Admin";
 import { AdminUserPage } from "./pages/AdminUser";
 import { StatementPage } from "./pages/Statement";
 import { TradingRecordsPage } from "./pages/TradingRecords";
+import { ProPage } from "./pages/Pro";
 import { AdminLedgerPage } from "./pages/AdminLedger";
 import { AIHubPage } from "./pages/AIHub";
 import { ConnectionsPage, ConnectSandboxPage } from "./pages/Connections";
@@ -108,6 +109,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="account" element={<AccountPage />} />
               <Route path="statement" element={<StatementPage />} />
               <Route path="trading/records" element={<TradingRecordsPage />} />
+              <Route path="pro" element={<ProPage />} />
               <Route path="admin/ledger" element={<AdminLedgerPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

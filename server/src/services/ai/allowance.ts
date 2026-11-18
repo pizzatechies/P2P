@@ -1,4 +1,5 @@
 import type { Ctx } from "../../context.js";
+import { perksFor } from "../pro.js";
 import { one, run, tx } from "../../db/index.js";
 import { HttpError, unprocessable } from "../../lib/errors.js";
 
@@ -10,7 +11,7 @@ import { HttpError, unprocessable } from "../../lib/errors.js";
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function freeUsage(ctx: Ctx, userId: string) {
-  const limit = ctx.config.AI_FREE_DAILY_REQUESTS;
+  const { aiDailyRequests: limit, pro } = perksFor(ctx, userId);
   const used = one<{ requests: number }>(ctx.db, "SELECT requests FROM ai_usage WHERE user_id = ? AND day = ?", userId, today())?.requests ?? 0;
   const resetsAt = new Date(`${today()}T00:00:00.000Z`);
   resetsAt.setUTCDate(resetsAt.getUTCDate() + 1);
@@ -20,6 +21,8 @@ export function freeUsage(ctx: Ctx, userId: string) {
     remaining: limit ? Math.max(0, limit - used) : null,
     resetsAt: resetsAt.toISOString(),
     models: [...ctx.config.freeModels],
+    pro,
+    proAvailable: ctx.config.PRO_ENABLED,
   };
 }
 
@@ -36,7 +39,7 @@ export function assertFreeModel(ctx: Ctx, provider: string, model: string) {
 
 /** Counts one request against today's allowance, or throws 429 when it's used up. */
 export function chargeFreeRequest(ctx: Ctx, userId: string) {
-  const limit = ctx.config.AI_FREE_DAILY_REQUESTS;
+  const { aiDailyRequests: limit, pro } = perksFor(ctx, userId);
   if (!limit) return;
   tx(ctx.db, () => {
     const used = one<{ requests: number }>(ctx.db, "SELECT requests FROM ai_usage WHERE user_id = ? AND day = ?", userId, today())?.requests ?? 0;
@@ -44,7 +47,7 @@ export function chargeFreeRequest(ctx: Ctx, userId: string) {
       throw new HttpError(
         429,
         "ai_quota_exceeded",
-        `You've used today's ${limit} free AI requests. They reset at midnight UTC, or add your own API key in Settings for unlimited use.`,
+        `You've used today's ${limit} AI requests. They reset at midnight UTC${ctx.config.PRO_ENABLED && !pro ? `; Aurex Pro raises the limit to ${ctx.config.PRO_AI_DAILY_REQUESTS} a day` : ""}, or add your own API key in Settings for unlimited use.`,
       );
     }
     run(

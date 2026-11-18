@@ -20,6 +20,9 @@ export function metaRoutes(ctx: Ctx) {
       limits: { maxTxUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
       fx: { source: rates.source, asOf: rates.asOf },
       ai: { freeDailyRequests: ctx.config.AI_FREE_DAILY_REQUESTS, freeModels: [...ctx.config.freeModels] },
+      pro: ctx.config.PRO_ENABLED
+        ? { price: ctx.config.PRO_PRICE, currency: ctx.config.PRO_CURRENCY, aiDailyRequests: ctx.config.PRO_AI_DAILY_REQUESTS, freeWeb3Wallets: ctx.config.FREE_WEB3_WALLETS }
+        : null,
       autopilot: { enabled: ctx.config.AUTOPILOT_ENABLED, liveAllowed: ctx.config.ALLOW_LIVE_AUTOPILOT },
       trading: {
         liveTradingAllowed: ctx.config.ALLOW_LIVE_TRADING,

@@ -139,6 +139,13 @@ const EnvSchema = z.object({
   /** Crypto prices: live from Coinbase's public market data (no key needed), or the simulator. */
   CRYPTO_DATA: z.enum(["coinbase", "simulated"]).optional(),
   COINBASE_EXCHANGE_URL: z.string().url().default("https://api.exchange.coinbase.com"),
+  /** Aurex Pro: a monthly plan paid from the wallet (bigger AI allowance, Autopilot, more Web3 wallets). */
+  PRO_ENABLED: bool.default(false),
+  PRO_PRICE: z.coerce.number().positive().default(4.99),
+  PRO_CURRENCY: z.string().length(3).default("USD"),
+  PRO_AI_DAILY_REQUESTS: z.coerce.number().int().min(0).default(200),
+  /** Web3 wallets on the free plan when Pro is on (Pro: 25). */
+  FREE_WEB3_WALLETS: z.coerce.number().int().min(0).default(3),
   /** Who can sign up: anyone, only with an invite code (others join a waitlist), or nobody new. */
   REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
   /** Maximum number of customer accounts (0 = no cap); further sign-ups join the waitlist. */

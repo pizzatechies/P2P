@@ -1,4 +1,5 @@
 import type { Ctx } from "../../context.js";
+import { perksFor } from "../pro.js";
 import { all, nowIso, one, run } from "../../db/index.js";
 import { badRequest, forbidden, HttpError, unprocessable } from "../../lib/errors.js";
 import { getProvider } from "../ai/providers.js";
@@ -92,6 +93,7 @@ const PAUSE_TEXT: Record<string, string> = {
   errors: "Paused after repeated errors",
   live_not_allowed: "Paused: this is a live account and live autopilot isn't allowed",
   user: "Paused by you",
+  pro_ended: "Paused: Autopilot is part of Aurex Pro, which has ended",
 };
 
 function row(ctx: Ctx, userId: string): SettingsRow {
@@ -198,6 +200,7 @@ export function updateAutopilotSettings(ctx: Ctx, userId: string, patch: Autopil
 
   if (patch.enabled === true) {
     if (!ctx.config.AUTOPILOT_ENABLED) throw forbidden("The AI autopilot is turned off on this server");
+    if (!perksFor(ctx, userId).autopilot) throw new HttpError(403, "pro_required", "Autopilot is part of Aurex Pro. Upgrade on the Pro page to switch it on.");
     if (!current.acknowledged_at && !patch.acknowledge) {
       throw unprocessable("acknowledgement_required", "Review and accept how the autopilot works before turning it on");
     }
@@ -608,6 +611,10 @@ export function startAutopilotScheduler(ctx: Ctx, everyMs = 60_000) {
         nowIso(),
       );
       for (const { user_id } of due) {
+        if (!perksFor(ctx, user_id).autopilot) {
+          pause(ctx, user_id, "pro_ended");
+          continue;
+        }
         await runAutopilot(ctx, user_id).catch((err) => console.error(`[autopilot] ${user_id}:`, err));
       }
     } finally {

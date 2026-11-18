@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { comp as compPro } from "../services/pro.js";
 import { createInvite, inviteFromWaitlist, listInvites, listWaitlist, revokeInvite, signupStatus } from "../services/beta.js";
 import { listStatus, refreshSanctionsLists, screenName } from "../services/sanctions.js";
 import { z } from "zod";
@@ -385,6 +386,13 @@ export function adminRoutes(ctx: Ctx) {
     audit(ctx, req.user!.id, "admin.limits_set", { target, ...body }, req.ip);
     const l = limitsFor(ctx, getUserRow(ctx, target));
     addAlert(ctx, target, "account", `Your limits were changed by our team: $${l.txUsd.toLocaleString("en-US")} per payment and $${l.dailyUsd.toLocaleString("en-US")} a day.`);
+    res.json({ ok: true });
+  });
+
+  /** Give a customer Aurex Pro free for a number of days (testers, partners, goodwill). */
+  r.post("/users/:id/pro", (req, res) => {
+    const { days } = parse(z.object({ days: z.coerce.number().int().min(1).max(366) }), req.body);
+    compPro(ctx, req.user!.id, getUserRow(ctx, String(req.params.id)).id, days, req.ip);
     res.json({ ok: true });
   });
 

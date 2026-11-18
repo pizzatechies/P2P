@@ -56,6 +56,7 @@ export interface Meta {
   limits: { maxTxUsd: number; dailyUsd: number };
   fx: { source: "live" | "static"; asOf: string };
   ai?: { freeDailyRequests: number; freeModels: string[] };
+  pro?: { price: number; currency: string; aiDailyRequests: number; freeWeb3Wallets: number } | null;
   autopilot?: { enabled: boolean; liveAllowed: boolean };
   trading: { liveTradingAllowed: boolean; paperStartingCash: number; aiMaxPositionPct: number };
 }

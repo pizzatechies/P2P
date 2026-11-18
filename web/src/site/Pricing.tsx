@@ -10,6 +10,7 @@ export function PricingPage() {
   const fees = meta?.fees ?? { p2pBps: 0, fxSpreadBps: 50, withdrawalBps: 0 };
   const limits = meta?.limits ?? { maxTxUsd: 10000, dailyUsd: 25000 };
   const freeAi = meta?.ai?.freeDailyRequests ?? 25;
+  const pro = meta?.pro ?? null;
 
   const rows: [string, string, string][] = [
     ["Opening an account", "Free", "No monthly fee"],
@@ -20,11 +21,16 @@ export function PricingPage() {
     ["Withdrawing", pctOrFree(fees.withdrawalBps), "To M-Pesa, MTN MoMo, PayPal, Venmo, Skrill, a bank in 160+ countries or MoneyGram cash pickup, where enabled"],
     ["Connecting accounts", "Free", "Banks, brokerages and Coinbase, read-only"],
     ["AI Hub", "Free", freeAi > 0 ? `${freeAi} free AI requests a day on Aurex's models; unlimited with your own API keys` : "Built-in assistant included; providers bill your own API keys directly"],
-    ["AI Autopilot", "Free", "Trades for you within your limits; AI model usage counts toward your allowance"],
+    pro
+      ? ["AI Autopilot", "With Aurex Pro", "Trades for you within your limits; AI model usage counts toward your allowance"]
+      : ["AI Autopilot", "Free", "Trades for you within your limits; AI model usage counts toward your allowance"],
     ["Demo account & trading academy", "Free", "Virtual money from $1,000 to $1,000,000; stocks, crypto and futures; lessons with quizzes and practice missions"],
     ["Futures (demo account)", "Free", "Long or short, with real contract sizes, margin and leverage"],
     ["Upgrading to a real account", "Free", "Questionnaire and review; trade through your own licensed broker"],
     ["Real stock & crypto trading via Alpaca", "No Aurex fee", "Your Alpaca account's own pricing applies"],
+    ...(pro
+      ? ([["Aurex Pro (optional)", `${pro.currency} ${pro.price.toFixed(2)} a month`, `${pro.aiDailyRequests} AI requests a day, the AI Autopilot and up to 25 watched Web3 wallets (${pro.freeWeb3Wallets} on the free plan). Paid from your wallet; cancel any time`]] as [string, string, string][])
+      : []),
   ];
 
   return (
