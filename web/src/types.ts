@@ -311,6 +311,8 @@ export interface LinkedConnection {
   lastSyncedAt: string | null;
   createdAt: string;
   accounts: LinkedAccount[];
+  /** Watch-only Web3 wallets: the network family and a shortened address. */
+  wallet?: { chain: "evm" | "bitcoin" | "solana"; network: string; address: string } | null;
 }
 
 export interface ConnectionsOverview {

@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import type { Ctx } from "../../context.js";
 import { all, nowIso, one, run, tx } from "../../db/index.js";
 import { decryptSecret, encryptSecret } from "../../lib/crypto.js";
@@ -7,6 +8,7 @@ import { convertMinor, getRates, midRate } from "../fx.js";
 import { audit, getUserRow } from "../users.js";
 import { CURRENCIES } from "../../lib/money.js";
 import { getAggregator } from "./registry.js";
+import { CHAIN_LABEL, parseAddress, shortAddress } from "./web3.js";
 import { ConnectorError, type AccountSnapshot, type CompletedLink, type LinkedRow, type PendingLink } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -134,6 +136,47 @@ export async function retryPendingLink(ctx: Ctx, row: LinkedRow, params: Record<
 }
 
 // ---------------------------------------------------------------------------
+// Watch-only Web3 wallets: no consent screen, just a public address
+// ---------------------------------------------------------------------------
+const MAX_WALLETS = 25;
+
+/**
+ * Adds a wallet by its public address. The address is stored encrypted (it's public, but tying it to
+ * a person is private), and only a shortened form is shown.
+ */
+export async function addWatchWallet(ctx: Ctx, userId: string, rawAddress: string, label?: string) {
+  if (!ctx.config.WEB3_WALLETS) throw new HttpError(422, "provider_not_configured", "Web3 wallets aren't enabled on this server");
+  const { chain, address } = parseAddress(rawAddress);
+  const count = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM linked_connections WHERE user_id = ? AND provider = 'web3'", userId)!.n;
+  if (count >= MAX_WALLETS) throw new HttpError(422, "too_many_wallets", `You can watch up to ${MAX_WALLETS} wallets`);
+  // Identifies the wallet for duplicate checks without storing the address in the clear.
+  const externalId = `${chain}:${createHmac("sha256", ctx.config.masterKey).update(`web3:${chain}:${address}`).digest("base64url").slice(0, 32)}`;
+  if (one(ctx.db, "SELECT 1 FROM linked_connections WHERE user_id = ? AND provider = 'web3' AND external_id = ?", userId, externalId)) {
+    throw new HttpError(409, "already_linked", "You're already watching this wallet");
+  }
+  const id = newId("lnk");
+  const now = nowIso();
+  const name = label?.trim().slice(0, 60) || `${CHAIN_LABEL[chain]} wallet`;
+  run(
+    ctx.db,
+    `INSERT INTO linked_connections (id, user_id, provider, status, external_id, secret_enc, institution, meta, created_at, updated_at)
+     VALUES (?, ?, 'web3', 'active', ?, ?, ?, ?, ?, ?)`,
+    id,
+    userId,
+    externalId,
+    encryptSecret(JSON.stringify({ chain, address }), ctx.config.masterKey),
+    name,
+    JSON.stringify({ chain, display: shortAddress(address) }),
+    now,
+    now,
+  );
+  audit(ctx, userId, "connections.linked", { provider: "web3", chain, connectionId: id });
+  // A slow or unreachable network doesn't undo the add: the wallet shows "Needs attention" and can be refreshed.
+  await syncConnection(ctx, userId, id).catch(() => undefined);
+  return id;
+}
+
+// ---------------------------------------------------------------------------
 // Sync, disconnect, overview
 // ---------------------------------------------------------------------------
 /** One sync per connection at a time: some providers issue single-use refresh tokens. */
@@ -256,6 +299,8 @@ export async function overview(ctx: Ctx, userId: string) {
         error: c.error,
         lastSyncedAt: c.last_synced_at,
         createdAt: c.created_at,
+        /** Web3 wallets: the network family and a shortened address. */
+        wallet: c.provider === "web3" ? (({ chain, display }) => ({ chain, network: CHAIN_LABEL[chain as keyof typeof CHAIN_LABEL] ?? chain, address: display }))(JSON.parse(c.meta)) : null,
         accounts: accounts
           .filter((a) => a.connection_id === c.id)
           .map((a) => ({

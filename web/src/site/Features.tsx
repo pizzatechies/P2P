@@ -140,7 +140,7 @@ export function FeaturesPage() {
       <Section id="connections">
         <div className="split reverse">
           <div>
-            <SectionHead eyebrow="Connections" title="All your money, wherever it lives" lead="Link banks, brokerages and crypto from around the world and see every balance, and your net worth, next to your Aurex wallet." />
+            <SectionHead eyebrow="Connections" title="All your money, wherever it lives" lead="Link banks, brokerages and crypto from around the world, and watch any Web3 wallet by its public address, to see every balance and your net worth next to your Aurex wallet." />
             <ul className="check-list">
               <Check>Banks and cards across North America, the UK and Europe, through Plaid</Check>
               <Check>Banks in dozens more countries through Salt Edge, and African banks through Mono</Check>

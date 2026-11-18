@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../components/icons";
-import { Empty, ErrorText } from "../components/ui";
+import { Empty, ErrorText, Field, Modal } from "../components/ui";
 import { holding, money, timeAgo, usd } from "../format";
 import { useAuth, useLoad, useToast } from "../state";
 import type { ConnectionsOverview, ConnectorInfo, LinkedConnection } from "../types";
@@ -39,6 +39,7 @@ export function ConnectionsPage() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addingWallet, setAddingWallet] = useState(false);
   const handled = useRef(false);
 
   // Coming back from a provider's consent screen: finish the link with whatever it appended.
@@ -67,6 +68,10 @@ export function ConnectionsPage() {
   }, []);
 
   async function connect(p: ConnectorInfo) {
+    if (p.id === "web3") {
+      setAddingWallet(true);
+      return;
+    }
     setBusy(p.id);
     setError(null);
     try {
@@ -192,6 +197,7 @@ export function ConnectionsPage() {
                   {c.status === "error" && <span className="pill bad">Needs attention</span>}
                 </h2>
                 <div className="faint xs" style={{ marginTop: 4 }}>
+                  {c.wallet && <><span className="mono">{c.wallet.address}</span> · {c.wallet.network} · watch-only · </>}
                   {c.country ? `${COUNTRY_NAMES[c.country] ?? c.country} · ` : ""}
                   {c.lastSyncedAt ? `updated ${timeAgo(c.lastSyncedAt)}` : "not synced yet"}
                 </div>
@@ -199,7 +205,7 @@ export function ConnectionsPage() {
               </div>
               <div className="row" style={{ gap: 6 }}>
                 <button className="btn secondary sm" disabled={!!busy} onClick={() => sync(c)}>{busy === `sync-${c.id}` ? "Updating…" : "Refresh"}</button>
-                <button className="btn ghost sm" disabled={!!busy} onClick={() => remove(c)}>Disconnect</button>
+                <button className="btn ghost sm" disabled={!!busy} onClick={() => remove(c)}>{c.wallet ? "Stop watching" : "Disconnect"}</button>
               </div>
             </div>
             <div className="table-wrap">
@@ -260,7 +266,7 @@ export function ConnectionsPage() {
                 ) : p.kind === "rail" ? (
                   p.configured ? <span className="pill good">In your Wallet</span> : <span className="pill">Not set up</span>
                 ) : p.configured ? (
-                  <button className="btn sm" disabled={!!busy} onClick={() => connect(p)}>{busy === p.id ? "Opening…" : "Connect"}</button>
+                  <button className="btn sm" disabled={!!busy} onClick={() => connect(p)}>{busy === p.id ? "Opening…" : p.id === "web3" ? "Add wallet" : "Connect"}</button>
                 ) : (
                   <span className="pill">Not set up</span>
                 )}
@@ -281,7 +287,95 @@ export function ConnectionsPage() {
           {providers.data && visible.length === 0 && <Empty>No providers match. Try another country or category.</Empty>}
         </div>
       </div>
+      {addingWallet && (
+        <AddWalletDialog
+          onClose={() => setAddingWallet(false)}
+          onAdded={(ov) => {
+            overview.setData(ov);
+            setAddingWallet(false);
+            toast("Wallet added");
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/** What a pasted value looks like. Secrets are caught here, so they never leave the browser. */
+function classify(raw: string): { kind: "secret"; message: string } | { kind: "address"; network: string } | { kind: "unknown" } {
+  const v = raw.trim();
+  if (!v) return { kind: "unknown" };
+  const words = v.split(/\s+/);
+  if (words.length >= 12 && words.every((w) => /^[a-zA-Z]{3,8}$/.test(w))) {
+    return { kind: "secret", message: "This looks like a recovery phrase. Never share it with anyone, Aurex included: whoever has it owns your wallet. Clear this box and paste your public address instead." };
+  }
+  if (/^(0x)?[0-9a-fA-F]{64}$/.test(v) || /^[xyzt]prv/.test(v) || /^\[\s*\d+(\s*,\s*\d+){20,}\s*\]$/.test(v) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(v) || /^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(v)) {
+    return { kind: "secret", message: "This looks like a private key. Never share it with anyone. Clear this box and paste your public address instead." };
+  }
+  if (/^0x[0-9a-fA-F]{40}$/.test(v)) return { kind: "address", network: "Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain" };
+  if (/^(bc1|BC1)[0-9A-Za-z]{8,87}$/.test(v) || /^[13][1-9A-HJ-NP-Za-km-z]{25,34}$/.test(v)) return { kind: "address", network: "Bitcoin" };
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v)) return { kind: "address", network: "Solana" };
+  return { kind: "unknown" };
+}
+
+function AddWalletDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (ov: ConnectionsOverview) => void }) {
+  const [address, setAddress] = useState("");
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const seen = classify(address);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (seen.kind === "secret") return;
+    setBusy(true);
+    setError(null);
+    try {
+      onAdded(await api.post<ConnectionsOverview>("/api/connections/web3", { address: address.trim(), label: label.trim() || undefined }));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Modal title="Watch a Web3 wallet" onClose={onClose}>
+      <form className="stack" onSubmit={submit}>
+        <p className="muted small" style={{ margin: 0 }}>
+          Paste the wallet's <strong>public address</strong>, the one you'd give someone to send you crypto. Aurex reads its balances from the
+          public blockchain. It can't move anything, and it never asks for your recovery phrase or keys.
+        </p>
+        <Field label="Public address">
+          <input
+            className="input mono"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="0x…, bc1… or a Solana address"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            required
+          />
+        </Field>
+        {seen.kind === "secret" && (
+          <div className="banner" style={{ borderColor: "var(--bad)", margin: 0 }} role="alert">
+            <Icon.Shield size={16} />
+            <span className="grow small"><strong>Stop.</strong> {seen.message}</span>
+            <button type="button" className="btn sm" onClick={() => setAddress("")}>Clear</button>
+          </div>
+        )}
+        {seen.kind === "address" && <div className="faint xs">Looks like an address on {seen.network}.</div>}
+        <Field label="Name (optional)">
+          <input className="input" value={label} maxLength={60} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. MetaMask, Ledger savings" />
+        </Field>
+        <ErrorText error={error} />
+        <button className="btn block" disabled={busy || seen.kind === "secret" || !address.trim()}>{busy ? "Reading balances…" : "Add wallet"}</button>
+        <p className="faint xs" style={{ margin: 0 }}>
+          Supported: Bitcoin, Ethereum, Base, Arbitrum, Optimism, Polygon, BNB Chain and Solana, with each network's coin and USDC/USDT.
+          Wallet apps like MetaMask, Coinbase Wallet, Trust Wallet, Phantom and Ledger show your address under "Receive".
+        </p>
+      </form>
+    </Modal>
   );
 }
 

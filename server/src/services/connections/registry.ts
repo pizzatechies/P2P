@@ -7,9 +7,10 @@ import { saltEdgeAggregator } from "./saltedge.js";
 import { sandboxAggregator } from "./sandbox.js";
 import { snapTradeAggregator } from "./snaptrade.js";
 import type { Aggregator, ConnectorInfo } from "./types.js";
+import { web3Aggregator } from "./web3.js";
 
 /** Aggregators: link accounts held elsewhere and read their balances. */
-const AGGREGATORS: Aggregator[] = [plaidAggregator, saltEdgeAggregator, monoAggregator, snapTradeAggregator, coinbaseAggregator, sandboxAggregator];
+const AGGREGATORS: Aggregator[] = [plaidAggregator, saltEdgeAggregator, monoAggregator, snapTradeAggregator, coinbaseAggregator, web3Aggregator, sandboxAggregator];
 
 export function getAggregator(id: string) {
   return AGGREGATORS.find((a) => a.info.id === id);

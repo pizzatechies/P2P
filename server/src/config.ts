@@ -139,6 +139,17 @@ const EnvSchema = z.object({
   /** Crypto prices: live from Coinbase's public market data (no key needed), or the simulator. */
   CRYPTO_DATA: z.enum(["coinbase", "simulated"]).optional(),
   COINBASE_EXCHANGE_URL: z.string().url().default("https://api.exchange.coinbase.com"),
+  /** Watch-only Web3 wallets (public addresses; balances from public blockchain data). */
+  WEB3_WALLETS: bool.default(true),
+  WEB3_ETHEREUM_RPC: z.string().url().default("https://ethereum-rpc.publicnode.com"),
+  WEB3_BASE_RPC: z.string().url().default("https://base-rpc.publicnode.com"),
+  WEB3_ARBITRUM_RPC: z.string().url().default("https://arbitrum-one-rpc.publicnode.com"),
+  WEB3_OPTIMISM_RPC: z.string().url().default("https://optimism-rpc.publicnode.com"),
+  WEB3_POLYGON_RPC: z.string().url().default("https://polygon-bor-rpc.publicnode.com"),
+  WEB3_BNB_RPC: z.string().url().default("https://bsc-rpc.publicnode.com"),
+  WEB3_SOLANA_RPC: z.string().url().default("https://api.mainnet-beta.solana.com"),
+  /** An Esplora API (Blockstream or mempool.space style) for Bitcoin addresses. */
+  WEB3_BITCOIN_API: z.string().url().default("https://blockstream.info/api"),
   /** US stock list for search and validation: Nasdaq Trader's daily symbol files, or the built-in list only. */
   STOCK_DIRECTORY: z.enum(["nasdaq", "builtin"]).optional(),
   NASDAQ_DIRECTORY_URL: z.string().url().default("https://www.nasdaqtrader.com/dynamic/SymDir"),

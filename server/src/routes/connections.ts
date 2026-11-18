@@ -7,7 +7,7 @@ import { parse } from "../lib/validate.js";
 import { requireAuth } from "../middleware/auth.js";
 import { catalogue } from "../services/connections/registry.js";
 import { DEMO_BANKS, sandboxAggregator } from "../services/connections/sandbox.js";
-import { completeLink, disconnect, overview, startLink, syncConnection } from "../services/connections/store.js";
+import { addWatchWallet, completeLink, disconnect, overview, startLink, syncConnection } from "../services/connections/store.js";
 
 const CompleteBody = z.object({ params: z.record(z.string().max(64), z.string().max(2000)).default({}) });
 
@@ -48,6 +48,13 @@ export function connectionRoutes(ctx: Ctx) {
   r.get("/sandbox/banks", (_req, res) => {
     if (!sandboxAggregator.configured(ctx)) throw notFound("Demo institutions are only available in sandbox mode");
     res.json({ banks: DEMO_BANKS.map(({ id, name, country, currency, accounts }) => ({ id, name, country, currency, accounts: accounts.length })) });
+  });
+
+  /** Watch-only wallet by public address. Never send a recovery phrase or private key: they're refused. */
+  r.post("/web3", limiter, async (req, res) => {
+    const { address, label } = parse(z.object({ address: z.string().max(500), label: z.string().max(60).optional() }), req.body);
+    const connectionId = await addWatchWallet(ctx, req.user!.id, address, label);
+    res.status(201).json({ connectionId, ...(await overview(ctx, req.user!.id)) });
   });
 
   r.post("/:provider/start", limiter, async (req, res) => {
