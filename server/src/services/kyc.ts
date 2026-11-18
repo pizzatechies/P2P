@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
@@ -261,7 +262,8 @@ export function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: string)
   if (missing.length) throw unprocessable("documents_missing", `Upload: ${missing.map((k) => DOC_LABEL[k]).join(", ")}`);
   run(ctx.db, "UPDATE kyc_submissions SET status = 'submitted', submitted_at = ?, updated_at = ? WHERE id = ?", nowIso(), nowIso(), sub.id);
   audit(ctx, userId, "kyc.submitted", { level, submissionId: sub.id }, ip);
-  if (ctx.config.KYC_AUTO_APPROVE) applyReview(ctx, null, sub.id, "approve", "Approved automatically (KYC_AUTO_APPROVE)", ip);
+  const flagged = level === 1 && data?.legalName ? screenForCustomer(ctx, userId, data.legalName, "legal_name", Number(data.dateOfBirth?.slice(0, 4)) || null).length > 0 : false;
+  if (ctx.config.KYC_AUTO_APPROVE && !flagged && !underSanctionsReview(ctx, userId)) applyReview(ctx, null, sub.id, "approve", "Approved automatically (KYC_AUTO_APPROVE)", ip);
   return verificationOverview(ctx, userId);
 }
 

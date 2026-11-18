@@ -139,6 +139,11 @@ const EnvSchema = z.object({
   /** Crypto prices: live from Coinbase's public market data (no key needed), or the simulator. */
   CRYPTO_DATA: z.enum(["coinbase", "simulated"]).optional(),
   COINBASE_EXCHANGE_URL: z.string().url().default("https://api.exchange.coinbase.com"),
+  /** Screen customers and payout recipients against the UN and OFAC sanctions lists (downloaded daily). */
+  SANCTIONS_SCREENING: bool.default(true),
+  SANCTIONS_UN_URL: z.string().url().default("https://scsanctions.un.org/resources/xml/en/consolidated.xml"),
+  SANCTIONS_OFAC_SDN_URL: z.string().url().default("https://www.treasury.gov/ofac/downloads/sdn.csv"),
+  SANCTIONS_OFAC_ALT_URL: z.string().url().default("https://www.treasury.gov/ofac/downloads/alt.csv"),
   /** Watch-only Web3 wallets (public addresses; balances from public blockchain data). */
   WEB3_WALLETS: bool.default(true),
   WEB3_ETHEREUM_RPC: z.string().url().default("https://ethereum-rpc.publicnode.com"),

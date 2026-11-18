@@ -84,9 +84,9 @@ describe("security checklist", () => {
     const res = await admin.A.get("/api/admin/security");
     expect(res.status).toBe(200);
     const byId = Object.fromEntries((res.body.checks as { id: string; status: string }[]).map((c) => [c.id, c.status]));
-    expect(byId).toMatchObject({ master_key: "pass", admin_2fa: "pass", payout_review: "fail", kyc: "fail", admin_ips: "warn", ledger: "pass", integrity: "pass" });
+    expect(byId).toMatchObject({ master_key: "pass", admin_2fa: "pass", payout_review: "fail", kyc: "fail", sanctions: "fail", admin_ips: "warn", ledger: "pass", integrity: "pass" });
     expect(res.body.checks[0].status).toBe("fail");
-    expect(res.body.failing).toBe(2);
+    expect(res.body.failing).toBe(3); // payout review, identity limits, and sanctions lists not downloaded yet
     // Values are never included, only whether they're set.
     expect(JSON.stringify(res.body)).not.toContain("test-master-key");
     const c = await signup(env.app, "customer");

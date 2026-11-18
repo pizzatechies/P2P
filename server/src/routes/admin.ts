@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { listStatus, refreshSanctionsLists, screenName } from "../services/sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { all, one, run } from "../db/index.js";
@@ -160,6 +161,27 @@ export function adminRoutes(ctx: Ctx) {
     const transfer = rejectPayout(ctx, req.user!.id, String(req.params.id), note);
     audit(ctx, req.user!.id, "payout.rejected", { id: req.params.id }, req.ip);
     res.json({ transfer });
+  });
+
+  // ---- Sanctions screening ----
+  r.get("/sanctions", (_req, res) => {
+    const open = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM compliance_alerts WHERE rule = 'sanctions_match' AND status = 'open'")!.n;
+    const checks = one<{ n: number; matches: number }>(ctx.db, "SELECT COUNT(*) AS n, SUM(result = 'possible_match') AS matches FROM sanctions_checks")!;
+    res.json({ enabled: ctx.config.SANCTIONS_SCREENING, lists: listStatus(ctx), openMatches: open, checks: checks.n, possibleMatches: checks.matches ?? 0 });
+  });
+
+  r.post("/sanctions/refresh", async (req, res) => {
+    const out = await refreshSanctionsLists(ctx);
+    audit(ctx, req.user!.id, "sanctions.refreshed", { results: out.results.map((r) => ({ list: r.list, ok: r.ok, entries: r.entries })) }, req.ip);
+    res.json({ ...out, lists: listStatus(ctx) });
+  });
+
+  /** Check a name by hand, e.g. a new business partner. Each check is audited (without the name). */
+  r.post("/sanctions/check", (req, res) => {
+    const body = parse(z.object({ name: z.string().trim().min(2).max(200), birthYear: z.coerce.number().int().min(1900).max(2100).optional(), includeEntities: z.boolean().optional() }), req.body);
+    const matches = screenName(ctx, body.name, { birthYear: body.birthYear, kinds: body.includeEntities ? ["individual", "entity"] : ["individual"], threshold: 0.8 });
+    audit(ctx, req.user!.id, "sanctions.manual_check", { matches: matches.length }, req.ip);
+    res.json({ matches });
   });
 
   // ---- Transaction monitoring ----

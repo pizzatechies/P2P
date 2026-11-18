@@ -637,4 +637,37 @@ export const migrations: string[] = [
     BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
   CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'the audit log is append-only'); END;
   `,
+  // 12: Sanctions screening: the UN and OFAC lists as downloaded, and a record of every screening.
+  `
+  CREATE TABLE sanctions_entries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    list        TEXT NOT NULL,
+    ref         TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('individual','entity')),
+    name        TEXT NOT NULL,
+    aliases     TEXT NOT NULL DEFAULT '[]',
+    birth_years TEXT NOT NULL DEFAULT '[]',
+    programs    TEXT,
+    countries   TEXT NOT NULL DEFAULT '[]'
+  );
+  CREATE INDEX sanctions_entries_list ON sanctions_entries(list);
+  CREATE TABLE sanctions_lists (
+    list       TEXT PRIMARY KEY,
+    source     TEXT NOT NULL,
+    entries    INTEGER NOT NULL,
+    fetched_at TEXT NOT NULL,
+    error      TEXT,
+    checked_at TEXT
+  );
+  -- Evidence that screening happened: who, what was screened, and the outcome (not the name itself).
+  CREATE TABLE sanctions_checks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    result     TEXT NOT NULL CHECK (result IN ('clear','possible_match')),
+    matches    TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX sanctions_checks_user ON sanctions_checks(user_id, created_at);
+  `,
 ];

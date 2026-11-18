@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { screenForCustomer } from "../services/sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { rateLimit } from "../lib/rateLimit.js";
@@ -54,6 +55,7 @@ export function authRoutes(ctx: Ctx) {
     const ua = req.get("user-agent")?.slice(0, 300) ?? "";
     const session = createSession(ctx, user.id, { ip: req.ip, userAgent: ua });
     audit(ctx, user.id, "auth.register", { ua }, req.ip);
+    screenForCustomer(ctx, user.id, user.display_name, "display_name");
     setSessionCookie(ctx, res, session.token, session.expiresAt);
     const emailVerification = ctx.config.emailDelivery === "none" ? null : await sendVerificationCode(ctx, user).catch(() => null);
     res.status(201).json({ user: toAuthUser(user), emailVerification });

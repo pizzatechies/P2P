@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { assertNotUnderSanctionsReview, screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { badRequest, forbidden, HttpError, notFound, unprocessable } from "../lib/errors.js";
 import { newId } from "../lib/ids.js";
@@ -147,6 +148,8 @@ export async function sendMoney(
   if (recipient.id === sender.id) throw badRequest("You can't send money to yourself");
   assertActive(sender, "sender");
   assertActive(recipient, "recipient");
+  assertNotUnderSanctionsReview(ctx, sender.id, "you");
+  assertNotUnderSanctionsReview(ctx, recipient.id, "recipient");
 
   await checkLimits(ctx, sender.id, currency, input.amountMinor);
 
@@ -264,6 +267,8 @@ export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
   const requester = getUserRow(ctx, req.requester_id);
   assertActive(payer, "sender");
   assertActive(requester, "recipient");
+  assertNotUnderSanctionsReview(ctx, payer.id, "you");
+  assertNotUnderSanctionsReview(ctx, requester.id, "recipient");
   await checkLimits(ctx, userId, req.currency, req.amount);
 
   const journalId = tx(ctx.db, () => {
@@ -602,6 +607,7 @@ export async function withdraw(
   const rail = getRail(ctx, input.rail, "withdrawal", currency);
   const user = getUserRow(ctx, input.userId);
   assertActive(user, "sender");
+  assertNotUnderSanctionsReview(ctx, user.id, "you");
   await checkLimits(ctx, user.id, currency, input.amountMinor);
 
   const fee = bps(input.amountMinor, ctx.config.WITHDRAWAL_FEE_BPS);
@@ -660,7 +666,10 @@ export async function withdraw(
 
   // 2) Monitoring, then either hold the payout for a second person or send it now.
   await monitor(ctx, { kind: "withdrawal", userId: user.id, ref: id, currency, amountMinor: input.amountMinor });
+  const payeeName = [input.destination.firstName, input.destination.lastName].filter(Boolean).join(" ") || input.destination.name;
+  const payeeHit = screenForCustomer(ctx, user.id, payeeName, "payee").length > 0;
   const reasons = await payoutReviewReasons(ctx, user.id, currency, input.amountMinor);
+  if (payeeHit) reasons.unshift("Recipient's name resembles a sanctions list entry");
   if (reasons.length) {
     run(ctx.db, "UPDATE external_transfers SET review_status = 'required', review_reasons = ?, updated_at = ? WHERE id = ?", JSON.stringify(reasons), nowIso(), id);
     notifyAdmins(ctx, `A withdrawal of ${currency} ${fromMinor(input.amountMinor, currency)} by @${user.handle} is waiting for your review (Admin → Payouts).`);
@@ -671,7 +680,8 @@ export async function withdraw(
 
 /** Why a withdrawal needs a second person before the money leaves (empty: it doesn't). */
 async function payoutReviewReasons(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
-  if (!ctx.config.PAYOUT_REVIEW) return [];
+  // A possible sanctions match always waits for a person, even with payout review switched off.
+  if (!ctx.config.PAYOUT_REVIEW) return underSanctionsReview(ctx, userId) ? ["Possible sanctions list match"] : [];
   const reasons: string[] = [];
   const usd = await toUsdMinor(ctx, currency, amountMinor);
   if (usd >= Math.round(ctx.config.PAYOUT_REVIEW_USD * 100)) reasons.push(`At or over $${ctx.config.PAYOUT_REVIEW_USD.toLocaleString("en-US")}`);

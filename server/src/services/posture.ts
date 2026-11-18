@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { listStatus } from "./sanctions.js";
 import { all, one } from "../db/index.js";
 import { recentIntegrity } from "./integrity.js";
 import { verifyLedger } from "./ledger.js";
@@ -152,6 +153,22 @@ export function securityPosture(ctx: Ctx) {
           ? "Every currency is covered by recorded safeguarding balances."
           : "No customer money held yet.",
     fix: "Under Ledger & records → Safeguarding, register the accounts holding customers' money and record their balances daily.",
+  });
+
+  const lists = listStatus(ctx);
+  const loaded = lists.filter((l) => l.entries > 0);
+  const stale = loaded.filter((l) => !l.fetchedAt || Date.now() - Date.parse(l.fetchedAt) > 3 * 86_400_000);
+  add({
+    id: "sanctions",
+    area: "Money",
+    label: "Customers are screened against sanctions lists",
+    status: !c.SANCTIONS_SCREENING || loaded.length === 0 ? "fail" : stale.length || loaded.length < lists.length ? "warn" : "pass",
+    detail: !c.SANCTIONS_SCREENING
+      ? "Sanctions screening is switched off."
+      : loaded.length === 0
+        ? "The UN and OFAC lists haven't been downloaded yet (the server fetches them shortly after starting)."
+        : `${loaded.map((l) => `${l.name}: ${l.entries.toLocaleString("en-US")} entries`).join("; ")}.${stale.length ? " Some lists are more than 3 days old." : ""}${loaded.length < lists.length ? " One list failed to download." : ""}`,
+    fix: "Keep SANCTIONS_SCREENING=true and make sure the server can reach scsanctions.un.org and treasury.gov; Admin → Sanctions lists → Refresh.",
   });
 
   // Records

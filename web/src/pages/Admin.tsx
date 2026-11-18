@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { ErrorText } from "../components/ui";
+import { ErrorText, Field } from "../components/ui";
 import { COUNTRIES } from "../countries";
 import { money, timeAgo } from "../format";
 import { Icon } from "../components/icons";
@@ -159,6 +159,7 @@ export function AdminPage() {
       {!overview.error && <SecurityChecklist />}
       {!overview.error && <PayoutQueue onChange={overview.reload} />}
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
+      {!overview.error && <SanctionsCard />}
       {!overview.error && <KycQueue />}
       {!overview.error && <UpgradeQueue />}
       <div className="card flush">
@@ -535,6 +536,109 @@ function SecurityChecklist() {
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+interface SanctionsStatus {
+  enabled: boolean;
+  lists: { list: string; name: string; entries: number; fetchedAt: string | null; error: string | null }[];
+  openMatches: number;
+  checks: number;
+  possibleMatches: number;
+}
+interface SanctionsHit {
+  list: string;
+  listName: string;
+  ref: string;
+  kind: string;
+  listedName: string;
+  matchedName: string;
+  score: number;
+  birthYears: number[];
+  programs: string;
+  countries: string[];
+}
+
+/** The sanctions lists in use, and a way to check a name by hand. */
+function SanctionsCard() {
+  const toast = useToast();
+  const status = useLoad(() => api.get<SanctionsStatus>("/api/admin/sanctions"));
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState("");
+  const [year, setYear] = useState("");
+  const [entities, setEntities] = useState(false);
+  const [hits, setHits] = useState<SanctionsHit[] | null>(null);
+  async function refresh() {
+    setBusy(true);
+    try {
+      const r = await api.post<{ results: { list: string; ok: boolean; entries: number; error?: string }[]; rescreened: { customers: number; matches: number } }>("/api/admin/sanctions/refresh");
+      const failed = r.results.filter((x) => !x.ok);
+      toast(failed.length ? `Couldn't update: ${failed.map((f) => f.error).join("; ")}` : `Lists updated; ${r.rescreened.customers} customers re-screened`, failed.length ? "error" : undefined);
+      status.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function check(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      setHits((await api.post<{ matches: SanctionsHit[] }>("/api/admin/sanctions/check", { name, birthYear: year ? Number(year) : undefined, includeEntities: entities })).matches);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+  const d = status.data;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head">
+        <h2>Sanctions lists</h2>
+        <button className="btn secondary sm" disabled={busy} onClick={refresh}>{busy ? "Updating…" : "Update now"}</button>
+      </div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Customers are screened on their legal name and date of birth, and on their sign-up name; payout recipients before money is sent; and everyone again when the lists change (checked daily).
+        A possible match pauses that customer's payments until someone clears it under Monitoring alerts.
+      </p>
+      {d && !d.enabled && <div className="banner">Sanctions screening is switched off (SANCTIONS_SCREENING=false).</div>}
+      <div className="stack-sm">
+        {(d?.lists ?? []).map((l) => (
+          <div key={l.list} className="row between wrap small" style={{ gap: 8 }}>
+            <span><strong>{l.name}</strong></span>
+            <span className={l.entries ? (l.error ? "warn-text" : "muted") : "bad"}>
+              {l.entries ? `${l.entries.toLocaleString()} entries · updated ${l.fetchedAt ? timeAgo(l.fetchedAt) : "—"}` : "Not downloaded yet"}
+              {l.error ? ` · last attempt failed: ${l.error}` : ""}
+            </span>
+          </div>
+        ))}
+        {d && <div className="faint xs">{d.checks.toLocaleString()} screenings so far · {d.possibleMatches} possible matches · {d.openMatches} open</div>}
+      </div>
+      <form className="row wrap" style={{ gap: 8, alignItems: "flex-end", marginTop: 12 }} onSubmit={check}>
+        <Field label="Check a name"><input className="input" required minLength={2} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name or company" /></Field>
+        <Field label="Year of birth"><input className="input" inputMode="numeric" style={{ width: 110 }} value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Optional" /></Field>
+        <label className="row small" style={{ gap: 6, marginBottom: 10 }}><input type="checkbox" checked={entities} onChange={(e) => setEntities(e.target.checked)} /> Include companies</label>
+        <button className="btn sm" style={{ marginBottom: 4 }}>Check</button>
+      </form>
+      {hits && (hits.length === 0 ? (
+        <p className="good small">No possible matches.</p>
+      ) : (
+        <div className="table-wrap" style={{ marginTop: 8 }}>
+          <table className="table">
+            <thead><tr><th>Listed as</th><th>List</th><th className="hide-sm">Born</th><th className="r">Match</th></tr></thead>
+            <tbody>
+              {hits.map((h) => (
+                <tr key={h.list + h.ref}>
+                  <td><strong>{h.listedName}</strong>{h.matchedName !== h.listedName && <div className="faint xs">matched alias: {h.matchedName}</div>}<div className="faint xs">{h.kind}{h.programs ? ` · ${h.programs}` : ""}{h.countries.length ? ` · ${h.countries.join(", ")}` : ""}</div></td>
+                  <td className="small">{h.listName}<div className="faint xs mono">{h.ref}</div></td>
+                  <td className="hide-sm small">{h.birthYears.length ? h.birthYears.join(", ") : "—"}</td>
+                  <td className="r num">{Math.round(h.score * 100)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
     </div>
   );
 }
