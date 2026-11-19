@@ -728,4 +728,22 @@ export const migrations: string[] = [
   ALTER TABLE kyc_submissions ADD COLUMN provider_result TEXT;
   CREATE INDEX kyc_submissions_provider_job ON kyc_submissions(provider_job_id) WHERE provider_job_id IS NOT NULL;
   `,
+  // 16: Business (merchant) accounts, reviewed by an admin before payments to them carry the merchant fee.
+  `
+  CREATE TABLE business_profiles (
+    user_id             TEXT PRIMARY KEY REFERENCES users(id),
+    business_name       TEXT NOT NULL,
+    category            TEXT NOT NULL,
+    registration_number TEXT,
+    country             TEXT NOT NULL,
+    website             TEXT,
+    status              TEXT NOT NULL CHECK (status IN ('pending','approved','rejected')),
+    review_note         TEXT,
+    reviewed_by         TEXT,
+    reviewed_at         TEXT,
+    created_at          TEXT NOT NULL,
+    updated_at          TEXT NOT NULL
+  );
+  CREATE INDEX business_profiles_status ON business_profiles(status, updated_at);
+  `,
 ];

@@ -358,7 +358,8 @@ interface Index {
 }
 
 const indexes = new WeakMap<object, Index>();
-function invalidateIndex(ctx: Ctx) {
+/** Forgets the in-memory index, so the next screening reads the lists afresh. */
+export function invalidateIndex(ctx: Ctx) {
   indexes.delete(ctx.db);
 }
 
@@ -447,13 +448,13 @@ export function screenName(ctx: Ctx, name: string, opts: { birthYear?: number | 
 // ---------------------------------------------------------------------------
 // Screening customers and payees
 // ---------------------------------------------------------------------------
-type Subject = "legal_name" | "display_name" | "payee";
-const SUBJECT_LABEL: Record<Subject, string> = { legal_name: "Legal name (identity details)", display_name: "Name given at sign-up", payee: "Payout recipient" };
+type Subject = "legal_name" | "display_name" | "payee" | "business";
+const SUBJECT_LABEL: Record<Subject, string> = { legal_name: "Legal name (identity details)", display_name: "Name given at sign-up", payee: "Payout recipient", business: "Business name" };
 
 /** Screens a name for a customer and opens an alert per possible match. Returns the matches. */
 export function screenForCustomer(ctx: Ctx, userId: string, name: string, subject: Subject, birthYear?: number | null): SanctionsMatch[] {
   if (!ctx.config.SANCTIONS_SCREENING) return [];
-  const matches = screenName(ctx, name, { birthYear, kinds: subject === "payee" ? ["individual", "entity"] : ["individual"] });
+  const matches = screenName(ctx, name, { birthYear, kinds: subject === "payee" || subject === "business" ? ["individual", "entity"] : ["individual"] });
   run(
     ctx.db,
     "INSERT INTO sanctions_checks (user_id, subject, result, matches, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -464,7 +465,7 @@ export function screenForCustomer(ctx: Ctx, userId: string, name: string, subjec
     nowIso(),
   );
   for (const m of matches) {
-    openAlert(ctx, userId, "sanctions_match", `${userId}:${subject === "payee" ? "payee:" : ""}${m.list}:${m.ref}`, `${SUBJECT_LABEL[subject]} resembles "${m.matchedName}" on the ${m.listName} (${m.ref}, ${Math.round(m.score * 100)}% match)`, {
+    openAlert(ctx, userId, "sanctions_match", `${userId}:${subject === "payee" || subject === "business" ? `${subject}:` : ""}${m.list}:${m.ref}`, `${SUBJECT_LABEL[subject]} resembles "${m.matchedName}" on the ${m.listName} (${m.ref}, ${Math.round(m.score * 100)}% match)`, {
       subject,
       screenedName: name,
       list: m.list,

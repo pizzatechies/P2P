@@ -62,7 +62,7 @@ export interface Meta {
 }
 
 export interface Balance { currency: string; balance: string; balanceMinor: number }
-export interface Profile { id: string; handle: string; displayName: string }
+export interface Profile { id: string; handle: string; displayName: string; business?: { name: string } | null }
 
 export interface Activity {
   id: string;

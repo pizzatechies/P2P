@@ -53,10 +53,13 @@ export function PayPage() {
             <div className="skeleton" style={{ height: 160 }} />
           ) : (
             <>
-              <span className="avatar pay-avatar">{initials(payee.displayName)}</span>
+              <span className="avatar pay-avatar">{initials(payee.business?.name ?? payee.displayName)}</span>
               <div className="muted small">{isMe ? "This is your pay link" : "You're paying"}</div>
-              <h1 style={{ fontSize: 24 }}>{payee.displayName}</h1>
-              <div className="faint">@{payee.handle}</div>
+              <h1 style={{ fontSize: 24 }}>{payee.business?.name ?? payee.displayName}</h1>
+              <div className="faint">
+                @{payee.handle}
+                {payee.business && <> · <span className="pill good" style={{ height: 20, fontSize: 11 }}>Verified business</span></>}
+              </div>
               {amount && <div className="pay-amount num">{money(amount, currency)}</div>}
               {note && <div className="pill brand" style={{ margin: "4px auto 0" }}>{note}</div>}
 

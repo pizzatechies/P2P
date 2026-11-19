@@ -400,6 +400,11 @@ The software is a foundation. Running a real money or brokerage business has req
 ### Earning: fees and Aurex Pro
 
 - **Fees:** `FX_SPREAD_BPS` (0.5% on conversions by default), `WITHDRAWAL_FEE_BPS` and `P2P_FEE_BPS` (both 0 by default). Income collects in the `fees` and `fx` system accounts. Record moving it out under Safeguarding → Income to move out.
+- **Business accounts** (`MERCHANT_FEE_BPS`, 0 by default): a verified customer applies under Account → Business account.
+  - An admin reviews the application under Admin → Business accounts to review (know-your-business: registration number, website, what they sell). Nobody can approve their own.
+  - The business name is screened against the UN and OFAC lists, people and companies alike.
+  - Once approved, pay links and @handle payments show the business name with a "Verified business" badge, and Aurex keeps `MERCHANT_FEE_BPS` of each payment received, like a till number. The payer pays exactly the price.
+  - The business sees what it received over the last day, week and month, with the fees.
 - **Aurex Pro** (`PRO_ENABLED=true`): a monthly plan paid from the customer's own wallet, so no card network or extra provider is needed.
   - Price: `PRO_PRICE` in `PRO_CURRENCY`, payable from any of the customer's wallets at the mid-market rate.
   - Each charge is a `subscription` journal into fee income.

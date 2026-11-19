@@ -163,6 +163,7 @@ export function AdminPage() {
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
       {!overview.error && <SanctionsCard />}
       {!overview.error && <KycQueue />}
+      {!overview.error && <BusinessQueue />}
       {!overview.error && <UpgradeQueue />}
       <div className="card flush">
         <div className="card-head">
@@ -770,6 +771,61 @@ function GovernmentCheck({ check }: { check: NonNullable<KycSubmission["check"]>
           {r.recordName && <div className="faint xs">On record: {r.recordName}{r.recordDob ? `, born ${r.recordDob}` : ""}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+interface BusinessApplication {
+  businessName: string;
+  category: string;
+  registrationNumber: string | null;
+  country: string;
+  website: string | null;
+  status: string;
+  createdAt: string;
+  user: { id: string; handle: string; email: string; name: string; kycLevel: number };
+}
+
+/** Business account applications waiting for review (know-your-business). */
+function BusinessQueue() {
+  const toast = useToast();
+  const list = useLoad(() => api.get<{ applications: BusinessApplication[]; feeBps: number }>("/api/admin/businesses"));
+  if (!list.data || list.data.applications.length === 0) return null;
+  async function review(a: BusinessApplication, decision: "approve" | "reject") {
+    const note = decision === "reject" ? prompt("What should they fix? (shown to them)") ?? "" : undefined;
+    if (decision === "reject" && !note?.trim()) return;
+    try {
+      await api.post(`/api/admin/businesses/${a.user.id}/review`, { decision, note });
+      toast(decision === "approve" ? `${a.businessName} is now a business account` : "Sent back for changes");
+      list.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Business accounts to review</h2><span className="faint small">{list.data.applications.length} waiting</span></div>
+      <p className="muted small" style={{ marginTop: 0 }}>Check the business exists (registration number, website, what they sell) and that the owner is who they say. Business names are screened against sanctions lists automatically.</p>
+      <div className="stack">
+        {list.data.applications.map((a) => (
+          <div key={a.user.id} className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
+            <div>
+              <strong>{a.businessName}</strong> <span className="faint small">· {a.category} · {a.country}</span>
+              <div className="small">
+                Owner <Link to={`/app/admin/users/${a.user.id}`}>@{a.user.handle}</Link> <span className="faint">· identity level {a.user.kycLevel}</span>
+              </div>
+              <div className="faint xs">
+                {a.registrationNumber ? `Registration ${a.registrationNumber}` : "No registration number"}
+                {a.website && <> · <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a></>} · applied {timeAgo(a.createdAt)}
+              </div>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn sm" onClick={() => review(a, "approve")}>Approve</button>
+              <button className="btn ghost sm" onClick={() => review(a, "reject")}>Send back</button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

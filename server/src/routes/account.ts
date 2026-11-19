@@ -1,4 +1,5 @@
 import express, { Router } from "express";
+import { applyForBusiness, assertCategory, businessOverview } from "../services/business.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { badRequest } from "../lib/errors.js";
@@ -88,6 +89,25 @@ export function accountRoutes(ctx: Ctx) {
     res.setHeader("Content-Disposition", `attachment; filename="aurex-activity-${st.currency}-${String(req.query.from)}-to-${String(req.query.to)}.csv"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.send(statementCsv(st));
+  });
+
+  // ---- Business account ----
+  r.get("/business", (req, res) => {
+    res.json(businessOverview(ctx, req.user!.id));
+  });
+
+  r.put("/business", (req, res) => {
+    const body = parse(
+      z.object({
+        businessName: z.string().trim().min(2).max(100),
+        category: z.string().transform(assertCategory),
+        registrationNumber: z.string().trim().max(60).optional(),
+        country: z.string().trim().length(2),
+        website: z.string().trim().url().max(200).optional().or(z.literal("")),
+      }),
+      req.body,
+    );
+    res.json(applyForBusiness(ctx, req.user!.id, { ...body, website: body.website || undefined }, req.ip));
   });
 
   // ---- Your data ----

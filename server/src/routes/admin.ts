@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { listBusinessApplications, reviewBusiness } from "../services/business.js";
 import { comp as compPro } from "../services/pro.js";
 import { createInvite, inviteFromWaitlist, listInvites, listWaitlist, revokeInvite, signupStatus } from "../services/beta.js";
 import { listStatus, refreshSanctionsLists, screenName } from "../services/sanctions.js";
@@ -163,6 +164,18 @@ export function adminRoutes(ctx: Ctx) {
     const transfer = rejectPayout(ctx, req.user!.id, String(req.params.id), note);
     audit(ctx, req.user!.id, "payout.rejected", { id: req.params.id }, req.ip);
     res.json({ transfer });
+  });
+
+  // ---- Business accounts ----
+  r.get("/businesses", (req, res) => {
+    const { status } = parse(z.object({ status: z.enum(["pending", "all"]).optional() }), req.query);
+    res.json({ applications: listBusinessApplications(ctx, status ?? "pending"), feeBps: ctx.config.MERCHANT_FEE_BPS });
+  });
+
+  r.post("/businesses/:userId/review", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(z.object({ decision: z.enum(["approve", "reject"]), note: z.string().trim().max(500).optional() }), req.body);
+    reviewBusiness(ctx, req.user!.id, String(req.params.userId), body.decision, body.note, req.ip);
+    res.json({ ok: true });
   });
 
   // ---- Beta access: invites and the waitlist ----

@@ -220,6 +220,7 @@ describe("your data and closing the account", () => {
     expect(data.wallets[0]).toMatchObject({ currency: "USD", balance: "20.00" });
     expect(data.transactions).toHaveLength(1);
     expect(data.verification.submissions[0].details.legalName).toBe("Amara Okafor");
+    expect(data).toMatchObject({ plan: null, business: null, trading: { fills: [], autopilot: { settings: null, events: [] } } });
     const text = JSON.stringify(data);
     expect(text).not.toMatch(/password_hash|\$scrypt|totp_secret|key_enc/);
   });

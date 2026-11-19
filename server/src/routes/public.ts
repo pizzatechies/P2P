@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { businessName } from "../services/business.js";
 import { joinWaitlist, signupStatus } from "../services/beta.js";
 import { parse } from "../lib/validate.js";
 import { rateLimit } from "../lib/rateLimit.js";
@@ -26,7 +27,8 @@ export function publicRoutes(ctx: Ctx) {
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) throw notFound("No one with that handle");
     const user = findUserByIdentifier(ctx, `@${handle}`);
     if (!user || user.status !== "active") throw notFound("No one with that handle");
-    res.json({ user: publicProfile(user) });
+    const business = businessName(ctx, user.id);
+    res.json({ user: { ...publicProfile(user), business: business ? { name: business } : null } });
   });
   return r;
 }

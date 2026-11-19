@@ -219,7 +219,14 @@ export function exportData(ctx: Ctx, userId: string) {
       orders: q("SELECT id, broker, symbol, side, type, qty, limit_price AS limitPrice, status, filled_qty AS filledQty, filled_avg_price AS filledAvgPrice, source, placed_by AS placedBy, created_at AS createdAt FROM orders WHERE user_id = ? ORDER BY created_at", userId),
       aiSignals: q("SELECT id, symbol, provider, model, action, confidence, suggested_qty AS suggestedQty, price, rationale, created_at AS createdAt FROM ai_signals WHERE user_id = ? ORDER BY created_at", userId),
       watchlist: q("SELECT symbol, created_at AS addedAt FROM watchlist WHERE user_id = ?", userId),
+      fills: q("SELECT id, broker, account_type AS accountType, symbol, asset_class AS assetClass, side, qty, price, multiplier, fee_cents / 100.0 AS fee, realized_pl_cents / 100.0 AS realizedPnl, executed_at AS executedAt FROM trade_fills WHERE user_id = ? ORDER BY executed_at", userId),
+      autopilot: {
+        settings: one(ctx.db, "SELECT enabled, mode, provider, model, symbols, interval_min AS intervalMin, max_position_pct AS maxPositionPct, max_exposure_pct AS maxExposurePct, max_trades_per_day AS maxTradesPerDay, max_daily_loss_pct AS maxDailyLossPct, min_confidence AS minConfidence, allow_live AS allowLive, acknowledged_at AS acknowledgedAt FROM autopilot_settings WHERE user_id = ?", userId) ?? null,
+        events: q("SELECT kind, symbol, message, order_id AS orderId, created_at AS createdAt FROM autopilot_events WHERE user_id = ? ORDER BY id", userId),
+      },
     },
+    plan: one(ctx.db, "SELECT status, currency, amount_minor AS amountMinor, started_at AS startedAt, current_period_end AS currentPeriodEnd, cancel_at_period_end AS cancelAtPeriodEnd, comped FROM subscriptions WHERE user_id = ?", userId) ?? null,
+    business: one(ctx.db, "SELECT business_name AS businessName, category, registration_number AS registrationNumber, country, website, status, review_note AS reviewNote, reviewed_at AS reviewedAt, created_at AS createdAt FROM business_profiles WHERE user_id = ?", userId) ?? null,
     aiConversations: conversations.map((c) => ({
       ...c,
       messages: q("SELECT role, content, provider, model, created_at AS createdAt FROM ai_messages WHERE conversation_id = ? ORDER BY created_at", c.id),

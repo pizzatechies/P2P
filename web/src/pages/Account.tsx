@@ -65,6 +65,7 @@ export function AccountPage() {
           </div>
           <VerificationCard v={a.verification} onChange={data.reload} />
           <StatementsCard />
+          <BusinessCard />
           <div className="grid grid-2">
             <DataCard />
             <CloseCard handle={a.handle} blockers={data.data!.closureBlockers} />
@@ -596,5 +597,111 @@ function CloseDialog({ handle, onClose }: { handle: string; onClose: () => void 
         </button>
       </form>
     </Modal>
+  );
+}
+
+interface BusinessOverview {
+  feeBps: number;
+  categories: string[];
+  profile: { businessName: string; category: string; registrationNumber: string | null; country: string; website: string | null; status: "pending" | "approved" | "rejected"; reviewNote: string | null } | null;
+  received: Record<"day" | "week" | "month", { currency: string; received: string; fees: string; payments: number }[]> | null;
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  retail: "Shop or retail", food: "Food and drink", services: "Services", transport: "Transport", education: "Education",
+  health: "Health", online: "Online business", agriculture: "Farming and agriculture", other: "Other",
+};
+
+/** Turn the account into a business account: payments show the business name; a small fee applies. */
+function BusinessCard() {
+  const toast = useToast();
+  const data = useLoad(() => api.get<BusinessOverview>("/api/account/business"));
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ businessName: "", category: "retail", registrationNumber: "", country: "KE", website: "" });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const d = data.data;
+  if (!d) return null;
+  const p = d.profile;
+  const fee = d.feeBps ? `${(d.feeBps / 100).toFixed(2)}%` : null;
+
+  async function apply(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      data.setData(await api.put<BusinessOverview>("/api/account/business", f));
+      setOpen(false);
+      toast("Application sent. We'll let you know.");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" id="business">
+      <div className="card-head">
+        <h2>Business account</h2>
+        {p && <span className={`pill ${p.status === "approved" ? "good" : p.status === "rejected" ? "bad" : "warn"}`}>{p.status === "approved" ? "Active" : p.status === "pending" ? "Under review" : "Needs changes"}</span>}
+      </div>
+      {p?.status === "approved" ? (
+        <>
+          <p className="small muted" style={{ marginTop: 0, marginBottom: 12 }}>
+            Payments to you show <strong>{p.businessName}</strong> as a verified business.{fee ? ` Aurex keeps ${fee} of each payment you receive; your customers pay exactly your price.` : ""}
+          </p>
+          <div className="grid grid-3">
+            {(["day", "week", "month"] as const).map((w) => (
+              <div key={w}>
+                <div className="stat-label">{w === "day" ? "Last 24 hours" : w === "week" ? "Last 7 days" : "Last 30 days"}</div>
+                {(d.received?.[w] ?? []).length === 0 ? (
+                  <div className="faint small">No payments yet</div>
+                ) : (
+                  d.received![w].map((r) => (
+                    <div key={r.currency} className="small">
+                      <strong className="num">{r.received} {r.currency}</strong> <span className="faint">· {r.payments} payment{r.payments === 1 ? "" : "s"}{Number(r.fees) ? ` · fees ${r.fees}` : ""}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : p?.status === "pending" ? (
+        <p className="small muted" style={{ margin: 0 }}>We're reviewing <strong>{p.businessName}</strong>, usually within one business day.</p>
+      ) : (
+        <>
+          {p?.status === "rejected" && <div className="banner" style={{ borderColor: "var(--bad)" }}><span className="small"><strong>Please fix and resend:</strong> {p.reviewNote}</span></div>}
+          <p className="small muted" style={{ marginTop: 0 }}>
+            Selling something? A business account shows your business name to people who pay you, through your pay link or @handle{fee ? `, with a ${fee} fee on payments you receive` : ""}. You'll need your own identity verified first.
+          </p>
+          {!open ? (
+            <button className="btn secondary" onClick={() => { setOpen(true); if (p) setF({ businessName: p.businessName, category: p.category, registrationNumber: p.registrationNumber ?? "", country: p.country, website: p.website ?? "" }); }}>
+              {p ? "Edit and resend" : "Apply for a business account"}
+            </button>
+          ) : (
+            <form className="stack" onSubmit={apply}>
+              <div className="grid grid-2">
+                <Field label="Business name"><input className="input" required minLength={2} maxLength={100} value={f.businessName} onChange={(e) => setF({ ...f, businessName: e.target.value })} /></Field>
+                <Field label="What you do">
+                  <select className="input" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
+                    {d.categories.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c] ?? c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Registration number (optional)" hint="From your registration certificate, if you have one"><input className="input" maxLength={60} value={f.registrationNumber} onChange={(e) => setF({ ...f, registrationNumber: e.target.value })} /></Field>
+                <CountrySelect label="Country" value={f.country} onChange={(v) => setF({ ...f, country: v })} />
+                <Field label="Website (optional)"><input className="input" type="url" placeholder="https://" value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} /></Field>
+              </div>
+              <ErrorText error={error} />
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn" disabled={busy}>{busy ? "Sending…" : "Send for review"}</button>
+                <button type="button" className="btn ghost" onClick={() => setOpen(false)}>Cancel</button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
+    </div>
   );
 }

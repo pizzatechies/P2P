@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { isMerchant } from "./business.js";
 import { assertNotUnderSanctionsReview, screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { badRequest, forbidden, HttpError, notFound, unprocessable } from "../lib/errors.js";
@@ -116,16 +117,17 @@ function postTransfer(
   extraMeta: Record<string, unknown> = {},
 ): JournalRow {
   const fee = bps(amount, ctx.config.P2P_FEE_BPS);
+  const merchantFee = isMerchant(ctx, recipient.id) ? bps(amount, ctx.config.MERCHANT_FEE_BPS) : 0;
   return postJournal(ctx, {
     kind: "transfer",
     memo,
     initiatorId: sender.id,
     idempotencyKey,
-    metadata: { from: sender.id, to: recipient.id, amount, fee, currency, ...extraMeta },
+    metadata: { from: sender.id, to: recipient.id, amount, fee, currency, ...(merchantFee ? { merchantFee } : {}), ...extraMeta },
     postings: [
       { accountId: userAccount(ctx, sender.id, currency).id, amount: -(amount + fee), currency },
-      { accountId: userAccount(ctx, recipient.id, currency).id, amount, currency },
-      { accountId: systemAccount(ctx, "fees", currency).id, amount: fee, currency },
+      { accountId: userAccount(ctx, recipient.id, currency).id, amount: amount - merchantFee, currency },
+      { accountId: systemAccount(ctx, "fees", currency).id, amount: fee + merchantFee, currency },
     ],
   });
 }
