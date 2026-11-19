@@ -46,6 +46,27 @@ export async function dailyOutflowUsdMinor(ctx: Ctx, userId: string) {
   return usedUsd;
 }
 
+/**
+ * Money leaving one customer's wallets is handled one request at a time, so payments fired at the same
+ * moment can't all pass the 24-hour limit check before any of them is recorded. (One server process
+ * owns the database, so an in-process queue per customer is enough.)
+ */
+const outflowQueues = new Map<string, Promise<void>>();
+async function oneAtATime<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const before = outflowQueues.get(userId) ?? Promise.resolve();
+  const tail = before.then(() => gate);
+  outflowQueues.set(userId, tail);
+  await before;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (outflowQueues.get(userId) === tail) outflowQueues.delete(userId);
+  }
+}
+
 /** Per-payment and 24-hour limits, which depend on the user's verification level (or an admin override). */
 async function checkLimits(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
   const limits = limitsFor(ctx, getUserRow(ctx, userId));
@@ -153,15 +174,21 @@ export async function sendMoney(
   assertNotUnderSanctionsReview(ctx, sender.id, "you");
   assertNotUnderSanctionsReview(ctx, recipient.id, "recipient");
 
-  await checkLimits(ctx, sender.id, currency, input.amountMinor);
-
-  const journal = tx(ctx.db, () => {
-    // Re-check inside the transaction in case an identical request raced us.
+  const journal = await oneAtATime(sender.id, async () => {
+    // A retry of a payment that was just recorded (while this one waited) is the same payment.
     if (input.idempotencyKey) {
       const existing = findJournalByIdempotencyKey(ctx, sender.id, input.idempotencyKey);
       if (existing) return existing;
     }
-    return postTransfer(ctx, sender, recipient, currency, input.amountMinor, input.memo?.trim() || null, input.idempotencyKey ?? null);
+    await checkLimits(ctx, sender.id, currency, input.amountMinor);
+    return tx(ctx.db, () => {
+      // Re-check inside the transaction in case an identical request raced us.
+      if (input.idempotencyKey) {
+        const existing = findJournalByIdempotencyKey(ctx, sender.id, input.idempotencyKey);
+        if (existing) return existing;
+      }
+      return postTransfer(ctx, sender, recipient, currency, input.amountMinor, input.memo?.trim() || null, input.idempotencyKey ?? null);
+    });
   });
   await monitor(ctx, { kind: "transfer", userId: sender.id, recipientId: recipient.id, ref: journal.id, currency, amountMinor: input.amountMinor });
   return transferView(ctx, journal);
@@ -271,22 +298,23 @@ export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
   assertActive(requester, "recipient");
   assertNotUnderSanctionsReview(ctx, payer.id, "you");
   assertNotUnderSanctionsReview(ctx, requester.id, "recipient");
-  await checkLimits(ctx, userId, req.currency, req.amount);
-
-  const journalId = tx(ctx.db, () => {
-    const fresh = loadRequest(ctx, requestId);
-    if (fresh.status !== "pending") throw unprocessable("request_closed", `This request is already ${fresh.status}`);
-    const journal = postTransfer(ctx, payer, requester, req.currency, req.amount, req.memo, `request:${req.id}`, {
-      requestId: req.id,
+  const journalId = await oneAtATime(userId, async () => {
+    await checkLimits(ctx, userId, req.currency, req.amount);
+    return tx(ctx.db, () => {
+      const fresh = loadRequest(ctx, requestId);
+      if (fresh.status !== "pending") throw unprocessable("request_closed", `This request is already ${fresh.status}`);
+      const journal = postTransfer(ctx, payer, requester, req.currency, req.amount, req.memo, `request:${req.id}`, {
+        requestId: req.id,
+      });
+      run(
+        ctx.db,
+        "UPDATE payment_requests SET status = 'paid', journal_id = ?, updated_at = ? WHERE id = ?",
+        journal.id,
+        nowIso(),
+        req.id,
+      );
+      return journal.id;
     });
-    run(
-      ctx.db,
-      "UPDATE payment_requests SET status = 'paid', journal_id = ?, updated_at = ? WHERE id = ?",
-      journal.id,
-      nowIso(),
-      req.id,
-    );
-    return journal.id;
   });
   await monitor(ctx, { kind: "transfer", userId: payer.id, recipientId: requester.id, ref: journalId, currency: req.currency, amountMinor: req.amount });
   return requestView(ctx, loadRequest(ctx, requestId));
@@ -604,47 +632,52 @@ export async function withdraw(
   if (input.amountMinor <= 0) throw badRequest("Amount must be greater than zero");
   if (input.idempotencyKey) {
     const existing = findJournalByIdempotencyKey(ctx, input.userId, input.idempotencyKey);
-    if (existing) return externalView(loadExternal(ctx, (JSON.parse(existing.metadata) as { externalId: string }).externalId));
+    if (existing) {
+      const externalId = existing.kind === "withdrawal" ? (JSON.parse(existing.metadata) as { externalId?: string }).externalId : undefined;
+      if (!externalId) throw unprocessable("idempotency_conflict", "That idempotency key was already used for a different payment");
+      return externalView(loadExternal(ctx, externalId));
+    }
   }
   const rail = getRail(ctx, input.rail, "withdrawal", currency);
   const user = getUserRow(ctx, input.userId);
   assertActive(user, "sender");
   assertNotUnderSanctionsReview(ctx, user.id, "you");
-  await checkLimits(ctx, user.id, currency, input.amountMinor);
-
   const fee = bps(input.amountMinor, ctx.config.WITHDRAWAL_FEE_BPS);
   const id = newId("ext");
 
   // 1) Hold the funds in clearing before talking to the rail, so they can't be spent twice.
-  tx(ctx.db, () => {
-    const now = nowIso();
-    run(
-      ctx.db,
-      `INSERT INTO external_transfers (id, user_id, direction, rail, currency, amount, fee, status, destination, created_at, updated_at)
-       VALUES (?, ?, 'withdrawal', ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-      id,
-      user.id,
-      rail.id,
-      currency,
-      input.amountMinor,
-      fee,
-      JSON.stringify(input.destination),
-      now,
-      now,
-    );
-    const journal = postJournal(ctx, {
-      kind: "withdrawal",
-      initiatorId: user.id,
-      idempotencyKey: input.idempotencyKey ?? null,
-      memo: `Withdrawal to ${input.destination.name}`,
-      metadata: { externalId: id, rail: rail.id, amount: input.amountMinor, fee, currency },
-      postings: [
-        { accountId: userAccount(ctx, user.id, currency).id, amount: -(input.amountMinor + fee), currency },
-        { accountId: systemAccount(ctx, "clearing", currency).id, amount: input.amountMinor, currency },
-        { accountId: systemAccount(ctx, "fees", currency).id, amount: fee, currency },
-      ],
+  await oneAtATime(user.id, async () => {
+    await checkLimits(ctx, user.id, currency, input.amountMinor);
+    tx(ctx.db, () => {
+      const now = nowIso();
+      run(
+        ctx.db,
+        `INSERT INTO external_transfers (id, user_id, direction, rail, currency, amount, fee, status, destination, created_at, updated_at)
+         VALUES (?, ?, 'withdrawal', ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        id,
+        user.id,
+        rail.id,
+        currency,
+        input.amountMinor,
+        fee,
+        JSON.stringify(input.destination),
+        now,
+        now,
+      );
+      const journal = postJournal(ctx, {
+        kind: "withdrawal",
+        initiatorId: user.id,
+        idempotencyKey: input.idempotencyKey ?? null,
+        memo: `Withdrawal to ${input.destination.name}`,
+        metadata: { externalId: id, rail: rail.id, amount: input.amountMinor, fee, currency },
+        postings: [
+          { accountId: userAccount(ctx, user.id, currency).id, amount: -(input.amountMinor + fee), currency },
+          { accountId: systemAccount(ctx, "clearing", currency).id, amount: input.amountMinor, currency },
+          { accountId: systemAccount(ctx, "fees", currency).id, amount: fee, currency },
+        ],
+      });
+      run(ctx.db, "UPDATE external_transfers SET journal_id = ? WHERE id = ?", journal.id, id);
     });
-    run(ctx.db, "UPDATE external_transfers SET journal_id = ? WHERE id = ?", journal.id, id);
   });
 
   // A payout to somewhere this customer has never sent money before: tell them (by email too), so a

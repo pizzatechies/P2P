@@ -183,6 +183,7 @@ export async function resume(ctx: Ctx, userId: string, ip?: string) {
 /** Gives a customer Pro for free (testers, partners, goodwill). No charge, no renewal. */
 export function comp(ctx: Ctx, adminId: string, userId: string, days: number, ip?: string) {
   getUserRow(ctx, userId);
+  if (adminId === userId) throw new HttpError(403, "forbidden", "Another admin must give you Pro");
   const end = new Date(Date.now() + days * DAY).toISOString();
   run(
     ctx.db,

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
 import { Logo } from "../components/Logo";
@@ -69,7 +69,7 @@ export function LoginPage() {
         <Field label="Email">
           <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
-        <Field label="Password">
+        <Field label="Password" hint={<Link to="/forgot-password" className="small">Forgot your password?</Link>}>
           <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </Field>
         {needTotp && (
@@ -101,6 +101,123 @@ export function LoginPage() {
         <p className="small muted" style={{ textAlign: "center" }}>
           New here? <Link to={`/register${location.search}`}>Create an account</Link>
         </p>
+      </form>
+    </AuthShell>
+  );
+}
+
+/** "Forgot your password?": asks for the email address and sends a reset link to it. */
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/api/auth/password/forgot", { email });
+      setSent(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <AuthShell title="Check your email" subtitle={`If ${email} belongs to an Aurex account with a confirmed email address, a reset link is on its way.`}>
+        <div className="stack">
+          <p className="small muted" style={{ margin: 0 }}>The link works once, for 30 minutes. Nothing arrived? Check spam, or wait a minute and ask again. If you never confirmed your email address, contact support.</p>
+          <Link to="/login" className="btn secondary block">Back to sign in</Link>
+        </div>
+      </AuthShell>
+    );
+  }
+  return (
+    <AuthShell title="Forgot your password?" subtitle="Enter your email address and we'll send you a link to choose a new one.">
+      <form className="stack" onSubmit={submit}>
+        <Field label="Email">
+          <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+        </Field>
+        <ErrorText error={error} />
+        <button className="btn block lg" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button>
+        <p className="small muted" style={{ textAlign: "center" }}>
+          Remembered it? <Link to="/login">Sign in</Link>
+        </p>
+      </form>
+    </AuthShell>
+  );
+}
+
+/** Opened from the emailed link: choose a new password (and give the authenticator code when 2FA is on). */
+export function ResetPasswordPage() {
+  const [params] = useSearchParams();
+  // Keep the token out of the address bar (and browser history) once it's been read.
+  const [token] = useState(() => params.get("token") ?? "");
+  useEffect(() => {
+    if (window.location.search.includes("token=")) window.history.replaceState(null, "", "/reset-password");
+  }, []);
+  const link = useLoad(() => api.post<{ valid: boolean; twoFactor: boolean }>("/api/auth/password/reset/check", { token }));
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [code, setCode] = useState("");
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (password !== confirm) return setError("The two passwords don't match");
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post("/api/auth/password/reset", { token, password, code: link.data?.twoFactor ? code : undefined });
+      setDone(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <AuthShell title="Password changed" subtitle="Sign in with your new password. Every device was signed out.">
+        <div className="stack">
+          <p className="small muted" style={{ margin: 0 }}>As a precaution, withdrawals and large payments are paused for a while after a reset.</p>
+          <Link to="/login" className="btn block">Sign in</Link>
+        </div>
+      </AuthShell>
+    );
+  }
+  if (link.loading) return <AuthShell title="Choose a new password" subtitle="Checking your link…"><div /></AuthShell>;
+  if (!link.data?.valid) {
+    return (
+      <AuthShell title="This link doesn't work" subtitle="It has expired or was already used.">
+        <Link to="/forgot-password" className="btn block">Ask for a new link</Link>
+      </AuthShell>
+    );
+  }
+  return (
+    <AuthShell title="Choose a new password" subtitle="Pick one you don't use anywhere else.">
+      <form className="stack" onSubmit={submit}>
+        <Field label="New password" hint="At least 12 characters with a letter and a number. A few unrelated words works well.">
+          <input className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={12} autoFocus />
+        </Field>
+        <Field label="Type it again">
+          <input className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={12} />
+        </Field>
+        {link.data.twoFactor && (
+          <Field label="Authenticator code" hint="Two-factor authentication is on: enter the 6-digit code from your app, or one of your recovery codes.">
+            <input className="input num" autoComplete="one-time-code" maxLength={14} value={code} onChange={(e) => setCode(e.target.value)} required />
+          </Field>
+        )}
+        <ErrorText error={error} />
+        <button className="btn block lg" disabled={busy}>{busy ? "Saving…" : "Save new password"}</button>
       </form>
     </AuthShell>
   );

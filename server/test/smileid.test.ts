@@ -110,12 +110,21 @@ describe("Smile ID government record checks", () => {
     const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
     expect((await webhook(env.app, { status: "clear" }, old)).status).toBe(401);
 
+    // Smile ID echoes the partner_params Aurex sent. A signed callback with an edited body (another
+    // submission, or no keyed check value) changes nothing.
+    const echoed = { ...JSON.parse(sent.body.partner_params), job_id: "job_1" };
+    expect(echoed.aurex_check).toMatch(/^[0-9a-f]{40}$/);
+    const good = { first_name: "WANJIKU", other_names: "ACHIENG", last_name: "OTIENO", date_of_birth: "1992-07-14", id_number: "23456789" };
+    await webhook(env.app, { status: "clear", partner_params: { job_id: "job_1", aurex_submission: echoed.aurex_submission }, id_fields: good });
+    await webhook(env.app, { status: "clear", partner_params: { ...echoed, aurex_check: "0".repeat(40) }, id_fields: good });
+    expect((env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(user.id) as { kyc_level: number }).kyc_level).toBe(0);
+
     const ok = await webhook(env.app, {
       status: "clear",
       message: "ID verified",
       product: "enhanced_kyc",
-      partner_params: { job_id: "job_1", user_id: user.id },
-      id_fields: { first_name: "WANJIKU", other_names: "ACHIENG", last_name: "OTIENO", date_of_birth: "1992-07-14", id_number: "23456789" },
+      partner_params: echoed,
+      id_fields: good,
     });
     expect(ok.status).toBe(200);
     const level = env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(user.id) as { kyc_level: number };
@@ -124,6 +133,10 @@ describe("Smile ID government record checks", () => {
     const reviewed = (await admin.get("/api/admin/users/" + user.id)).body.verification[0];
     expect(reviewed.status).toBe("approved");
     expect(reviewed.check).toMatchObject({ provider: "smileid", status: "clear", result: { nameMatch: 1, dobMatch: true } });
+
+    // Replaying the callback later with a different record doesn't overwrite the result.
+    await webhook(env.app, { status: "block", partner_params: echoed, id_fields: { full_name: "SOMEONE ELSE" } });
+    expect((await admin.get("/api/admin/users/" + user.id)).body.verification[0].check.result.recordName).toBe("WANJIKU ACHIENG OTIENO");
   });
 
   it("leaves a mismatch for a person to review, with the government record shown", async () => {
@@ -132,9 +145,10 @@ describe("Smile ID government record checks", () => {
     const admin = await makeAdmin(env);
     const { agent, user } = await signup(env.app, "borrowed");
     await submit(agent, kenyan);
+    const sent = smile.calls.find((c) => c.route === "/v3/enhanced_kyc")!;
     await webhook(env.app, {
       status: "clear",
-      partner_params: { job_id: "job_1" },
+      partner_params: { ...JSON.parse(sent.body.partner_params), job_id: "job_1" },
       id_fields: { full_name: "JAMES MWANGI KARIUKI", date_of_birth: "1975-01-02" },
     });
     expect((env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(user.id) as { kyc_level: number }).kyc_level).toBe(0);

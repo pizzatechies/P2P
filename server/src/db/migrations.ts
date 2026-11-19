@@ -746,4 +746,14 @@ export const migrations: string[] = [
   );
   CREATE INDEX business_profiles_status ON business_profiles(status, updated_at);
   `,
+  // 17: Password reset links (only a hash of each single-use token is stored).
+  `
+  CREATE TABLE password_resets (
+    user_id    TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    sent_at    TEXT NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ];

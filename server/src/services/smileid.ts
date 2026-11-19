@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Ctx } from "../context.js";
 import { nowIso, one, run } from "../db/index.js";
 import { HttpError } from "../lib/errors.js";
+import { safeEqual } from "../lib/crypto.js";
 import { nameScore, nameTokens } from "./sanctions.js";
 
 /**
@@ -125,7 +126,9 @@ export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: s
     "consent",
     JSON.stringify({ granted: true, granted_at: nowIso(), notice_language: "EN", notice_privacy_policy_url: ctx.config.SMILEID_PRIVACY_URL ?? new URL("/privacy", ctx.config.APP_URL).toString() }),
   );
-  form.append("partner_params", JSON.stringify({ aurex_submission: submissionId, aurex_user: userId }));
+  // Smile ID echoes partner_params in its callback. Its signature covers only the timestamp, not the
+  // body, so aurex_check (a keyed hash only Aurex can make) ties the result to the check we started.
+  form.append("partner_params", JSON.stringify({ aurex_submission: submissionId, aurex_user: userId, aurex_check: callbackCheck(ctx, submissionId) }));
   const r = await call<{ job_id?: string; status?: string }>(ctx, "/v3/enhanced_kyc", {
     method: "POST",
     headers: { "SmileID-Partner-ID": ctx.config.SMILEID_PARTNER_ID!, "SmileID-Token": await token(ctx, userId) },
@@ -139,6 +142,11 @@ export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: s
     submissionId,
   );
   return { started: true, jobId: r.job_id ?? "" };
+}
+
+/** The value Smile ID must echo back for a result to count for this submission. */
+export function callbackCheck(ctx: Ctx, submissionId: string) {
+  return createHmac("sha256", ctx.config.masterKey).update(`aurex:smileid-callback:${submissionId}`).digest("hex").slice(0, 40);
 }
 
 /** True when a webhook really came from Smile ID (signed with this account's API key). */
@@ -168,10 +176,17 @@ export interface SmileWebhook {
  */
 export function recordSmileResult(ctx: Ctx, payload: SmileWebhook, submitted: (submissionId: string) => IdentityDetails | null) {
   const p = payload.partner_params ?? {};
-  const byJob = p.job_id ? one<{ id: string; user_id: string }>(ctx.db, "SELECT id, user_id FROM kyc_submissions WHERE provider_job_id = ?", String(p.job_id)) : undefined;
-  const bySub = p.aurex_submission ? one<{ id: string; user_id: string }>(ctx.db, "SELECT id, user_id FROM kyc_submissions WHERE id = ? AND provider = 'smileid'", String(p.aurex_submission)) : undefined;
+  type Row = { id: string; user_id: string; provider_job_id: string | null; provider_status: string | null };
+  const cols = "id, user_id, provider_job_id, provider_status";
+  const byJob = p.job_id ? one<Row>(ctx.db, `SELECT ${cols} FROM kyc_submissions WHERE provider_job_id = ? AND provider = 'smileid'`, String(p.job_id)) : undefined;
+  const bySub = p.aurex_submission ? one<Row>(ctx.db, `SELECT ${cols} FROM kyc_submissions WHERE id = ? AND provider = 'smileid'`, String(p.aurex_submission)) : undefined;
   const sub = byJob ?? bySub;
   if (!sub) return null;
+  // Only the check Aurex started (the keyed value it sent), with the job id Smile ID gave it, and
+  // only once: a replayed or edited callback can't change a result or approve someone else.
+  if (!safeEqual(String(p.aurex_check ?? ""), callbackCheck(ctx, sub.id))) return null;
+  if (sub.provider_job_id && p.job_id && String(p.job_id) !== sub.provider_job_id) return null;
+  if (sub.provider_status !== "pending") return null;
   const mine = submitted(sub.id);
   const f = payload.id_fields ?? null;
   const recordName = f ? f.full_name || [f.first_name, f.other_names, f.last_name].filter(Boolean).join(" ") : "";

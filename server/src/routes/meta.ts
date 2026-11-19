@@ -16,6 +16,7 @@ export function metaRoutes(ctx: Ctx) {
         p2pBps: ctx.config.P2P_FEE_BPS,
         fxSpreadBps: ctx.config.FX_SPREAD_BPS,
         withdrawalBps: ctx.config.WITHDRAWAL_FEE_BPS,
+        merchantBps: ctx.config.MERCHANT_FEE_BPS,
       },
       limits: { maxTxUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
       fx: { source: rates.source, asOf: rates.asOf },

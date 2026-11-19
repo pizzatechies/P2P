@@ -816,7 +816,7 @@ function BusinessQueue() {
               </div>
               <div className="faint xs">
                 {a.registrationNumber ? `Registration ${a.registrationNumber}` : "No registration number"}
-                {a.website && <> · <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a></>} · applied {timeAgo(a.createdAt)}
+                {a.website && <> · {/^https?:\/\//i.test(a.website) ? <a href={a.website} target="_blank" rel="noopener noreferrer nofollow">{a.website}</a> : a.website}</>} · applied {timeAgo(a.createdAt)}
               </div>
             </div>
             <div className="row" style={{ gap: 6 }}>

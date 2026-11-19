@@ -19,6 +19,7 @@ import {
   recordSuccessfulAttempt,
 } from "../services/security.js";
 import { sendVerificationCode, verifyEmailCode } from "../services/email.js";
+import { checkResetLink, requestPasswordReset, resetPassword } from "../services/passwordReset.js";
 import { audit, authenticate, createSession, destroySession, getUserRow, registerUser, toAuthUser } from "../services/users.js";
 
 // Full strength rules (length, common and breached passwords) are checked in the service.
@@ -115,6 +116,24 @@ export function authRoutes(ctx: Ctx) {
     verifyEmailCode(ctx, req.user!.id, code);
     audit(ctx, req.user!.id, "security.email_verified", {}, req.ip);
     res.json({ user: toAuthUser(getUserRow(ctx, req.user!.id)) });
+  });
+
+  // ---- Forgot password: a single-use link to the confirmed email address ----
+  const resetLimiter = rateLimit({ name: "password-reset", windowMs: 60 * 60_000, max: ctx.config.isTest ? 1000 : 10 });
+  r.post("/password/forgot", resetLimiter, async (req, res) => {
+    const { email } = parse(z.object({ email: z.string().trim().max(200) }), req.body);
+    res.json(await requestPasswordReset(ctx, email, req.ip));
+  });
+
+  // The token travels in the request body, never in a URL the server might log.
+  r.post("/password/reset/check", resetLimiter, (req, res) => {
+    const { token } = parse(z.object({ token: z.string().max(200) }), req.body);
+    res.json(checkResetLink(ctx, token));
+  });
+
+  r.post("/password/reset", resetLimiter, async (req, res) => {
+    const body = parse(z.object({ token: z.string().max(200), password, code: z.string().max(20).optional() }), req.body);
+    res.json(await resetPassword(ctx, body.token, body.password, body.code, req.ip));
   });
 
   r.post("/logout", (req, res) => {

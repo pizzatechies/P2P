@@ -11,7 +11,7 @@ import { ProPage } from "./pages/Pro";
 import { AdminLedgerPage } from "./pages/AdminLedger";
 import { AIHubPage } from "./pages/AIHub";
 import { ConnectionsPage, ConnectSandboxPage } from "./pages/Connections";
-import { LoginPage, RegisterPage } from "./pages/Auth";
+import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from "./pages/Auth";
 import { DashboardPage } from "./pages/Dashboard";
 import { PayPage } from "./pages/Pay";
 import { PaymentsPage } from "./pages/Payments";
@@ -92,6 +92,8 @@ createRoot(document.getElementById("root")!).render(
             </Route>
             <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
             <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
+            <Route path="/forgot-password" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/pay/:handle" element={<PayPage />} />
             <Route path="/connect/sandbox" element={<RequireAuth><ConnectSandboxPage /></RequireAuth>} />
             <Route path="/app" element={<RequireAuth><Layout /></RequireAuth>}>

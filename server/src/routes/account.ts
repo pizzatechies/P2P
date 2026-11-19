@@ -103,7 +103,7 @@ export function accountRoutes(ctx: Ctx) {
         category: z.string().transform(assertCategory),
         registrationNumber: z.string().trim().max(60).optional(),
         country: z.string().trim().length(2),
-        website: z.string().trim().url().max(200).optional().or(z.literal("")),
+        website: z.string().trim().max(200).regex(/^https?:\/\/[^\s<>"']+$/i, "Enter a website starting with https://").pipe(z.url({ protocol: /^https?$/ })).optional().or(z.literal("")),
       }),
       req.body,
     );
