@@ -416,6 +416,7 @@ export function adminRoutes(ctx: Ctx) {
         createdAt: user.created_at,
         lockedUntil: user.locked_until,
         securityHoldUntil: user.security_hold_until,
+        pepConfirmedAt: user.pep_confirmed_at ?? null,
       },
       limits: { ...limitsFor(ctx, user), overrideTxUsd: user.limit_tx_usd, overrideDailyUsd: user.limit_daily_usd },
       verification: listSubmissions(ctx, "all").filter((s) => s.user.id === id),

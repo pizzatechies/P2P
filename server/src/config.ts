@@ -158,6 +158,12 @@ const EnvSchema = z.object({
   /** Your privacy policy's address, sent to Smile ID as the consent notice (defaults to APP_URL/privacy). */
   SMILEID_PRIVACY_URL: optionalString,
 
+  // ---- Politically exposed person screening (OpenSanctions match API) ----
+  OPENSANCTIONS_API_KEY: optionalString,
+  OPENSANCTIONS_URL: z.string().url().default("https://api.opensanctions.org"),
+  /** Match score (0-1) at which a result counts as a possible match; OpenSanctions suggests 0.7-0.85. */
+  PEP_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.8),
+
   // ---- Bot protection (Cloudflare Turnstile) on sign-up, sign-in, password reset and the waitlist ----
   TURNSTILE_SITE_KEY: optionalString,
   TURNSTILE_SECRET_KEY: optionalString,

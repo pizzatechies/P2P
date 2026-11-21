@@ -17,7 +17,7 @@ import { audit, getUserRow } from "./users.js";
  */
 
 export type Severity = "low" | "medium" | "high";
-export type Rule = "large_amount" | "rapid_in_out" | "structuring" | "fan_out" | "fan_in" | "new_account_payout" | "sanctions_match";
+export type Rule = "large_amount" | "rapid_in_out" | "structuring" | "fan_out" | "fan_in" | "new_account_payout" | "sanctions_match" | "pep_match";
 
 export const RULES: Record<Rule, { label: string; severity: Severity }> = {
   large_amount: { label: "Large payment", severity: "medium" },
@@ -27,6 +27,7 @@ export const RULES: Record<Rule, { label: string; severity: Severity }> = {
   fan_in: { label: "Paid by many people", severity: "medium" },
   new_account_payout: { label: "Withdrawal from a new account", severity: "medium" },
   sanctions_match: { label: "Possible sanctions list match", severity: "high" },
+  pep_match: { label: "Possible politically exposed person", severity: "medium" },
 };
 
 const DAY = 24 * 3600_000;
@@ -224,6 +225,11 @@ export function reviewAlert(ctx: Ctx, adminId: string, id: string, action: "clea
     note.trim().slice(0, 1000),
     id,
   );
+  // Confirming a PEP match puts the customer under enhanced due diligence (every payout reviewed).
+  if (action === "escalate" && a.rule === "pep_match") {
+    run(ctx.db, "UPDATE users SET pep_confirmed_at = COALESCE(pep_confirmed_at, ?) WHERE id = ?", nowIso(), a.user_id);
+    audit(ctx, adminId, "compliance.pep_confirmed", { target: a.user_id, alert: id }, ip);
+  }
   if (action === "escalate" && freeze) {
     run(ctx.db, "UPDATE users SET status = 'frozen' WHERE id = ? AND role <> 'admin'", a.user_id);
     run(ctx.db, "DELETE FROM sessions WHERE user_id = ?", a.user_id);

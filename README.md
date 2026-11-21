@@ -391,6 +391,10 @@ The software is a foundation. Running a real money or brokerage business has req
 
 **Legal pages.** `/terms`, `/privacy`, `/complaints` and `/risk` show the texts in `docs/go-live/legal`, with your company and contact details filled in from `LEGAL_COMPANY_NAME`, `LEGAL_REGISTRATION_NUMBER`, `LEGAL_ADDRESS`, `LEGAL_COUNTRY`, `LEGAL_EFFECTIVE_DATE`, `SUPPORT_EMAIL`, `SUPPORT_PHONE`, `COMPLAINTS_EMAIL`, `DPO_NAME` and `DPO_EMAIL`. Reviewer notes are left out. Each page says it's a draft until `LEGAL_FINAL=true`. `/fees` is built from the server's live fee and limit settings, so it always matches what's charged. Edit the texts in `docs/go-live/legal` once your lawyer has approved them, then redeploy.
 
+**Politically exposed persons.** With `OPENSANCTIONS_API_KEY` set, the legal name from identity verification, and each company director and owner, is checked against OpenSanctions' database of politically exposed people and their relatives and close associates (`PEP_THRESHOLD`, 0.8 by default).
+- **A possible match:** it opens a compliance alert, payouts wait, and the identity check isn't approved automatically. Nor is it if the check couldn't run.
+- **A confirmed match:** a reviewer escalates the alert, which marks the customer as a PEP under enhanced due diligence. Every payout then waits for a second person, even with `PAYOUT_REVIEW` off, and their admin page shows a PEP badge.
+
 **Bot protection.** Set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from a free [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) widget.
 - **Where it applies:** sign-up, sign-in, password reset and the waitlist each need a fresh check, verified with Cloudflare by the server.
 - **If Cloudflare is down:** those requests are refused, rather than let bots through.

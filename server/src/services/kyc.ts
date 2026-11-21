@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { pepBlocksAutoApproval, screenPep } from "./pep.js";
 import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook } from "./smileid.js";
 import { screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { z } from "zod";
@@ -267,7 +268,10 @@ export async function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: s
   if (missing.length) throw unprocessable("documents_missing", `Upload: ${missing.map((k) => DOC_LABEL[k]).join(", ")}`);
   run(ctx.db, "UPDATE kyc_submissions SET status = 'submitted', submitted_at = ?, updated_at = ? WHERE id = ?", nowIso(), nowIso(), sub.id);
   audit(ctx, userId, "kyc.submitted", { level, submissionId: sub.id }, ip);
-  const flagged = level === 1 && data?.legalName ? screenForCustomer(ctx, userId, data.legalName, "legal_name", Number(data.dateOfBirth?.slice(0, 4)) || null).length > 0 : false;
+  const sanctionsHit = level === 1 && data?.legalName ? screenForCustomer(ctx, userId, data.legalName, "legal_name", Number(data.dateOfBirth?.slice(0, 4)) || null).length > 0 : false;
+  // PEP screening (when set up): a possible match, or a check that couldn't run, needs a person.
+  const pep = level === 1 && data?.legalName ? await screenPep(ctx, userId, { name: data.legalName, birthDate: data.dateOfBirth, nationality: (data as { nationality?: string }).nationality }, "legal_name") : null;
+  const flagged = sanctionsHit || (pep !== null && (pep.status === "match" || pep.status === "error"));
   // With Smile ID, the ID number is checked against government records; approval waits for that result.
   let checking = false;
   if (level === 1 && data && smileConfigured(ctx)) {
@@ -403,7 +407,7 @@ export function applySmileResult(ctx: Ctx, payload: SmileWebhook) {
   if (!out) return null;
   audit(ctx, null, "kyc.government_check", { submissionId: out.submissionId, status: out.result.status, verified: out.verified });
   const sub = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE id = ?", out.submissionId)!;
-  if (out.verified && sub.status === "submitted" && (ctx.config.SMILEID_AUTO_APPROVE || ctx.config.KYC_AUTO_APPROVE) && !underSanctionsReview(ctx, out.userId)) {
+  if (out.verified && sub.status === "submitted" && (ctx.config.SMILEID_AUTO_APPROVE || ctx.config.KYC_AUTO_APPROVE) && !underSanctionsReview(ctx, out.userId) && !pepBlocksAutoApproval(ctx, out.userId)) {
     applyReview(ctx, null, sub.id, "approve", "Approved automatically: ID confirmed against government records (Smile ID), name and date of birth match");
   }
   return out;

@@ -18,6 +18,7 @@ interface Detail {
     closedAt: string | null;
     accountNumber: string | null;
     kycLevel: number;
+    pepConfirmedAt?: string | null;
     twoFactor: boolean;
     createdAt: string;
     lockedUntil: string | null;
@@ -68,6 +69,7 @@ export function AdminUserPage() {
               @{u.handle} · {u.email} · account {u.accountNumber ?? "—"}
               <span className={`pill ${u.status === "active" ? "good" : "bad"}`}>{u.status}</span>
               <span className={`pill ${u.kycLevel >= 1 ? "good" : "warn"}`}>{LEVELS[u.kycLevel]}</span>
+              {u.pepConfirmedAt && <span className="pill warn" title="Politically exposed person: enhanced due diligence, every payout is reviewed">PEP</span>}
               {u.role === "admin" && <span className="pill brand">admin</span>}
             </p>
           )}

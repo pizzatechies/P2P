@@ -822,4 +822,8 @@ export const migrations: string[] = [
   );
   CREATE INDEX business_documents_user ON business_documents(user_id, created_at);
   `,
+  // 21: Customers confirmed as politically exposed persons (enhanced due diligence).
+  `
+  ALTER TABLE users ADD COLUMN pep_confirmed_at TEXT;
+  `,
 ];

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { screenPep } from "./pep.js";
 import type { Ctx } from "../context.js";
 import { all, nowIso, one, run } from "../db/index.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto.js";
@@ -174,7 +175,10 @@ export function applyForBusiness(ctx: Ctx, userId: string, input: BusinessInput,
   // The business itself is screened (companies are on sanctions lists as well as people), and so is
   // everyone who runs or owns it.
   screenForCustomer(ctx, userId, input.businessName, "business");
-  for (const p of list) screenForCustomer(ctx, userId, p.name, "business_person", Number(p.dateOfBirth.slice(0, 4)) || null);
+  for (const p of list) {
+    screenForCustomer(ctx, userId, p.name, "business_person", Number(p.dateOfBirth.slice(0, 4)) || null);
+    void screenPep(ctx, userId, { name: p.name, birthDate: p.dateOfBirth, nationality: p.nationality }, "business_person");
+  }
   audit(ctx, userId, "business.applied", { category: input.category, country: input.country, type: input.businessType, people: list.length }, ip);
   return businessOverview(ctx, userId);
 }

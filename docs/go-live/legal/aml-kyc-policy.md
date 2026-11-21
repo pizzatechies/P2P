@@ -92,7 +92,15 @@ EDD applies to:
 
 EDD means source of funds and wealth, senior-management approval, and closer monitoring.
 
-**[TO DO]** **PEP screening isn't automated yet.** Choose a screening data provider that covers African PEPs, such as Smile ID AML check, ComplyAdvantage, LexisNexis, Dow Jones or Sanction Scanner. Wire it in alongside the sanctions screening.
+**PEP screening [SYSTEM]**, once `OPENSANCTIONS_API_KEY` is set:
+- **Who is checked:** the legal name from identity verification, and each company director and owner. They are checked against OpenSanctions' data on politically exposed persons and their relatives and close associates.
+- **A possible match:** it opens an alert, payouts wait, and identity checks aren't approved automatically, including when the check couldn't run.
+- **A confirmed PEP:** escalating the alert marks the customer for enhanced due diligence, and every payout waits for a second person.
+
+**[TO DO]**
+- Buy the OpenSanctions credits, or choose another provider.
+- Define the enhanced due diligence steps for a confirmed PEP: source of wealth, and senior management approval.
+- Decide how often to re-screen existing customers.
 
 ### 4.4 Ongoing due diligence
 

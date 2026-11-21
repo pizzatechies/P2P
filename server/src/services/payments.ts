@@ -715,9 +715,11 @@ export async function withdraw(
 
 /** Why a withdrawal needs a second person before the money leaves (empty: it doesn't). */
 async function payoutReviewReasons(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
+  // A politically exposed person is under enhanced due diligence: every payout waits for a person.
+  const pep = getUserRow(ctx, userId).pep_confirmed_at ? ["Politically exposed person (enhanced due diligence)"] : [];
   // A possible sanctions match always waits for a person, even with payout review switched off.
-  if (!ctx.config.PAYOUT_REVIEW) return underSanctionsReview(ctx, userId) ? ["Possible sanctions list match"] : [];
-  const reasons: string[] = [];
+  if (!ctx.config.PAYOUT_REVIEW) return [...pep, ...(underSanctionsReview(ctx, userId) ? ["Possible sanctions list match"] : [])];
+  const reasons: string[] = [...pep];
   const usd = await toUsdMinor(ctx, currency, amountMinor);
   if (usd >= Math.round(ctx.config.PAYOUT_REVIEW_USD * 100)) reasons.push(`At or over $${ctx.config.PAYOUT_REVIEW_USD.toLocaleString("en-US")}`);
   if (hasOpenSeriousAlert(ctx, userId)) reasons.push("Open transaction-monitoring alert");

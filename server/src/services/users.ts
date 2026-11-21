@@ -48,6 +48,7 @@ export interface UserRow {
   locked_until: string | null;
   totp_last_step: number;
   security_hold_until: string | null;
+  pep_confirmed_at?: string | null;
   password_changed_at: string | null;
   email_verified_at: string | null;
   account_number: string | null;

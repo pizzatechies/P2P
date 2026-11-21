@@ -122,6 +122,16 @@ export function securityPosture(ctx: Ctx) {
     detail: c.PAYOUT_REVIEW ? `Withdrawals of $${c.PAYOUT_REVIEW_USD.toLocaleString("en-US")} or more, or by customers with an open alert, wait for approval.` : "Every withdrawal is sent straight away.",
     fix: "Set PAYOUT_REVIEW=true.",
   });
+  add({
+    id: "pep",
+    area: "Money",
+    label: "Politically exposed people are identified",
+    status: c.OPENSANCTIONS_API_KEY ? "pass" : "warn",
+    detail: c.OPENSANCTIONS_API_KEY
+      ? "Identity checks and company directors and owners are screened for politically exposed people and their relatives and associates (OpenSanctions)."
+      : "Nobody is screened for politically exposed people, which anti-money-laundering law requires.",
+    fix: "Buy an OpenSanctions API credit bundle and set OPENSANCTIONS_API_KEY.",
+  });
   const bots = Boolean(c.TURNSTILE_SITE_KEY && c.TURNSTILE_SECRET_KEY);
   add({
     id: "bot_protection",
