@@ -73,11 +73,12 @@ How each level is checked:
 - **Screening:** the business name is screened against sanctions lists, for both individuals and entities.
 - **Review:** an admin reviews each application; no one can approve their own.
 
-**[TO DO]** Add for registered companies:
+- **Registered companies [SYSTEM]:** they also list their directors and everyone owning 25% or more, each sanctions-screened, and upload a registration certificate and a record of directors and shareholders. Reviewers check the documents name the same people.
 
-- certificate of incorporation;
-- directors and beneficial owners (25% or more), each verified;
-- for higher-risk categories, the nature of the business and expected volumes.
+**[TO DO]**
+
+- Verify the identity of directors and owners who aren't themselves Aurex customers.
+- For higher-risk categories, record the nature of the business and expected volumes.
 
 ### 4.3 Enhanced due diligence (EDD)
 

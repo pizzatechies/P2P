@@ -1,5 +1,5 @@
 import express, { Router } from "express";
-import { applyForBusiness, assertCategory, businessOverview } from "../services/business.js";
+import { applyForBusiness, assertCategory, BUSINESS_TYPES, businessOverview, DOC_KINDS as BUSINESS_DOC_KINDS, readBusinessDocument, uploadBusinessDocument, type BusinessDocKind } from "../services/business.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { badRequest } from "../lib/errors.js";
@@ -100,14 +100,46 @@ export function accountRoutes(ctx: Ctx) {
     const body = parse(
       z.object({
         businessName: z.string().trim().min(2).max(100),
+        businessType: z.enum(BUSINESS_TYPES).default("sole_trader"),
         category: z.string().transform(assertCategory),
         registrationNumber: z.string().trim().max(60).optional(),
         country: z.string().trim().length(2),
+        people: z
+          .array(
+            z.object({
+              name: z.string().trim().min(2).max(100),
+              role: z.enum(["director", "owner", "director_owner"]),
+              ownershipPct: z.number().min(0).max(100).nullable().default(null),
+              dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use dates like 1980-04-23"),
+              nationality: z.string().trim().length(2),
+            }),
+          )
+          .max(20)
+          .optional(),
         website: z.string().trim().max(200).regex(/^https?:\/\/[^\s<>"']+$/i, "Enter a website starting with https://").pipe(z.url({ protocol: /^https?$/ })).optional().or(z.literal("")),
       }),
       req.body,
     );
     res.json(applyForBusiness(ctx, req.user!.id, { ...body, website: body.website || undefined }, req.ip));
+  });
+
+  /** A business document (registration certificate, ownership record) as the raw request body. */
+  r.post(
+    "/business/documents/:kind",
+    uploadLimiter,
+    express.raw({ type: ["image/jpeg", "image/png", "image/webp", "application/pdf", "application/octet-stream"], limit: "5mb" }),
+    (req, res) => {
+      const kind = parse(z.enum(BUSINESS_DOC_KINDS), req.params.kind) as BusinessDocKind;
+      if (!Buffer.isBuffer(req.body)) throw badRequest("Upload a PDF, or a JPEG, PNG or WebP photo");
+      const document = uploadBusinessDocument(ctx, req.user!.id, kind, req.body, req.ip);
+      res.status(201).json({ document, business: businessOverview(ctx, req.user!.id) });
+    },
+  );
+
+  r.get("/business/documents/:id", (req, res) => {
+    const doc = readBusinessDocument(ctx, String(req.params.id), req.user!.id);
+    res.set(documentHeaders(doc));
+    res.send(doc.bytes);
   });
 
   // ---- Your data ----

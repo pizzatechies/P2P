@@ -670,3 +670,5 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .msg.system { background: transparent; border: 1px dashed var(--border-strong); }
 .msg.internal { background: var(--warn-soft); border-left: 3px solid var(--warn); }
 .msg-body { white-space: pre-wrap; font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }
+
+.person-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }

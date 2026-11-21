@@ -12,6 +12,8 @@ const ENCRYPTED: { table: string; column: string; keys: string[] }[] = [
   { table: "kyc_submissions", column: "data_enc", keys: ["id"] },
   { table: "kyc_documents", column: "data_enc", keys: ["id"] },
   { table: "safeguarding_accounts", column: "details_enc", keys: ["id"] },
+  { table: "business_profiles", column: "people_enc", keys: ["user_id"] },
+  { table: "business_documents", column: "data_enc", keys: ["id"] },
 ];
 
 /**

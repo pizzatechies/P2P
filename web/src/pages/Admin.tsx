@@ -780,6 +780,9 @@ function GovernmentCheck({ check }: { check: NonNullable<KycSubmission["check"]>
 
 interface BusinessApplication {
   businessName: string;
+  businessType: "sole_trader" | "company";
+  people: { name: string; role: string; ownershipPct: number | null; dateOfBirth: string; nationality: string }[];
+  documents: { id: string; kind: string; label: string; size: number }[];
   category: string;
   registrationNumber: string | null;
   country: string;
@@ -808,12 +811,12 @@ function BusinessQueue() {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="card-head"><h2>Business accounts to review</h2><span className="faint small">{list.data.applications.length} waiting</span></div>
-      <p className="muted small" style={{ marginTop: 0 }}>Check the business exists (registration number, website, what they sell) and that the owner is who they say. Business names are screened against sanctions lists automatically.</p>
+      <p className="muted small" style={{ marginTop: 0 }}>Check the business exists (registration number, website, what they sell) and that the owner is who they say. For companies, check the documents name the same directors and owners. Business names and the people listed are screened against sanctions lists automatically.</p>
       <div className="stack">
         {list.data.applications.map((a) => (
           <div key={a.user.id} className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
             <div>
-              <strong>{a.businessName}</strong> <span className="faint small">· {a.category} · {a.country}</span>
+              <strong>{a.businessName}</strong> <span className="faint small">· {a.businessType === "company" ? "registered company" : "sole trader"} · {a.category} · {a.country}</span>
               <div className="small">
                 Owner <Link to={`/app/admin/users/${a.user.id}`}>@{a.user.handle}</Link> <span className="faint">· identity level {a.user.kycLevel}</span>
               </div>
@@ -821,6 +824,24 @@ function BusinessQueue() {
                 {a.registrationNumber ? `Registration ${a.registrationNumber}` : "No registration number"}
                 {a.website && <> · {/^https?:\/\//i.test(a.website) ? <a href={a.website} target="_blank" rel="noopener noreferrer nofollow">{a.website}</a> : a.website}</>} · applied {timeAgo(a.createdAt)}
               </div>
+              {a.people.length > 0 && (
+                <div className="xs" style={{ marginTop: 4 }}>
+                  {a.people.map((p) => (
+                    <div key={p.name}>
+                      {p.name} · {p.role === "director_owner" ? "director and owner" : p.role}{p.ownershipPct ? ` (${p.ownershipPct}%)` : ""} · born {p.dateOfBirth} · {p.nationality}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {a.documents.length > 0 && (
+                <div className="xs" style={{ marginTop: 4 }}>
+                  {a.documents.map((d) => (
+                    <span key={d.id} style={{ marginRight: 10 }}>
+                      <a href={`/api/admin/businesses/documents/${d.id}`} target="_blank" rel="noopener noreferrer">{d.label}</a>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="row" style={{ gap: 6 }}>
               <button className="btn sm" onClick={() => review(a, "approve")}>Approve</button>

@@ -79,4 +79,72 @@ describe("business accounts", () => {
     expect(alert.rule).toBe("sanctions_match");
     expect(alert.summary).toMatch(/Business name/);
   });
+
+  it("needs directors, owners and documents from a registered company, and screens each person", async () => {
+    const env = makeApp();
+    const admin = await makeAdmin(env);
+    const o = await signup(env.app, "founder");
+    env.ctx.db.prepare("UPDATE users SET kyc_level = 1 WHERE id = ?").run(o.user.id);
+    const O = api(o.agent);
+    const company = { businessName: "Savanna Logistics Ltd", businessType: "company", category: "transport", registrationNumber: "PVT-2026-7781", country: "KE", website: "" };
+    const founder = { name: "Achieng Odhiambo", role: "director_owner", ownershipPct: 60, dateOfBirth: "1985-03-02", nationality: "KE" };
+
+    expect((await O.put("/api/account/business", { ...company, registrationNumber: "" })).body.error.message).toMatch(/registration number/);
+    expect((await O.put("/api/account/business", { ...company, people: [] })).body.error.message).toMatch(/directors/);
+    expect((await O.put("/api/account/business", { ...company, people: [{ ...founder, role: "owner" }] })).body.error.message).toMatch(/at least one director/);
+    expect((await O.put("/api/account/business", { ...company, people: [founder, { ...founder, name: "Otieno Kamau", ownershipPct: 50 }] })).body.error.message).toMatch(/more than 100%/);
+    expect((await O.put("/api/account/business", { ...company, people: [{ ...founder, ownershipPct: 10 }] })).body.error.message).toMatch(/25% or more/);
+    // Documents come first.
+    expect((await O.put("/api/account/business", { ...company, people: [founder] })).body.error.code).toBe("documents_missing");
+
+    const pdf = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(2048, 32)]);
+    const up = (kind: string, body: Buffer) => o.agent.post(`/api/account/business/documents/${kind}`).set("x-aurex-csrf", "1").set("Content-Type", "application/pdf").send(body);
+    expect((await up("registration", Buffer.alloc(2048, 7))).status).toBe(400); // not a real PDF or photo
+    expect((await up("registration", pdf)).status).toBe(201);
+    expect((await up("ownership", pdf)).status).toBe(201);
+
+    const applied = await O.put("/api/account/business", { ...company, people: [founder] });
+    expect(applied.status).toBe(200);
+    expect(applied.body.profile).toMatchObject({ businessType: "company", people: [expect.objectContaining({ name: "Achieng Odhiambo" })], status: "pending" });
+    // People are encrypted at rest; documents too.
+    const row = env.ctx.db.prepare("SELECT people_enc FROM business_profiles WHERE user_id = ?").get(o.user.id) as { people_enc: string };
+    expect(row.people_enc).not.toContain("Achieng");
+    const docRow = env.ctx.db.prepare("SELECT data_enc FROM business_documents LIMIT 1").get() as { data_enc: string };
+    expect(docRow.data_enc).not.toContain("JVBERi"); // base64 of "%PDF"
+
+    // The reviewer sees the people and can open the documents (audited); others can't.
+    const app = (await admin.get("/api/admin/businesses")).body.applications[0];
+    expect(app.people).toHaveLength(1);
+    expect(app.documents.map((d: { kind: string }) => d.kind).sort()).toEqual(["ownership", "registration"]);
+    const opened = await admin.get(`/api/admin/businesses/documents/${app.documents[0].id}`);
+    expect(opened.status).toBe(200);
+    expect(opened.headers["content-type"]).toBe("application/pdf");
+    const stranger = await signup(env.app, "stranger");
+    expect((await api(stranger.agent).get(`/api/account/business/documents/${app.documents[0].id}`)).status).toBe(404);
+    // While under review, nothing more can be uploaded.
+    expect((await up("other", pdf)).body.error.code).toBe("under_review");
+  });
+
+  it("screens company directors and owners against sanctions lists, with their year of birth", async () => {
+    const env = makeApp();
+    env.ctx.db.prepare("INSERT INTO sanctions_entries (list, ref, kind, name, aliases, birth_years, programs, countries) VALUES ('un', 'QDi.999', 'individual', 'JOHN TESTPERSON MWANGI', '[]', '[1970]', 'TEST', '[]')").run();
+    invalidateIndex(env.ctx);
+    const o = await signup(env.app, "boardco");
+    env.ctx.db.prepare("UPDATE users SET kyc_level = 1 WHERE id = ?").run(o.user.id);
+    const pdf = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(2048, 32)]);
+    for (const kind of ["registration", "ownership"]) await o.agent.post(`/api/account/business/documents/${kind}`).set("x-aurex-csrf", "1").set("Content-Type", "application/pdf").send(pdf);
+    await api(o.agent).put("/api/account/business", {
+      businessName: "Clean Trading Ltd",
+      businessType: "company",
+      category: "retail",
+      registrationNumber: "C-1",
+      country: "KE",
+      people: [
+        { name: "Mary Wanjiru", role: "director", ownershipPct: null, dateOfBirth: "1990-01-01", nationality: "KE" },
+        { name: "John Testperson Mwangi", role: "owner", ownershipPct: 40, dateOfBirth: "1970-06-06", nationality: "KE" },
+      ],
+    });
+    const alert = env.ctx.db.prepare("SELECT summary FROM compliance_alerts WHERE user_id = ? AND rule = 'sanctions_match'").get(o.user.id) as { summary: string };
+    expect(alert.summary).toMatch(/Company director or owner resembles "JOHN TESTPERSON MWANGI"/);
+  });
 });

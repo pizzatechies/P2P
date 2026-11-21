@@ -448,8 +448,16 @@ export function screenName(ctx: Ctx, name: string, opts: { birthYear?: number | 
 // ---------------------------------------------------------------------------
 // Screening customers and payees
 // ---------------------------------------------------------------------------
-type Subject = "legal_name" | "display_name" | "payee" | "business";
-const SUBJECT_LABEL: Record<Subject, string> = { legal_name: "Legal name (identity details)", display_name: "Name given at sign-up", payee: "Payout recipient", business: "Business name" };
+type Subject = "legal_name" | "display_name" | "payee" | "business" | "business_person";
+const SUBJECT_LABEL: Record<Subject, string> = {
+  legal_name: "Legal name (identity details)",
+  display_name: "Name given at sign-up",
+  payee: "Payout recipient",
+  business: "Business name",
+  business_person: "Company director or owner",
+};
+/** Subjects screened under their own alert reference, so each one's matches are tracked separately. */
+const OWN_REF = new Set<Subject>(["payee", "business", "business_person"]);
 
 /** Screens a name for a customer and opens an alert per possible match. Returns the matches. */
 export function screenForCustomer(ctx: Ctx, userId: string, name: string, subject: Subject, birthYear?: number | null): SanctionsMatch[] {
@@ -465,7 +473,7 @@ export function screenForCustomer(ctx: Ctx, userId: string, name: string, subjec
     nowIso(),
   );
   for (const m of matches) {
-    openAlert(ctx, userId, "sanctions_match", `${userId}:${subject === "payee" || subject === "business" ? `${subject}:` : ""}${m.list}:${m.ref}`, `${SUBJECT_LABEL[subject]} resembles "${m.matchedName}" on the ${m.listName} (${m.ref}, ${Math.round(m.score * 100)}% match)`, {
+    openAlert(ctx, userId, "sanctions_match", `${userId}:${OWN_REF.has(subject) ? `${subject}:` : ""}${m.list}:${m.ref}`, `${SUBJECT_LABEL[subject]} resembles "${m.matchedName}" on the ${m.listName} (${m.ref}, ${Math.round(m.score * 100)}% match)`, {
       subject,
       screenedName: name,
       list: m.list,
@@ -523,6 +531,21 @@ export async function rescreenAll(ctx: Ctx) {
     if (++customers % 200 === 0) await new Promise((r) => setImmediate(r));
     const legal = legalNames.get(u.id);
     matches += screenForCustomer(ctx, u.id, legal?.name ?? u.display_name, legal ? "legal_name" : "display_name", legal?.birthYear ?? null).length;
+  }
+  // Businesses too: their names, and the directors and owners of companies.
+  for (const b of all<{ user_id: string; business_name: string; people_enc: string | null }>(
+    ctx.db,
+    "SELECT user_id, business_name, people_enc FROM business_profiles WHERE status IN ('pending','approved')",
+  )) {
+    matches += screenForCustomer(ctx, b.user_id, b.business_name, "business").length;
+    if (!b.people_enc) continue;
+    try {
+      for (const p of JSON.parse(decryptSecret(b.people_enc, ctx.config.masterKey)) as { name: string; dateOfBirth?: string }[]) {
+        matches += screenForCustomer(ctx, b.user_id, p.name, "business_person", Number(p.dateOfBirth?.slice(0, 4)) || null).length;
+      }
+    } catch {
+      /* unreadable with the current key: skip */
+    }
   }
   return { customers, matches };
 }

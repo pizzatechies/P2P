@@ -806,4 +806,20 @@ export const migrations: string[] = [
   );
   CREATE INDEX admin_requests_status ON admin_requests(status, created_at);
   `,
+  // 20: Company checks for business accounts: type, directors and owners (encrypted), documents.
+  `
+  ALTER TABLE business_profiles ADD COLUMN business_type TEXT NOT NULL DEFAULT 'sole_trader';
+  ALTER TABLE business_profiles ADD COLUMN people_enc TEXT;
+  CREATE TABLE business_documents (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    kind       TEXT NOT NULL CHECK (kind IN ('registration','ownership','other')),
+    mime       TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    sha256     TEXT NOT NULL,
+    data_enc   TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX business_documents_user ON business_documents(user_id, created_at);
+  `,
 ];

@@ -600,10 +600,24 @@ function CloseDialog({ handle, onClose }: { handle: string; onClose: () => void 
   );
 }
 
+interface BusinessPerson { name: string; role: "director" | "owner" | "director_owner"; ownershipPct: number | null; dateOfBirth: string; nationality: string }
+interface BusinessDoc { id: string; kind: string; label: string; size: number; uploadedAt: string }
 interface BusinessOverview {
   feeBps: number;
   categories: string[];
-  profile: { businessName: string; category: string; registrationNumber: string | null; country: string; website: string | null; status: "pending" | "approved" | "rejected"; reviewNote: string | null } | null;
+  requiredDocuments: Record<"sole_trader" | "company", { kind: string; label: string }[]>;
+  profile: {
+    businessName: string;
+    businessType: "sole_trader" | "company";
+    category: string;
+    registrationNumber: string | null;
+    country: string;
+    website: string | null;
+    people: BusinessPerson[];
+    status: "pending" | "approved" | "rejected";
+    reviewNote: string | null;
+  } | null;
+  documents: BusinessDoc[];
   received: Record<"day" | "week" | "month", { currency: string; received: string; fees: string; payments: number }[]> | null;
 }
 
@@ -611,26 +625,31 @@ const CATEGORY_LABEL: Record<string, string> = {
   retail: "Shop or retail", food: "Food and drink", services: "Services", transport: "Transport", education: "Education",
   health: "Health", online: "Online business", agriculture: "Farming and agriculture", other: "Other",
 };
+const ROLE_LABEL: Record<BusinessPerson["role"], string> = { director: "Director", owner: "Owner (25% or more)", director_owner: "Director and owner" };
+const emptyPerson = (): BusinessPerson => ({ name: "", role: "director", ownershipPct: null, dateOfBirth: "", nationality: "KE" });
 
 /** Turn the account into a business account: payments show the business name; a small fee applies. */
 function BusinessCard() {
   const toast = useToast();
   const data = useLoad(() => api.get<BusinessOverview>("/api/account/business"));
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ businessName: "", category: "retail", registrationNumber: "", country: "KE", website: "" });
+  const [f, setF] = useState({ businessName: "", businessType: "sole_trader" as "sole_trader" | "company", category: "retail", registrationNumber: "", country: "KE", website: "" });
+  const [people, setPeople] = useState<BusinessPerson[]>([emptyPerson()]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
   const d = data.data;
   if (!d) return null;
   const p = d.profile;
   const fee = d.feeBps ? `${(d.feeBps / 100).toFixed(2)}%` : null;
+  const company = f.businessType === "company";
 
   async function apply(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      data.setData(await api.put<BusinessOverview>("/api/account/business", f));
+      data.setData(await api.put<BusinessOverview>("/api/account/business", { ...f, people: company ? people.map((x) => ({ ...x, ownershipPct: x.role === "director" ? null : x.ownershipPct })) : undefined }));
       setOpen(false);
       toast("Application sent. We'll let you know.");
     } catch (err) {
@@ -639,6 +658,28 @@ function BusinessCard() {
       setBusy(false);
     }
   }
+  async function uploadDoc(kind: string, file: File | undefined) {
+    if (!file) return;
+    setUploading(kind);
+    setError(null);
+    try {
+      const r = await upload<{ business: BusinessOverview }>(`/api/account/business/documents/${kind}`, file);
+      data.setData(r.business);
+      toast("Document uploaded");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setUploading(null);
+    }
+  }
+  function startEdit() {
+    setOpen(true);
+    if (p) {
+      setF({ businessName: p.businessName, businessType: p.businessType, category: p.category, registrationNumber: p.registrationNumber ?? "", country: p.country, website: p.website ?? "" });
+      if (p.people.length) setPeople(p.people);
+    }
+  }
+  const setPerson = (i: number, patch: Partial<BusinessPerson>) => setPeople(people.map((x, j) => (j === i ? { ...x, ...patch } : x)));
 
   return (
     <div className="card" id="business">
@@ -677,11 +718,15 @@ function BusinessCard() {
             Selling something? A business account shows your business name to people who pay you, through your pay link or @handle{fee ? `, with a ${fee} fee on payments you receive` : ""}. You'll need your own identity verified first.
           </p>
           {!open ? (
-            <button className="btn secondary" onClick={() => { setOpen(true); if (p) setF({ businessName: p.businessName, category: p.category, registrationNumber: p.registrationNumber ?? "", country: p.country, website: p.website ?? "" }); }}>
-              {p ? "Edit and resend" : "Apply for a business account"}
-            </button>
+            <button className="btn secondary" onClick={startEdit}>{p ? "Edit and resend" : "Apply for a business account"}</button>
           ) : (
             <form className="stack" onSubmit={apply}>
+              <Field label="Type of business">
+                <select className="input" value={f.businessType} onChange={(e) => setF({ ...f, businessType: e.target.value as "sole_trader" | "company" })}>
+                  <option value="sole_trader">Sole trader or informal business (just me)</option>
+                  <option value="company">Registered company</option>
+                </select>
+              </Field>
               <div className="grid grid-2">
                 <Field label="Business name"><input className="input" required minLength={2} maxLength={100} value={f.businessName} onChange={(e) => setF({ ...f, businessName: e.target.value })} /></Field>
                 <Field label="What you do">
@@ -689,10 +734,55 @@ function BusinessCard() {
                     {d.categories.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c] ?? c}</option>)}
                   </select>
                 </Field>
-                <Field label="Registration number (optional)" hint="From your registration certificate, if you have one"><input className="input" maxLength={60} value={f.registrationNumber} onChange={(e) => setF({ ...f, registrationNumber: e.target.value })} /></Field>
+                <Field label={company ? "Company registration number" : "Registration number (optional)"} hint={company ? "As on the certificate of incorporation" : "From your registration certificate, if you have one"}>
+                  <input className="input" maxLength={60} required={company} value={f.registrationNumber} onChange={(e) => setF({ ...f, registrationNumber: e.target.value })} />
+                </Field>
                 <CountrySelect label="Country" value={f.country} onChange={(v) => setF({ ...f, country: v })} />
                 <Field label="Website (optional)"><input className="input" type="url" placeholder="https://" value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} /></Field>
               </div>
+              {company && (
+                <>
+                  <div>
+                    <h3 style={{ fontSize: 15, margin: "6px 0 4px" }}>Directors and owners</h3>
+                    <p className="small muted" style={{ margin: 0 }}>Everyone who directs the company, and everyone who owns 25% or more of it. Include yourself.</p>
+                  </div>
+                  {people.map((x, i) => (
+                    <div key={i} className="person-row">
+                      <div className="grid grid-2">
+                        <Field label="Full name"><input className="input" required minLength={2} maxLength={100} value={x.name} onChange={(e) => setPerson(i, { name: e.target.value })} /></Field>
+                        <Field label="Role">
+                          <select className="input" value={x.role} onChange={(e) => setPerson(i, { role: e.target.value as BusinessPerson["role"] })}>
+                            {Object.entries(ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                          </select>
+                        </Field>
+                        {x.role !== "director" && (
+                          <Field label="Owns (%)"><input className="input num" inputMode="decimal" required value={x.ownershipPct ?? ""} onChange={(e) => setPerson(i, { ownershipPct: e.target.value ? Number(e.target.value.replace(/[^\d.]/g, "")) : null })} /></Field>
+                        )}
+                        <Field label="Date of birth"><input className="input" type="date" required value={x.dateOfBirth} onChange={(e) => setPerson(i, { dateOfBirth: e.target.value })} /></Field>
+                        <CountrySelect label="Nationality" value={x.nationality} onChange={(v) => setPerson(i, { nationality: v })} />
+                      </div>
+                      {people.length > 1 && <button type="button" className="link-btn small" onClick={() => setPeople(people.filter((_, j) => j !== i))}>Remove</button>}
+                    </div>
+                  ))}
+                  {people.length < 20 && <button type="button" className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setPeople([...people, emptyPerson()])}>Add a person</button>}
+                  <div>
+                    <h3 style={{ fontSize: 15, margin: "6px 0 4px" }}>Documents</h3>
+                    <p className="small muted" style={{ margin: 0 }}>A PDF or a clear photo of each, up to 5 MB. They're encrypted and only our review team can open them.</p>
+                  </div>
+                  {d.requiredDocuments.company.map((r) => {
+                    const have = d.documents.find((x) => x.kind === r.kind);
+                    return (
+                      <div key={r.kind} className="row between wrap" style={{ gap: 8 }}>
+                        <span className="small">{have ? "✓ " : ""}{r.label}{have ? <span className="faint"> · uploaded {timeAgo(have.uploadedAt)}</span> : ""}</span>
+                        <label className="btn ghost sm" style={{ cursor: "pointer" }}>
+                          {uploading === r.kind ? "Uploading…" : have ? "Replace" : "Upload"}
+                          <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" hidden onChange={(e) => uploadDoc(r.kind, e.target.files?.[0])} />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
               <ErrorText error={error} />
               <div className="row" style={{ gap: 8 }}>
                 <button className="btn" disabled={busy}>{busy ? "Sending…" : "Send for review"}</button>

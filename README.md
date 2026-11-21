@@ -427,6 +427,7 @@ The software is a foundation. Running a real money or brokerage business has req
 - **Business accounts** (`MERCHANT_FEE_BPS`, 0 by default): a verified customer applies under Account → Business account.
   - An admin reviews the application under Admin → Business accounts to review (know-your-business: registration number, website, what they sell). Nobody can approve their own.
   - The business name is screened against the UN and OFAC lists, people and companies alike.
+  - A **registered company** also lists its directors and everyone owning 25% or more (name, role, share, date of birth, nationality), and uploads its registration certificate and a record of its directors and shareholders. People and documents are encrypted. Each person is screened against sanctions lists, again whenever the lists update. Reviewers open the documents from the queue, and every view is audited.
   - Once approved, pay links and @handle payments show the business name with a "Verified business" badge, and Aurex keeps `MERCHANT_FEE_BPS` of each payment received, like a till number. The payer pays exactly the price.
   - The business sees what it received over the last day, week and month, with the fees.
 - **Aurex Pro** (`PRO_ENABLED=true`): a monthly plan paid from the customer's own wallet, so no card network or extra provider is needed.
