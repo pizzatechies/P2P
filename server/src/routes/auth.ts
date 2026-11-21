@@ -20,6 +20,7 @@ import {
 } from "../services/security.js";
 import { sendVerificationCode, verifyEmailCode } from "../services/email.js";
 import { checkResetLink, requestPasswordReset, resetPassword } from "../services/passwordReset.js";
+import { verifyCaptcha } from "../services/captcha.js";
 import { audit, authenticate, createSession, destroySession, getUserRow, registerUser, toAuthUser } from "../services/users.js";
 
 // Full strength rules (length, common and breached passwords) are checked in the service.
@@ -53,6 +54,7 @@ export function authRoutes(ctx: Ctx) {
 
   r.post("/register", signupLimiter, limiter, async (req, res) => {
     const body = parse(RegisterBody, req.body);
+    await verifyCaptcha(ctx, req.body?.captchaToken, req.ip);
     const user = await registerUser(ctx, body);
     const ua = req.get("user-agent")?.slice(0, 300) ?? "";
     const session = createSession(ctx, user.id, { ip: req.ip, userAgent: ua });
@@ -65,6 +67,7 @@ export function authRoutes(ctx: Ctx) {
 
   r.post("/login", limiter, async (req, res) => {
     const body = parse(LoginBody, req.body);
+    await verifyCaptcha(ctx, req.body?.captchaToken, req.ip);
     try {
       const { user } = await authenticate(ctx, body, req.ip);
       const ua = req.get("user-agent")?.slice(0, 300) ?? "";
@@ -122,6 +125,7 @@ export function authRoutes(ctx: Ctx) {
   const resetLimiter = rateLimit({ name: "password-reset", windowMs: 60 * 60_000, max: ctx.config.isTest ? 1000 : 10 });
   r.post("/password/forgot", resetLimiter, async (req, res) => {
     const { email } = parse(z.object({ email: z.string().trim().max(200) }), req.body);
+    await verifyCaptcha(ctx, req.body?.captchaToken, req.ip);
     res.json(await requestPasswordReset(ctx, email, req.ip));
   });
 

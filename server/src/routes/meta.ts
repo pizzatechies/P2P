@@ -3,6 +3,7 @@ import type { Ctx } from "../context.js";
 import { CURRENCIES } from "../lib/money.js";
 import { getRates } from "../services/fx.js";
 import { describeRails } from "../services/rails/index.js";
+import { captchaEnabled } from "../services/captcha.js";
 
 export function metaRoutes(ctx: Ctx) {
   const r = Router();
@@ -31,6 +32,7 @@ export function metaRoutes(ctx: Ctx) {
         payoutReviewUsd: ctx.config.PAYOUT_REVIEW ? ctx.config.PAYOUT_REVIEW_USD : null,
       },
       fx: { source: rates.source, asOf: rates.asOf },
+      captcha: captchaEnabled(ctx) ? { provider: "turnstile", siteKey: ctx.config.TURNSTILE_SITE_KEY } : null,
       ai: { freeDailyRequests: ctx.config.AI_FREE_DAILY_REQUESTS, freeModels: [...ctx.config.freeModels] },
       pro: ctx.config.PRO_ENABLED
         ? { price: ctx.config.PRO_PRICE, currency: ctx.config.PRO_CURRENCY, aiDailyRequests: ctx.config.PRO_AI_DAILY_REQUESTS, freeWeb3Wallets: ctx.config.FREE_WEB3_WALLETS }

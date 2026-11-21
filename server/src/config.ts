@@ -158,6 +158,11 @@ const EnvSchema = z.object({
   /** Your privacy policy's address, sent to Smile ID as the consent notice (defaults to APP_URL/privacy). */
   SMILEID_PRIVACY_URL: optionalString,
 
+  // ---- Bot protection (Cloudflare Turnstile) on sign-up, sign-in, password reset and the waitlist ----
+  TURNSTILE_SITE_KEY: optionalString,
+  TURNSTILE_SECRET_KEY: optionalString,
+  TURNSTILE_VERIFY_URL: z.string().url().default("https://challenges.cloudflare.com/turnstile/v0/siteverify"),
+
   // ---- Legal pages (/terms, /privacy, /fees, /complaints, /risk): your details fill the placeholders ----
   LEGAL_COMPANY_NAME: optionalString,
   LEGAL_REGISTRATION_NUMBER: optionalString,

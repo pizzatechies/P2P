@@ -58,7 +58,7 @@ Each fix has a regression test, in `server/test/review.test.ts`, `password-reset
 ## Still to do (needs people, money or accounts)
 
 1. **An independent penetration test** of the live system, by a firm the regulator or bank partner will accept, before taking real deposits.
-2. **Bot protection** on sign-up, sign-in and password reset, for example Cloudflare Turnstile.
+2. ~~**Bot protection** on sign-up, sign-in and password reset.~~ Built: Cloudflare Turnstile, switched on by setting `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
 3. **The encryption key in a managed key service.** Today `MASTER_KEY` is in Parameter Store; AWS KMS would also give envelope encryption and key-use logs.
 4. ~~**Two-person approval** for the highest-impact admin actions.~~ Done: custom limits and hand-set identity levels now need a second admin (`TWO_PERSON_APPROVAL`).
 5. **A public bug bounty or disclosure programme** once live. `SECURITY.md` and `/.well-known/security.txt` already give the contact route.

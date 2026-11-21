@@ -122,6 +122,15 @@ export function securityPosture(ctx: Ctx) {
     detail: c.PAYOUT_REVIEW ? `Withdrawals of $${c.PAYOUT_REVIEW_USD.toLocaleString("en-US")} or more, or by customers with an open alert, wait for approval.` : "Every withdrawal is sent straight away.",
     fix: "Set PAYOUT_REVIEW=true.",
   });
+  const bots = Boolean(c.TURNSTILE_SITE_KEY && c.TURNSTILE_SECRET_KEY);
+  add({
+    id: "bot_protection",
+    area: "Access",
+    label: "Bots are kept out of sign-up and sign-in",
+    status: bots ? "pass" : "warn",
+    detail: bots ? "Sign-up, sign-in, password reset and the waitlist need a Cloudflare Turnstile check." : "Only rate limits slow down automated sign-ups and password guessing.",
+    fix: "Create a free Turnstile widget in Cloudflare and set TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY.",
+  });
   const approvers = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND status = 'active' AND closed_at IS NULL AND (? = 0 OR totp_enabled = 1)", c.REQUIRE_ADMIN_2FA ? 1 : 0)!.n;
   add({
     id: "two_person",

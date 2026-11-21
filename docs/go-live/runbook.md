@@ -199,6 +199,7 @@ Do these in order. Each step is a settings change in `.env` followed by `install
    - set the callback URL in the Smile ID portal;
    - keep `KYC_AUTO_APPROVE=false`.
 3. **Beta gate:** `REGISTRATION_MODE=invite` and `MAX_USERS=<n>`.
+   Also turn on bot protection: create a Turnstile widget for your domain in Cloudflare and set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
 4. **Real trading:** keep `ALLOW_LIVE_TRADING=false` until the securities question is settled (see the market research). `LIVE_COUNTRIES` then limits where real trading accounts can be opened.
 5. **One payment rail first**, for example M-Pesa (`MPESA_*`, plus `MPESA_CALLBACK_IPS` with Safaricom's addresses) or Flutterwave.
    - Set `PAYMENT_RAILS=mpesa` (no `sandbox`).

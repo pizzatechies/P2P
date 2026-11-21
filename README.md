@@ -390,6 +390,11 @@ The software is a foundation. Running a real money or brokerage business has req
 
 **Legal pages.** `/terms`, `/privacy`, `/complaints` and `/risk` show the texts in `docs/go-live/legal`, with your company and contact details filled in from `LEGAL_COMPANY_NAME`, `LEGAL_REGISTRATION_NUMBER`, `LEGAL_ADDRESS`, `LEGAL_COUNTRY`, `LEGAL_EFFECTIVE_DATE`, `SUPPORT_EMAIL`, `SUPPORT_PHONE`, `COMPLAINTS_EMAIL`, `DPO_NAME` and `DPO_EMAIL`. Reviewer notes are left out. Each page says it's a draft until `LEGAL_FINAL=true`. `/fees` is built from the server's live fee and limit settings, so it always matches what's charged. Edit the texts in `docs/go-live/legal` once your lawyer has approved them, then redeploy.
 
+**Bot protection.** Set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from a free [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) widget.
+- **Where it applies:** sign-up, sign-in, password reset and the waitlist each need a fresh check, verified with Cloudflare by the server.
+- **If Cloudflare is down:** those requests are refused, rather than let bots through.
+- **The page's security policy:** it allows Cloudflare's script and frame only while the keys are set.
+
 **Two-person approval.** Raising a customer's limits or setting their identity level by hand needs a second admin (`TWO_PERSON_APPROVAL`).
 - **How it works:** one admin asks, and the change waits under Admin → Waiting for approval until a different admin approves it, after a fresh password check.
 - **Rules:** nobody can approve their own request or a change to their own account, and turning one down needs a reason.

@@ -55,6 +55,7 @@ export interface Meta {
   fees: { p2pBps: number; fxSpreadBps: number; withdrawalBps: number; merchantBps?: number };
   limits: { maxTxUsd: number; dailyUsd: number; byLevel?: { level: number; txUsd: number; dailyUsd: number }[] | null; payoutReviewUsd?: number | null };
   fx: { source: "live" | "static"; asOf: string };
+  captcha?: { provider: "turnstile"; siteKey: string } | null;
   ai?: { freeDailyRequests: number; freeModels: string[] };
   pro?: { price: number; currency: string; aiDailyRequests: number; freeWeb3Wallets: number } | null;
   autopilot?: { enabled: boolean; liveAllowed: boolean };

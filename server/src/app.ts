@@ -73,6 +73,9 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   }
 
   app.disable("x-powered-by");
+  // Cloudflare Turnstile's script and challenge frame, allowed only when bot protection is on.
+  const turnstile = Boolean(config.TURNSTILE_SITE_KEY && config.TURNSTILE_SECRET_KEY);
+  const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
   if (config.TRUST_PROXY) app.set("trust proxy", 1);
 
   app.use(
@@ -81,7 +84,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
         useDefaults: true,
         directives: {
           "default-src": ["'self'"],
-          "script-src": ["'self'"],
+          "script-src": ["'self'", ...(turnstile ? [TURNSTILE_ORIGIN] : [])],
           "script-src-attr": ["'none'"],
           "connect-src": ["'self'"],
           "img-src": ["'self'", "data:"],
@@ -92,7 +95,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
           "base-uri": ["'self'"],
           "form-action": ["'self'"],
           "frame-ancestors": ["'none'"],
-          "frame-src": ["'none'"],
+          "frame-src": turnstile ? [TURNSTILE_ORIGIN] : ["'none'"],
           "worker-src": ["'self'"],
           "manifest-src": ["'self'"],
           // Only force HTTPS sub-requests in production; in development it breaks plain-HTTP access

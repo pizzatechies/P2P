@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { businessName } from "../services/business.js";
+import { verifyCaptcha } from "../services/captcha.js";
 import { joinWaitlist, signupStatus } from "../services/beta.js";
 import { parse } from "../lib/validate.js";
 import { rateLimit } from "../lib/rateLimit.js";
@@ -17,8 +18,9 @@ export function publicRoutes(ctx: Ctx) {
   });
 
   const waitlistLimiter = rateLimit({ name: "waitlist", windowMs: 60 * 60_000, max: ctx.config.isTest ? 10_000 : 10 });
-  r.post("/waitlist", waitlistLimiter, (req, res) => {
+  r.post("/waitlist", waitlistLimiter, async (req, res) => {
     const body = parse(z.object({ email: z.string().max(200), name: z.string().max(80).optional(), country: z.string().max(2).optional() }), req.body);
+    await verifyCaptcha(ctx, req.body?.captchaToken, req.ip);
     res.status(201).json(joinWaitlist(ctx, body.email, body.name, body.country));
   });
 

@@ -5,6 +5,7 @@ import { Logo } from "../components/Logo";
 import { ErrorText, Field } from "../components/ui";
 import { CurrencySelect } from "../components/ui";
 import { useAuth, useLoad } from "../state";
+import { useCaptcha } from "../components/Turnstile";
 import type { User } from "../types";
 
 /** Where to go after signing in: a safe, same-site path from ?next=, or the dashboard. */
@@ -42,6 +43,7 @@ export function LoginPage() {
   const [totpCode, setTotpCode] = useState("");
   const [needTotp, setNeedTotp] = useState(false);
   const [useRecovery, setUseRecovery] = useState(false);
+  const captcha = useCaptcha();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -50,7 +52,7 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const { user } = await api.post<{ user: User }>("/api/auth/login", { email, password, totpCode: needTotp ? totpCode : undefined });
+      const { user } = await api.post<{ user: User }>("/api/auth/login", { email, password, totpCode: needTotp ? totpCode : undefined, captchaToken: captcha.token ?? undefined });
       setUser(user);
       navigate(next, { replace: true });
     } catch (err) {
@@ -60,6 +62,7 @@ export function LoginPage() {
       } else setError((err as Error).message);
     } finally {
       setBusy(false);
+      captcha.reset(); // each token works once
     }
   }
 
@@ -97,7 +100,8 @@ export function LoginPage() {
           </Field>
         )}
         <ErrorText error={error} />
-        <button className="btn block lg" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+        {captcha.widget}
+        <button className="btn block lg" disabled={busy || !captcha.ready}>{busy ? "Signing in…" : "Sign in"}</button>
         <p className="small muted" style={{ textAlign: "center" }}>
           New here? <Link to={`/register${location.search}`}>Create an account</Link>
         </p>
@@ -108,6 +112,7 @@ export function LoginPage() {
 
 /** "Forgot your password?": asks for the email address and sends a reset link to it. */
 export function ForgotPasswordPage() {
+  const captcha = useCaptcha();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,12 +123,13 @@ export function ForgotPasswordPage() {
     setBusy(true);
     setError(null);
     try {
-      await api.post("/api/auth/password/forgot", { email });
+      await api.post("/api/auth/password/forgot", { email, captchaToken: captcha.token ?? undefined });
       setSent(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      captcha.reset(); // each token works once
     }
   }
 
@@ -144,7 +150,8 @@ export function ForgotPasswordPage() {
           <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
         </Field>
         <ErrorText error={error} />
-        <button className="btn block lg" disabled={busy}>{busy ? "Sending…" : "Send reset link"}</button>
+        {captcha.widget}
+        <button className="btn block lg" disabled={busy || !captcha.ready}>{busy ? "Sending…" : "Send reset link"}</button>
         <p className="small muted" style={{ textAlign: "center" }}>
           Remembered it? <Link to="/login">Sign in</Link>
         </p>
@@ -226,6 +233,7 @@ export function ResetPasswordPage() {
 export const VERIFY_KEY = "aurex-verify-email";
 
 export function RegisterPage() {
+  const captcha = useCaptcha();
   const { setUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -246,6 +254,7 @@ export function RegisterPage() {
       const { user, emailVerification } = await api.post<{ user: User; emailVerification: { devCode?: string } | null }>("/api/auth/register", {
         ...form,
         inviteCode: form.inviteCode.trim() || undefined,
+        captchaToken: captcha.token ?? undefined,
       });
       // Prompt for the emailed code on arrival (in development the code itself comes back too).
       if (emailVerification) {
@@ -261,6 +270,7 @@ export function RegisterPage() {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      captcha.reset(); // each token works once
     }
   }
 
@@ -305,7 +315,8 @@ export function RegisterPage() {
         <p className="xs muted" style={{ margin: 0 }}>
           By creating an account you agree to the <Link to="/terms" target="_blank">Terms of Service</Link> and confirm you've read the <Link to="/privacy" target="_blank">Privacy Policy</Link> and <Link to="/risk" target="_blank">Risk warnings</Link>.
         </p>
-        <button className="btn block lg" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
+        {captcha.widget}
+        <button className="btn block lg" disabled={busy || !captcha.ready}>{busy ? "Creating account…" : "Create account"}</button>
         <p className="small muted" style={{ textAlign: "center" }}>
           Already have an account? <Link to={`/login${location.search}`}>Sign in</Link>
         </p>
@@ -321,6 +332,7 @@ export function RegisterPage() {
 }
 
 function Waitlist() {
+  const captcha = useCaptcha();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [done, setDone] = useState(false);
@@ -331,12 +343,13 @@ function Waitlist() {
     setBusy(true);
     setError(null);
     try {
-      await api.post("/api/public/waitlist", { email, name: name || undefined });
+      await api.post("/api/public/waitlist", { email, name: name || undefined, captchaToken: captcha.token ?? undefined });
       setDone(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+      captcha.reset(); // each token works once
     }
   }
   if (done) return <div className="banner info" role="status">You're on the list. We'll email {email} an invite when there's a place for you.</div>;
@@ -345,7 +358,8 @@ function Waitlist() {
       <Field label="Your name (optional)"><input className="input" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} /></Field>
       <Field label="Email"><input className="input" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
       <ErrorText error={error} />
-      <button className="btn block" disabled={busy}>{busy ? "Joining…" : "Join the waitlist"}</button>
+      {captcha.widget}
+      <button className="btn block" disabled={busy || !captcha.ready}>{busy ? "Joining…" : "Join the waitlist"}</button>
     </form>
   );
 }
