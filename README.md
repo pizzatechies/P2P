@@ -398,6 +398,7 @@ The software is a foundation. Running a real money or brokerage business has req
 
 **Politically exposed persons.** With `OPENSANCTIONS_API_KEY` set, the legal name from identity verification, and each company director and owner, is checked against OpenSanctions' database of politically exposed people and their relatives and close associates (`PEP_THRESHOLD`, 0.8 by default).
 - **A possible match:** it opens a compliance alert, payouts wait, and the identity check isn't approved automatically. Nor is it if the check couldn't run.
+- **Re-screening:** everyone already checked is checked again every `PEP_RESCREEN_DAYS` (365 by default), because people take up and leave public office. At most `PEP_RESCREEN_BATCH` (200) are checked per run, every 6 hours, so credit use stays predictable. Admin → Politically exposed persons shows who is due, with a "Re-screen now" button.
 - **A confirmed match:** a reviewer escalates the alert, which marks the customer as a PEP under enhanced due diligence. Every payout then waits for a second person, even with `PAYOUT_REVIEW` off, and their admin page shows a PEP badge.
 
 **Bot protection.** Set `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from a free [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile) widget.

@@ -1,5 +1,6 @@
 import type { Ctx } from "../context.js";
-import { nowIso, one, run } from "../db/index.js";
+import { all, nowIso, one, run } from "../db/index.js";
+import { decryptSecret } from "../lib/crypto.js";
 import { openAlert } from "./monitoring.js";
 import { audit } from "./users.js";
 
@@ -89,4 +90,101 @@ export function pepBlocksAutoApproval(ctx: Ctx, userId: string) {
   if (!pepConfigured(ctx)) return false;
   if (!one(ctx.db, "SELECT 1 FROM sanctions_checks WHERE user_id = ? AND subject = 'pep_legal_name'", userId)) return true;
   return Boolean(one(ctx.db, "SELECT 1 FROM compliance_alerts WHERE user_id = ? AND rule = 'pep_match' AND status = 'open'", userId));
+}
+
+// ---------------------------------------------------------------------------
+// Re-screening: people already checked are checked again every PEP_RESCREEN_DAYS (people take up and
+// leave public office, so a customer who was clear at sign-up may not be now).
+// ---------------------------------------------------------------------------
+interface DuePerson {
+  userId: string;
+  subject: Subject;
+  name: string;
+  birthDate: string | null;
+  nationality: string | null;
+  lastChecked: string | null;
+}
+
+/** Everyone due for a (re-)check: verified legal names and company directors and owners, oldest check first. */
+export function pepDue(ctx: Ctx): DuePerson[] {
+  const days = ctx.config.PEP_RESCREEN_DAYS;
+  if (!pepConfigured(ctx) || days <= 0) return [];
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  const last = (userId: string, subject: Subject) =>
+    one<{ at: string | null }>(ctx.db, "SELECT MAX(created_at) AS at FROM sanctions_checks WHERE user_id = ? AND subject = ?", userId, `pep_${subject}`)?.at ?? null;
+  const out: DuePerson[] = [];
+  const seen = new Set<string>();
+  for (const s of all<{ user_id: string; data_enc: string }>(
+    ctx.db,
+    `SELECT s.user_id, s.data_enc FROM kyc_submissions s JOIN users u ON u.id = s.user_id
+     WHERE s.level = 1 AND s.status = 'approved' AND s.data_enc IS NOT NULL AND u.closed_at IS NULL ORDER BY s.created_at DESC`,
+  )) {
+    if (seen.has(s.user_id)) continue; // the latest approved submission only
+    seen.add(s.user_id);
+    const at = last(s.user_id, "legal_name");
+    if (at && at > cutoff) continue;
+    try {
+      const d = JSON.parse(decryptSecret(s.data_enc, ctx.config.masterKey)) as { legalName?: string; dateOfBirth?: string; nationality?: string };
+      if (d.legalName) out.push({ userId: s.user_id, subject: "legal_name", name: d.legalName, birthDate: d.dateOfBirth ?? null, nationality: d.nationality ?? null, lastChecked: at });
+    } catch {
+      /* unreadable with the current key: skip */
+    }
+  }
+  for (const b of all<{ user_id: string; people_enc: string }>(ctx.db, "SELECT user_id, people_enc FROM business_profiles WHERE status IN ('pending','approved') AND people_enc IS NOT NULL")) {
+    const at = last(b.user_id, "business_person");
+    if (at && at > cutoff) continue;
+    try {
+      for (const p of JSON.parse(decryptSecret(b.people_enc, ctx.config.masterKey)) as { name: string; dateOfBirth?: string; nationality?: string }[]) {
+        out.push({ userId: b.user_id, subject: "business_person", name: p.name, birthDate: p.dateOfBirth ?? null, nationality: p.nationality ?? null, lastChecked: at });
+      }
+    } catch {
+      /* unreadable with the current key: skip */
+    }
+  }
+  return out.sort((a, b) => (a.lastChecked ?? "").localeCompare(b.lastChecked ?? ""));
+}
+
+/** Re-screens up to `max` people that are due (each check uses one OpenSanctions credit). */
+export async function rescreenPeps(ctx: Ctx, max = ctx.config.PEP_RESCREEN_BATCH) {
+  const due = pepDue(ctx);
+  let screened = 0;
+  let matches = 0;
+  let failed = 0;
+  for (const p of due.slice(0, max)) {
+    const r = await screenPep(ctx, p.userId, { name: p.name, birthDate: p.birthDate, nationality: p.nationality }, p.subject);
+    if (r.status === "error") {
+      failed++;
+      if (failed >= 3) break; // OpenSanctions unreachable: try again on the next run
+      continue;
+    }
+    screened++;
+    matches += r.matches.length;
+  }
+  return { due: due.length, screened, matches, failed };
+}
+
+/** Runs a re-screening batch a few times a day while anyone is due. */
+export function startPepRescreenJob(ctx: Ctx, everyMs = 6 * 3600_000) {
+  if (!pepConfigured(ctx) || ctx.config.PEP_RESCREEN_DAYS <= 0) return () => undefined;
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const r = await rescreenPeps(ctx);
+      if (r.screened || r.failed) console.log(`[pep] re-screened ${r.screened} of ${r.due} due (${r.matches} possible matches, ${r.failed} failed)`);
+    } catch (err) {
+      console.error("[pep]", err);
+    } finally {
+      busy = false;
+    }
+  };
+  const first = setTimeout(() => void tick(), 60_000);
+  first.unref();
+  const timer = setInterval(() => void tick(), everyMs);
+  timer.unref();
+  return () => {
+    clearTimeout(first);
+    clearInterval(timer);
+  };
 }

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "../services/business.js";
 import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
+import { pepConfigured, pepDue, rescreenPeps } from "../services/pep.js";
 import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
 import { toCsv } from "../lib/csv.js";
 import { comp as compPro } from "../services/pro.js";
@@ -260,6 +261,30 @@ export function adminRoutes(ctx: Ctx) {
     const open = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM compliance_alerts WHERE rule = 'sanctions_match' AND status = 'open'")!.n;
     const checks = one<{ n: number; matches: number }>(ctx.db, "SELECT COUNT(*) AS n, SUM(result = 'possible_match') AS matches FROM sanctions_checks")!;
     res.json({ enabled: ctx.config.SANCTIONS_SCREENING, lists: listStatus(ctx), openMatches: open, checks: checks.n, possibleMatches: checks.matches ?? 0 });
+  });
+
+  // ---- Politically exposed persons ----
+  r.get("/pep", (_req, res) => {
+    const open = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM compliance_alerts WHERE rule = 'pep_match' AND status = 'open'")!.n;
+    const checks = one<{ n: number; matches: number; last: string | null }>(ctx.db, "SELECT COUNT(*) AS n, SUM(result = 'possible_match') AS matches, MAX(created_at) AS last FROM sanctions_checks WHERE subject LIKE 'pep_%'")!;
+    const confirmed = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM users WHERE pep_confirmed_at IS NOT NULL AND closed_at IS NULL")!.n;
+    res.json({
+      enabled: pepConfigured(ctx),
+      rescreenDays: ctx.config.PEP_RESCREEN_DAYS,
+      due: pepDue(ctx).length,
+      openMatches: open,
+      confirmed,
+      checks: checks.n,
+      possibleMatches: checks.matches ?? 0,
+      lastCheckAt: checks.last,
+    });
+  });
+
+  r.post("/pep/rescreen", async (req, res) => {
+    if (!pepConfigured(ctx)) throw new HttpError(422, "not_configured", "Set OPENSANCTIONS_API_KEY to screen for politically exposed people");
+    const out = await rescreenPeps(ctx);
+    audit(ctx, req.user!.id, "pep.rescreened", out, req.ip);
+    res.json(out);
   });
 
   r.post("/sanctions/refresh", async (req, res) => {

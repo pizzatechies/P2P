@@ -97,4 +97,28 @@ describe("politically exposed person screening", () => {
     const check = ok.ctx.db.prepare("SELECT subject, result FROM sanctions_checks WHERE user_id = ? AND subject LIKE 'pep_%'").get(c.user.id) as { subject: string; result: string };
     expect(check).toEqual({ subject: "pep_legal_name", result: "clear" });
   });
+
+  it("re-screens people whose last check is older than PEP_RESCREEN_DAYS, and finds new matches", async () => {
+    const state = { found: false };
+    const os = await stub((r) => {
+      if (r.route !== "/match/default" || r.headers.authorization !== "ApiKey os-key") return { status: 404, body: {} };
+      const results = state.found ? [{ id: "Q-NEW", caption: "Amina Hassan Odinga", score: 0.9, match: true, properties: { topics: ["role.pep"] } }] : [];
+      return { body: { responses: { q: { results } } } };
+    });
+    const env = makeApp({ OPENSANCTIONS_API_KEY: "os-key", OPENSANCTIONS_URL: os.url, KYC_AUTO_APPROVE: "true", PEP_RESCREEN_DAYS: "365" });
+    const admin = await makeAdmin(env);
+    const { agent, user } = await signup(env.app, "newminister");
+    await submitIdentity(agent); // clear at sign-up, approved
+    expect((await admin.get("/api/admin/pep")).body).toMatchObject({ enabled: true, rescreenDays: 365, due: 0, checks: 1 });
+
+    // A year and a bit later they're due again, and have since taken up office.
+    env.ctx.db.prepare("UPDATE sanctions_checks SET created_at = '2025-01-01T00:00:00.000Z' WHERE user_id = ?").run(user.id);
+    expect((await admin.get("/api/admin/pep")).body.due).toBe(1);
+    state.found = true;
+    const run = await admin.post("/api/admin/pep/rescreen");
+    expect(run.body).toMatchObject({ due: 1, screened: 1, matches: 1, failed: 0 });
+    expect((await admin.get("/api/admin/pep")).body).toMatchObject({ due: 0, openMatches: 1 });
+    const alert = env.ctx.db.prepare("SELECT rule FROM compliance_alerts WHERE user_id = ?").get(user.id) as { rule: string };
+    expect(alert.rule).toBe("pep_match");
+  });
 });

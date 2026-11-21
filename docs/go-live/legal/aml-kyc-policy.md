@@ -101,7 +101,7 @@ EDD means source of funds and wealth, senior-management approval, and closer mon
 **[TO DO]**
 - Buy the OpenSanctions credits, or choose another provider.
 - Define the enhanced due diligence steps for a confirmed PEP: source of wealth, and senior management approval.
-- Decide how often to re-screen existing customers.
+- Confirm the re-screening interval (`PEP_RESCREEN_DAYS`, yearly by default) in the risk assessment.
 
 ### 4.4 Ongoing due diligence
 

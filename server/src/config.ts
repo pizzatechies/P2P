@@ -168,6 +168,10 @@ const EnvSchema = z.object({
   OPENSANCTIONS_URL: z.string().url().default("https://api.opensanctions.org"),
   /** Match score (0-1) at which a result counts as a possible match; OpenSanctions suggests 0.7-0.85. */
   PEP_THRESHOLD: z.coerce.number().min(0.5).max(1).default(0.8),
+  /** Check people again after this many days (0 = never); each check uses one OpenSanctions credit. */
+  PEP_RESCREEN_DAYS: z.coerce.number().int().min(0).max(3650).default(365),
+  /** Most people re-checked per run (runs every 6 hours while anyone is due). */
+  PEP_RESCREEN_BATCH: z.coerce.number().int().min(1).max(10_000).default(200),
 
   // ---- Bot protection (Cloudflare Turnstile) on sign-up, sign-in, password reset and the waitlist ----
   TURNSTILE_SITE_KEY: optionalString,

@@ -165,6 +165,7 @@ export function AdminPage() {
       {!overview.error && <PayoutQueue onChange={overview.reload} />}
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
       {!overview.error && <SanctionsCard />}
+      {!overview.error && <PepCard />}
       {!overview.error && <KycQueue />}
       {!overview.error && <ApprovalQueue />}
       {!overview.error && <BusinessQueue />}
@@ -926,6 +927,55 @@ function ApprovalQueue() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+interface PepStatus { enabled: boolean; rescreenDays: number; due: number; openMatches: number; confirmed: number; checks: number; possibleMatches: number; lastCheckAt: string | null }
+
+/** Screening for politically exposed persons (OpenSanctions): status, people due again, and a run-now button. */
+function PepCard() {
+  const toast = useToast();
+  const status = useLoad(() => api.get<PepStatus>("/api/admin/pep"));
+  const [busy, setBusy] = useState(false);
+  const s = status.data;
+  if (!s) return null;
+  async function rescreen() {
+    setBusy(true);
+    try {
+      const r = await api.post<{ due: number; screened: number; matches: number; failed: number }>("/api/admin/pep/rescreen");
+      toast(r.failed ? `Checked ${r.screened}; ${r.failed} couldn't be checked (OpenSanctions unreachable?)` : `Checked ${r.screened} of ${r.due} due${r.matches ? `: ${r.matches} possible match${r.matches === 1 ? "" : "es"} (see Compliance)` : ", no new matches"}`);
+      status.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head">
+        <h2>Politically exposed persons</h2>
+        <span className={`pill ${s.enabled ? "good" : "warn"}`}>{s.enabled ? "Screening on" : "Off"}</span>
+      </div>
+      {!s.enabled ? (
+        <p className="muted small" style={{ margin: 0 }}>Set OPENSANCTIONS_API_KEY to check verified customers and company directors and owners against OpenSanctions' data on politically exposed people and their relatives and associates.</p>
+      ) : (
+        <>
+          <div className="grid grid-3">
+            <div><div className="stat-label">Checks made</div><div className="num" style={{ fontSize: 20 }}>{s.checks}</div></div>
+            <div><div className="stat-label">Open possible matches</div><div className={`num ${s.openMatches ? "bad" : ""}`} style={{ fontSize: 20 }}>{s.openMatches}</div></div>
+            <div><div className="stat-label">Confirmed PEPs</div><div className="num" style={{ fontSize: 20 }}>{s.confirmed}</div></div>
+          </div>
+          <div className="row between wrap" style={{ marginTop: 12, gap: 8 }}>
+            <span className="small muted">
+              {s.rescreenDays > 0 ? `Everyone is checked again every ${s.rescreenDays} days. ${s.due} due now.` : "Re-screening is off (PEP_RESCREEN_DAYS=0)."}
+              {s.lastCheckAt && ` Last check ${timeAgo(s.lastCheckAt)}.`}
+            </span>
+            {s.rescreenDays > 0 && s.due > 0 && <button className="btn secondary sm" disabled={busy} onClick={rescreen}>{busy ? "Checking…" : "Re-screen now"}</button>}
+          </div>
+        </>
+      )}
     </div>
   );
 }
