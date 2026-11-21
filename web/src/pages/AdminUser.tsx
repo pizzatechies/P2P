@@ -254,8 +254,8 @@ function LimitsAdmin({ d, disabled, onSaved }: { d: Detail; disabled: boolean; o
   async function save(e: FormEvent) {
     e.preventDefault();
     try {
-      await api.post(`/api/admin/users/${d.user.id}/limits`, { txUsd: tx ? Number(tx) : null, dailyUsd: daily ? Number(daily) : null });
-      toast("Limits saved");
+      const r = await api.post<{ applied: boolean }>(`/api/admin/users/${d.user.id}/limits`, { txUsd: tx ? Number(tx) : null, dailyUsd: daily ? Number(daily) : null });
+      toast(r.applied ? "Limits saved" : "Sent to another admin for approval");
       onSaved();
     } catch (err) {
       toast((err as Error).message, "error");
@@ -286,8 +286,8 @@ function SetLevel({ userId, current, onSaved }: { userId: string; current: numbe
   async function save(e: FormEvent) {
     e.preventDefault();
     try {
-      await api.post(`/api/admin/users/${userId}/kyc-level`, { level: Number(level), note });
-      toast("Verification level set");
+      const r = await api.post<{ applied: boolean }>(`/api/admin/users/${userId}/kyc-level`, { level: Number(level), note });
+      toast(r.applied ? "Verification level set" : "Sent to another admin for approval");
       setNote("");
       onSaved();
     } catch (err) {

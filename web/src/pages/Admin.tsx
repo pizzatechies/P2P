@@ -165,6 +165,7 @@ export function AdminPage() {
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
       {!overview.error && <SanctionsCard />}
       {!overview.error && <KycQueue />}
+      {!overview.error && <ApprovalQueue />}
       {!overview.error && <BusinessQueue />}
       {!overview.error && <UpgradeQueue />}
       <div className="card flush">
@@ -824,6 +825,65 @@ function BusinessQueue() {
             <div className="row" style={{ gap: 6 }}>
               <button className="btn sm" onClick={() => review(a, "approve")}>Approve</button>
               <button className="btn ghost sm" onClick={() => review(a, "reject")}>Send back</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface ApprovalRequest {
+  id: string;
+  kind: "limits" | "kyc_level";
+  summary: string;
+  payload: { note?: string };
+  target: { id: string; handle: string | null };
+  requestedBy: { id: string; handle: string | null };
+  createdAt: string;
+}
+
+/** Changes another admin asked for (custom limits, hand-set identity levels) waiting for a second person. */
+function ApprovalQueue() {
+  const toast = useToast();
+  const list = useLoad(() => api.get<{ requests: ApprovalRequest[]; me: string }>("/api/admin/approvals"));
+  if (!list.data || list.data.requests.length === 0) return null;
+  const me = list.data.me;
+  async function act(r: ApprovalRequest, action: "approve" | "reject" | "cancel") {
+    const note = action === "reject" ? prompt("Why? (shown to the admin who asked)") ?? "" : undefined;
+    if (action === "reject" && !note?.trim()) return;
+    try {
+      await api.post(`/api/admin/approvals/${r.id}/${action}`, note ? { note } : {});
+      toast(action === "approve" ? "Approved: the change is in effect" : action === "reject" ? "Turned down" : "Request withdrawn");
+      list.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Waiting for approval</h2><span className="faint small">{list.data.requests.length}</span></div>
+      <p className="muted small" style={{ marginTop: 0 }}>Raising a customer's limits or setting their identity level by hand needs a second admin. Check the reason and the customer's record before approving.</p>
+      <div className="stack">
+        {list.data.requests.map((r) => (
+          <div key={r.id} className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
+            <div>
+              <div className="small">
+                Set <Link to={`/app/admin/users/${r.target.id}`}>@{r.target.handle}</Link>'s {r.summary}
+              </div>
+              <div className="faint xs">
+                Asked by @{r.requestedBy.handle} {timeAgo(r.createdAt)}{r.payload.note ? ` · "${r.payload.note}"` : ""}
+              </div>
+            </div>
+            <div className="row" style={{ gap: 6 }}>
+              {r.requestedBy.id === me ? (
+                <button className="btn ghost sm" onClick={() => act(r, "cancel")}>Withdraw</button>
+              ) : (
+                <>
+                  <button className="btn sm" onClick={() => act(r, "approve")}>Approve</button>
+                  <button className="btn ghost sm" onClick={() => act(r, "reject")}>Turn down</button>
+                </>
+              )}
             </div>
           </div>
         ))}

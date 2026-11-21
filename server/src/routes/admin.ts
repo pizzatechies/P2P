@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { listBusinessApplications, reviewBusiness } from "../services/business.js";
+import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
 import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
 import { toCsv } from "../lib/csv.js";
 import { comp as compPro } from "../services/pro.js";
@@ -442,13 +443,8 @@ export function adminRoutes(ctx: Ctx) {
       z.object({ txUsd: z.number().positive().max(10_000_000).nullable(), dailyUsd: z.number().positive().max(100_000_000).nullable() }),
       req.body,
     );
-    const target = getUserRow(ctx, String(req.params.id)).id;
-    if (target === req.user!.id) throw new HttpError(400, "bad_request", "You can't change your own limits");
-    run(ctx.db, "UPDATE users SET limit_tx_usd = ?, limit_daily_usd = ? WHERE id = ?", body.txUsd, body.dailyUsd, target);
-    audit(ctx, req.user!.id, "admin.limits_set", { target, ...body }, req.ip);
-    const l = limitsFor(ctx, getUserRow(ctx, target));
-    addAlert(ctx, target, "account", `Your limits were changed by our team: $${l.txUsd.toLocaleString("en-US")} per payment and $${l.dailyUsd.toLocaleString("en-US")} a day.`);
-    res.json({ ok: true });
+    const result = requestChange(ctx, req.user!.id, "limits", String(req.params.id), body, req.ip);
+    res.status(result.applied ? 200 : 202).json({ ok: true, ...result });
   });
 
   /** Give a customer Aurex Pro free for a number of days (testers, partners, goodwill). */
@@ -469,7 +465,28 @@ export function adminRoutes(ctx: Ctx) {
   /** Set a verification level directly (for example, identity checked in person). */
   r.post("/users/:id/kyc-level", requireRecentAuth(ctx), (req, res) => {
     const body = parse(z.object({ level: z.union([z.literal(0), z.literal(1), z.literal(2)]), note: z.string().trim().min(3).max(500) }), req.body);
-    setLevel(ctx, req.user!.id, String(req.params.id), body.level, body.note, req.ip);
+    if (String(req.params.id) === req.user!.id) setLevel(ctx, req.user!.id, req.user!.id, body.level, body.note, req.ip); // refused: your own level
+    const result = requestChange(ctx, req.user!.id, "kyc_level", String(req.params.id), body, req.ip);
+    res.status(result.applied ? 200 : 202).json({ ok: true, ...result });
+  });
+
+  // ---- Two-person approval ----
+  r.get("/approvals", (req, res) => {
+    res.json({ requests: listRequests(ctx, req.query.status === "all" ? "all" : "pending"), me: req.user!.id });
+  });
+
+  r.post("/approvals/:id/approve", requireRecentAuth(ctx), (req, res) => {
+    const { note } = parse(z.object({ note: z.string().trim().max(500).optional() }), req.body ?? {});
+    res.json({ request: decideRequest(ctx, req.user!.id, String(req.params.id), "approve", note, req.ip) });
+  });
+
+  r.post("/approvals/:id/reject", requireRecentAuth(ctx), (req, res) => {
+    const { note } = parse(z.object({ note: z.string().trim().max(500).optional() }), req.body ?? {});
+    res.json({ request: decideRequest(ctx, req.user!.id, String(req.params.id), "reject", note, req.ip) });
+  });
+
+  r.post("/approvals/:id/cancel", (req, res) => {
+    cancelRequest(ctx, req.user!.id, String(req.params.id), req.ip);
     res.json({ ok: true });
   });
 

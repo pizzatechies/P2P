@@ -122,6 +122,20 @@ export function securityPosture(ctx: Ctx) {
     detail: c.PAYOUT_REVIEW ? `Withdrawals of $${c.PAYOUT_REVIEW_USD.toLocaleString("en-US")} or more, or by customers with an open alert, wait for approval.` : "Every withdrawal is sent straight away.",
     fix: "Set PAYOUT_REVIEW=true.",
   });
+  const approvers = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND status = 'active' AND closed_at IS NULL AND (? = 0 OR totp_enabled = 1)", c.REQUIRE_ADMIN_2FA ? 1 : 0)!.n;
+  add({
+    id: "two_person",
+    area: "Access",
+    label: "Raising limits needs a second admin",
+    status: c.TWO_PERSON_APPROVAL === "off" ? "fail" : c.TWO_PERSON_APPROVAL === "on" || approvers >= 2 ? "pass" : "warn",
+    detail:
+      c.TWO_PERSON_APPROVAL === "off"
+        ? "One admin can raise a customer's limits or set their identity level alone."
+        : approvers >= 2 || c.TWO_PERSON_APPROVAL === "on"
+          ? "Custom limits and hand-set identity levels wait for a different admin's approval."
+          : "There's only one admin, so their changes apply straight away.",
+    fix: c.TWO_PERSON_APPROVAL === "off" ? "Set TWO_PERSON_APPROVAL=auto." : "Add a second admin (with two-factor sign-in).",
+  });
   add({
     id: "kyc",
     area: "Money",

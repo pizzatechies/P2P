@@ -54,7 +54,9 @@ describe("admin access", () => {
     expect((await alerts(first.A)).some((a) => /now has admin access/.test(a.message))).toBe(true);
 
     const c = await signup(env.app, "managed");
-    expect((await first.A.post(`/api/admin/users/${c.user.id}/limits`, { txUsd: 50, dailyUsd: 100 })).status).toBe(200);
+    const asked = await first.A.post(`/api/admin/users/${c.user.id}/limits`, { txUsd: 50, dailyUsd: 100 });
+    expect(asked.status).toBe(202); // a second admin exists, so they approve it
+    expect((await B.post(`/api/admin/approvals/${asked.body.request.id}/approve`)).status).toBe(200);
     expect((await alerts(api(c.agent))).some((a) => /limits were changed by our team: \$50 per payment and \$100 a day/.test(a.message))).toBe(true);
   });
 });

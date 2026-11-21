@@ -789,4 +789,21 @@ export const migrations: string[] = [
   );
   CREATE INDEX support_messages_case ON support_messages(case_id, id);
   `,
+  // 19: Two-person approval for admin changes (custom limits, hand-set identity levels).
+  `
+  CREATE TABLE admin_requests (
+    id             TEXT PRIMARY KEY,
+    kind           TEXT NOT NULL CHECK (kind IN ('limits','kyc_level')),
+    target_user_id TEXT NOT NULL REFERENCES users(id),
+    payload        TEXT NOT NULL,
+    reason         TEXT,
+    requested_by   TEXT NOT NULL REFERENCES users(id),
+    status         TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','cancelled')),
+    decided_by     TEXT,
+    decided_at     TEXT,
+    decision_note  TEXT,
+    created_at     TEXT NOT NULL
+  );
+  CREATE INDEX admin_requests_status ON admin_requests(status, created_at);
+  `,
 ];

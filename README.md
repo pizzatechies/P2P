@@ -390,6 +390,11 @@ The software is a foundation. Running a real money or brokerage business has req
 
 **Legal pages.** `/terms`, `/privacy`, `/complaints` and `/risk` show the texts in `docs/go-live/legal`, with your company and contact details filled in from `LEGAL_COMPANY_NAME`, `LEGAL_REGISTRATION_NUMBER`, `LEGAL_ADDRESS`, `LEGAL_COUNTRY`, `LEGAL_EFFECTIVE_DATE`, `SUPPORT_EMAIL`, `SUPPORT_PHONE`, `COMPLAINTS_EMAIL`, `DPO_NAME` and `DPO_EMAIL`. Reviewer notes are left out. Each page says it's a draft until `LEGAL_FINAL=true`. `/fees` is built from the server's live fee and limit settings, so it always matches what's charged. Edit the texts in `docs/go-live/legal` once your lawyer has approved them, then redeploy.
 
+**Two-person approval.** Raising a customer's limits or setting their identity level by hand needs a second admin (`TWO_PERSON_APPROVAL`).
+- **How it works:** one admin asks, and the change waits under Admin → Waiting for approval until a different admin approves it, after a fresh password check.
+- **Rules:** nobody can approve their own request or a change to their own account, and turning one down needs a reason.
+- **Modes:** `auto` (the default) requires approval whenever there's another admin who could give it, so a one-person team isn't locked out; `on` always requires it; `off` never does. The security checklist shows which applies.
+
 **Help and complaints.** Customers open requests under **Help**, and each gets a reference such as `AX-2611-0001`.
 - **Security or fraud reports** are marked urgent.
 - **Complaints:**
