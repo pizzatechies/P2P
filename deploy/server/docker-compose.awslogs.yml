@@ -1,0 +1,12 @@
+# Added by install.sh on AWS when the stack's log group exists: the app's log goes to CloudWatch Logs
+# (where the stack's alarms watch for errors and a broken ledger seal). `docker compose logs app` still
+# works, from Docker's local copy.
+services:
+  app:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${AWSLOGS_GROUP}
+        awslogs-create-group: "false"
+        tag: "{{.Name}}"

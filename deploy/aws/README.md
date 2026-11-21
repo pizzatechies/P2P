@@ -267,6 +267,36 @@ pause of a few seconds.
 
 - **Keep `MASTER_KEY` safe.** It's in Parameter Store (`/aurex/<stack>/MASTER_KEY`) and in `.env`. Without it, stored API keys and 2FA secrets can't be decrypted.
 
+### Alerts and monitoring
+
+The stack watches the server and emails the **Alert email** you give it. AWS first sends a confirmation link; click it.
+
+| Alarm | Fires when |
+|---|---|
+| Site down | `/api/health` hasn't answered for 10 minutes (checked every 5 minutes from outside the server) |
+| Backups stopped | No new database snapshot in S3 for 26 hours |
+| Disk nearly full | The server's disk is more than 80% full |
+| App errors | 5 or more server errors in 5 minutes |
+| Ledger seal broken | The app reports that the ledger or audit log doesn't verify |
+| Hardware fault | AWS detects a host problem (the server is also moved to healthy hardware automatically) |
+
+The app's log goes to CloudWatch Logs (`/aurex/<stack>/app`, kept 90 days). The stack's **AppLogs** and **Alarms** outputs link to them. `docker compose logs app` on the server still works.
+
+**Adding this to a stack created before November 2026.** Updating the stack doesn't restart the server.
+
+1. Open the CloudFormation console and choose the stack, then **Update** → **Replace existing template**.
+2. Upload `deploy/aws/aurex.cloudformation.yml` from this repository.
+3. Enter your **Alert email**, and leave the other settings as they are.
+4. Tick the acknowledgement that the stack creates IAM resources, then submit.
+5. Click the confirmation link AWS emails you.
+6. On the server, run the usual update. It notices the new log group and starts sending the app's log there, and starts reporting disk use:
+
+   ```bash
+   cd /opt/aurex/src && sudo git pull && sudo ./deploy/server/install.sh
+   ```
+
+The checker costs nothing within the AWS free tier, and the logs and alarms cost about US$1–2 a month.
+
 ### Logs and health
 
 Follow the app's log:

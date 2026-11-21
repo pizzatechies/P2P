@@ -200,6 +200,34 @@ if [ -n "$BACKUP_BUCKET" ] && ! docker volume inspect aurex_aurex-data >/dev/nul
     || echo "No backup restored (that's normal on a first install)."
 fi
 
+# ---- Monitoring on AWS (when the CloudFormation stack provides it) ------------------------------
+# The stack name is the last part of PARAM_PREFIX (/aurex/<stack>). Its alarms watch the app log
+# (errors, a broken ledger seal) and a disk-use metric this server reports every 10 minutes.
+MONITORING=""
+if [ -n "$PARAM_PREFIX" ] && [ -n "$AWS_REGION" ] && command -v aws >/dev/null; then
+  STACK="${PARAM_PREFIX##*/}"
+  AWSLOGS_GROUP="$PARAM_PREFIX/app"
+  if [ "$(aws logs describe-log-groups --region "$AWS_REGION" --log-group-name-prefix "$AWSLOGS_GROUP" \
+        --query "logGroups[?logGroupName=='$AWSLOGS_GROUP'] | length(@)" --output text 2>/dev/null || true)" = "1" ]; then
+    log "Sending the app's log to CloudWatch Logs ($AWSLOGS_GROUP)"
+    export AWSLOGS_GROUP AWS_REGION
+    COMPOSE+=(-f "$HERE/docker-compose.awslogs.yml")
+    MONITORING="logs"
+  fi
+  AWS_BIN="$(command -v aws)"
+  cat > /usr/local/bin/aurex-disk-metric <<METRIC
+#!/bin/sh
+# Reports how full the disk is to CloudWatch (namespace Aurex/$STACK), for the stack's disk alarm.
+used=\$(df --output=pcent / | tail -1 | tr -dc '0-9')
+"$AWS_BIN" cloudwatch put-metric-data --region "$AWS_REGION" --namespace "Aurex/$STACK" \\
+  --metric-name DiskUsedPercent --unit Percent --value "\$used" >/dev/null 2>&1 || true
+METRIC
+  chmod 755 /usr/local/bin/aurex-disk-metric
+  echo "*/10 * * * * root /usr/local/bin/aurex-disk-metric" > /etc/cron.d/aurex-disk-metric
+  /usr/local/bin/aurex-disk-metric
+  MONITORING="${MONITORING:+$MONITORING, }disk"
+fi
+
 log "Building and starting Aurex (the first build takes a few minutes)"
 PROFILES=()
 [ -n "$BACKUP_BUCKET" ] && PROFILES=(--profile backup)
@@ -221,6 +249,7 @@ Aurex is running.
   Admin email:      $ADMIN_EMAIL
   Admin setup code: stored in $ENV_FILE$( [ -n "$PARAM_PREFIX" ] && echo " and in Parameter Store at $PARAM_PREFIX/ADMIN_SETUP_CODE")
   Backups:          $( [ -n "$BACKUP_BUCKET" ] && echo "streaming to s3://$BACKUP_BUCKET/aurex" || echo "OFF (set BACKUP_BUCKET to turn on)")
+  Monitoring:       $( [ -n "$MONITORING" ] && echo "reporting $MONITORING to CloudWatch" || echo "not set up (needs the AWS stack)")
 
 Next: sign up with $ADMIN_EMAIL, verify your email, turn on 2FA, then enter the setup code
 under Settings -> Admin access.

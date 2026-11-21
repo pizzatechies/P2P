@@ -8,6 +8,8 @@ Metadata:
     ParameterGroups:
       - Label: { default: "Required" }
         Parameters: [AdminEmail]
+      - Label: { default: "Alerts (recommended)" }
+        Parameters: [AlertEmail]
       - Label: { default: "Domain (optional)" }
         Parameters: [DomainName, HostedZoneId]
       - Label: { default: "Server" }
@@ -18,6 +20,7 @@ Metadata:
         Parameters: [UbuntuArm64Ami, UbuntuAmd64Ami]
     ParameterLabels:
       AdminEmail: { default: "Admin email" }
+      AlertEmail: { default: "Alert email" }
       DomainName: { default: "Domain name" }
       HostedZoneId: { default: "Route 53 hosted zone ID" }
 
@@ -27,6 +30,14 @@ Parameters:
     Description: Email of the Aurex admin. Also used for HTTPS certificate notices.
     AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
     ConstraintDescription: Must be an email address.
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: >-
+      Where to send alarms: site down, backups stopped, disk nearly full, app errors, a broken ledger
+      seal, or a hardware fault. AWS emails a confirmation link first; click it. Leave empty for no emails.
+    AllowedPattern: "^$|^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    ConstraintDescription: Leave empty or use an email address.
   DomainName:
     Type: String
     Default: ""
@@ -84,6 +95,7 @@ Conditions:
   MakeRecord: !And [!Condition HasDomain, !Not [!Equals [!Ref HostedZoneId, ""]]]
   AllowSsh: !Not [!Equals [!Ref SshCidr, ""]]
   HasKey: !Not [!Equals [!Ref KeyName, ""]]
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
 
 Resources:
   BackupBucket:
@@ -148,6 +160,20 @@ Resources:
               - Effect: Allow
                 Action: [ssm:GetParameter, ssm:PutParameter]
                 Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/aurex/${AWS::StackName}/*
+        - PolicyName: aurex-logs-and-metrics
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource: !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aurex/${AWS::StackName}/app:*"
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: "*"
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition: { StringEquals: { "cloudwatch:namespace": !Sub "Aurex/${AWS::StackName}" } }
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -254,7 +280,226 @@ Resources:
       EvaluationPeriods: 2
       Threshold: 0
       ComparisonOperator: GreaterThanThreshold
-      AlarmActions: [!Sub "arn:${AWS::Partition}:automate:${AWS::Region}:ec2:recover"]
+      AlarmActions: [!Sub "arn:${AWS::Partition}:automate:${AWS::Region}:ec2:recover", !Ref AlertTopic]
+
+  # ---- Alerts ------------------------------------------------------------------------------------
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: Aurex alerts
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # App logs (the installer sends the app container's log here). Kept 90 days.
+  AppLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aurex/${AWS::StackName}/app"
+      RetentionInDays: 90
+
+  AppErrorFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref AppLogGroup
+      FilterPattern: '"[error]"'
+      MetricTransformations:
+        - { MetricNamespace: !Sub "Aurex/${AWS::StackName}", MetricName: AppErrors, MetricValue: "1", DefaultValue: 0 }
+
+  IntegrityFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref AppLogGroup
+      FilterPattern: '"[integrity]" "verify"'
+      MetricTransformations:
+        - { MetricNamespace: !Sub "Aurex/${AWS::StackName}", MetricName: IntegrityBroken, MetricValue: "1", DefaultValue: 0 }
+
+  AppErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Aurex logged 5 or more server errors in 5 minutes. See the app log in CloudWatch Logs.
+      Namespace: !Sub "Aurex/${AWS::StackName}"
+      MetricName: AppErrors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  IntegrityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: The ledger or audit log seal doesn't verify. Treat as possible tampering (runbook section 6.3).
+      Namespace: !Sub "Aurex/${AWS::StackName}"
+      MetricName: IntegrityBroken
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  # Disk use, reported every 10 minutes by the server (set up by install.sh).
+  DiskAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: The Aurex server's disk is more than 80% full. Free space or increase VolumeSize.
+      Namespace: !Sub "Aurex/${AWS::StackName}"
+      MetricName: DiskUsedPercent
+      Statistic: Maximum
+      Period: 600
+      EvaluationPeriods: 1
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  # Every 5 minutes: is the site answering, and are backups still arriving in S3?
+  CheckerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: aurex-checker
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt BackupBucket.Arn
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition: { StringEquals: { "cloudwatch:namespace": !Sub "Aurex/${AWS::StackName}" } }
+
+  Checker:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Checks that Aurex answers and that database backups keep arriving
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 30
+      MemorySize: 128
+      Role: !GetAtt CheckerRole.Arn
+      Environment:
+        Variables:
+          HEALTH_URL: !If
+            - HasDomain
+            - !Sub "https://${DomainName}/api/health"
+            - !Sub
+              - "https://${Dashed}.sslip.io/api/health"
+              - Dashed: !Join ["-", !Split [".", !Ref ElasticIp]]
+          BACKUP_BUCKET: !Ref BackupBucket
+          NAMESPACE: !Sub "Aurex/${AWS::StackName}"
+      Code:
+        ZipFile: |
+          # Reports two metrics: SiteUp (1 or 0) and BackupAgeHours (age of the newest Litestream
+          # snapshot; Litestream takes one a day, so more than 26 hours means backups have stopped).
+          import os, time, urllib.request
+          import boto3
+
+          s3 = boto3.client("s3")
+          cw = boto3.client("cloudwatch")
+
+          def site_up(url):
+              try:
+                  req = urllib.request.Request(url, headers={"User-Agent": "aurex-health-check"})
+                  with urllib.request.urlopen(req, timeout=10) as r:
+                      return 1 if r.status == 200 else 0
+              except Exception as e:
+                  print("health check failed:", e)
+                  return 0
+
+          def newest_snapshot_age_hours(bucket):
+              # Few requests: the generations, then each generation's snapshots (about one a day).
+              newest = None
+              gens = s3.list_objects_v2(Bucket=bucket, Prefix="aurex/generations/", Delimiter="/").get("CommonPrefixes", [])
+              for g in gens:
+                  kw = {"Bucket": bucket, "Prefix": g["Prefix"] + "snapshots/"}
+                  while True:
+                      page = s3.list_objects_v2(**kw)
+                      for o in page.get("Contents", []):
+                          if newest is None or o["LastModified"] > newest:
+                              newest = o["LastModified"]
+                      if not page.get("IsTruncated"):
+                          break
+                      kw["ContinuationToken"] = page["NextContinuationToken"]
+              # No snapshot at all counts as very old, so the alarm fires.
+              return 9999.0 if newest is None else (time.time() - newest.timestamp()) / 3600
+
+          def handler(event, context):
+              up = site_up(os.environ["HEALTH_URL"])
+              age = newest_snapshot_age_hours(os.environ["BACKUP_BUCKET"])
+              cw.put_metric_data(Namespace=os.environ["NAMESPACE"], MetricData=[
+                  {"MetricName": "SiteUp", "Value": up, "Unit": "Count"},
+                  {"MetricName": "BackupAgeHours", "Value": round(age, 2), "Unit": "None"},
+              ])
+              print({"siteUp": up, "backupAgeHours": round(age, 2)})
+              return {"siteUp": up, "backupAgeHours": age}
+
+  CheckerSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Run the Aurex checker every 5 minutes
+      ScheduleExpression: rate(5 minutes)
+      Targets: [{ Id: checker, Arn: !GetAtt Checker.Arn }]
+
+  CheckerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Checker
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CheckerSchedule.Arn
+
+  SiteDownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Aurex hasn't answered its health check for 10 minutes (runbook section 6.1).
+      Namespace: !Sub "Aurex/${AWS::StackName}"
+      MetricName: SiteUp
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      # No data means the checker itself isn't running: alert too.
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  BackupAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: No new database backup snapshot in 26 hours. Check the litestream container (runbook section 4).
+      Namespace: !Sub "Aurex/${AWS::StackName}"
+      MetricName: BackupAgeHours
+      Statistic: Maximum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 26
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
 
 Outputs:
   AppUrl:
@@ -280,3 +525,9 @@ Outputs:
   SetupLog:
     Description: Where to look if something goes wrong
     Value: "sudo tail -n 100 /var/log/aurex-setup.log"
+  AppLogs:
+    Description: The app's log in CloudWatch Logs (after install.sh has run with this stack)
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Faurex$252F${AWS::StackName}$252Fapp"
+  Alarms:
+    Description: Alarm status (site, backups, disk, errors, ledger seal)
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#alarmsV2:"

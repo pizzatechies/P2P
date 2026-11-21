@@ -31,13 +31,15 @@ cd /opt/aurex/src/deploy/server
 
 ## 2. Monitoring and alerting
 
+All of these email the stack's **Alert email**. For a stack created earlier, see "Adding this to a stack created before November 2026" in [`deploy/aws/README.md`](../../deploy/aws/README.md#alerts-and-monitoring). For SMS too, add a phone subscription to the stack's alert topic in the SNS console.
+
 | What | How | Set up? |
 |---|---|---|
-| Host failure | CloudWatch alarm recovers the instance automatically | Yes (CloudFormation) |
-| Site up | External uptime check on `https://<domain>/api/health` every minute, alerting by SMS and email: UptimeRobot, Better Stack, or a Route 53 health check with an SNS alarm | **To do** |
-| Disk space | CloudWatch agent disk metric with an alarm at 80% | **To do** |
-| Backups flowing | Daily check that the newest object under `s3://<bucket>/aurex/` is less than 1 hour old: an S3 inventory or a small Lambda with an alarm | **To do** |
-| Errors | `docker compose logs app` shows `[error]` lines. Ship logs to CloudWatch Logs (the awslogs driver) with a metric filter on `[error]` and `[integrity]` | **To do** |
+| Host failure | CloudWatch alarm recovers the instance automatically and emails you | Yes (CloudFormation) |
+| Site up | The stack's checker calls `/api/health` every 5 minutes; alarm after 10 minutes down | Yes (CloudFormation, with **Alert email**) |
+| Disk space | The server reports disk use every 10 minutes; alarm above 80% | Yes (stack + `install.sh`) |
+| Backups flowing | The checker looks for a database snapshot in S3 less than 26 hours old | Yes (CloudFormation) |
+| Errors and ledger seal | The app log goes to CloudWatch Logs; alarms on 5+ `[error]` lines in 5 minutes, and on any broken ledger or audit seal | Yes (stack + `install.sh`) |
 | Cost | AWS Budget alert | Set in the setup guide |
 
 Check health by hand:
