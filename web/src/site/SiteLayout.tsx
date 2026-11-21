@@ -93,6 +93,14 @@ export function SiteLayout() {
               <Link to="/about">About Aurex</Link>
             </div>
             <div>
+              <h4>Legal</h4>
+              <AppLink to="/terms">Terms</AppLink>
+              <AppLink to="/privacy">Privacy</AppLink>
+              <AppLink to="/fees">Fees and limits</AppLink>
+              <AppLink to="/complaints">Complaints</AppLink>
+              <AppLink to="/risk">Risk warnings</AppLink>
+            </div>
+            <div>
               <h4>Account</h4>
               {user ? <AppLink to="/app">Dashboard</AppLink> : <AppLink to="/register" fallback={<span className="faint small">Launching soon</span>}>Create account</AppLink>}
               {!user && <AppLink to="/login">Sign in</AppLink>}

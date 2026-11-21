@@ -22,6 +22,23 @@ export function publicRoutes(ctx: Ctx) {
     res.status(201).json(joinWaitlist(ctx, body.email, body.name, body.country));
   });
 
+  /** Company and contact details for the legal pages; anything not set stays a visible placeholder. */
+  r.get("/legal", (_req, res) => {
+    const c = ctx.config;
+    res.json({
+      final: c.LEGAL_FINAL,
+      effectiveDate: c.LEGAL_EFFECTIVE_DATE ?? null,
+      company: { name: c.LEGAL_COMPANY_NAME ?? null, registrationNumber: c.LEGAL_REGISTRATION_NUMBER ?? null, address: c.LEGAL_ADDRESS ?? null, country: c.LEGAL_COUNTRY ?? null },
+      contact: {
+        supportEmail: c.SUPPORT_EMAIL ?? null,
+        supportPhone: c.SUPPORT_PHONE ?? null,
+        complaintsEmail: c.COMPLAINTS_EMAIL ?? c.SUPPORT_EMAIL ?? null,
+        dpoName: c.DPO_NAME ?? null,
+        dpoEmail: c.DPO_EMAIL ?? null,
+      },
+    });
+  });
+
   r.get("/users/:handle", (req, res) => {
     const handle = String(req.params.handle).replace(/^@/, "");
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(handle)) throw notFound("No one with that handle");

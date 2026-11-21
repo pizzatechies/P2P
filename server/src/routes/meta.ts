@@ -18,7 +18,18 @@ export function metaRoutes(ctx: Ctx) {
         withdrawalBps: ctx.config.WITHDRAWAL_FEE_BPS,
         merchantBps: ctx.config.MERCHANT_FEE_BPS,
       },
-      limits: { maxTxUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
+      limits: {
+        maxTxUsd: ctx.config.MAX_TX_USD,
+        dailyUsd: ctx.config.DAILY_LIMIT_USD,
+        byLevel: ctx.config.KYC_LIMITS
+          ? [
+              { level: 0, txUsd: ctx.config.TIER0_TX_USD, dailyUsd: ctx.config.TIER0_DAILY_USD },
+              { level: 1, txUsd: ctx.config.TIER1_TX_USD, dailyUsd: ctx.config.TIER1_DAILY_USD },
+              { level: 2, txUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
+            ]
+          : null,
+        payoutReviewUsd: ctx.config.PAYOUT_REVIEW ? ctx.config.PAYOUT_REVIEW_USD : null,
+      },
       fx: { source: rates.source, asOf: rates.asOf },
       ai: { freeDailyRequests: ctx.config.AI_FREE_DAILY_REQUESTS, freeModels: [...ctx.config.freeModels] },
       pro: ctx.config.PRO_ENABLED

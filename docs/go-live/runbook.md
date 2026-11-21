@@ -206,7 +206,7 @@ Do these in order. Each step is a settings change in `.env` followed by `install
    - Reconcile the same day.
 6. **Safeguarding:** register the trust or safeguarding accounts in Admin → Ledger → Safeguarding, and reconcile daily.
 7. **Fees:** set `MERCHANT_FEE_BPS`, `FX_SPREAD_BPS` and the others, then publish the matching [Fee Schedule](legal/fee-schedule.md).
-8. **Legal pages:** publish the reviewed Terms, Privacy Policy, Risk Warnings and Complaints Policy. Set `SMILEID_PRIVACY_URL` to the published privacy policy.
+8. **Legal pages:** put the lawyer-approved texts in `docs/go-live/legal`, fill in `LEGAL_COMPANY_NAME`, `LEGAL_ADDRESS`, `SUPPORT_EMAIL` and the other `LEGAL_*` settings, redeploy, and check `/terms`, `/privacy`, `/fees`, `/complaints` and `/risk`. Then set `LEGAL_FINAL=true` to remove the draft notice. Smile ID's consent already points to `/privacy`.
 9. **Admin hardening:**
    - two admins, both with 2FA;
    - `ADMIN_ALLOWED_IPS` if your office has a fixed address;

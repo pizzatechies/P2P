@@ -388,6 +388,8 @@ No system can honestly promise to be unhackable. Aurex is built so that a single
 
 The software is a foundation. Running a real money or brokerage business has requirements that code alone can't meet:
 
+**Legal pages.** `/terms`, `/privacy`, `/complaints` and `/risk` show the texts in `docs/go-live/legal`, with your company and contact details filled in from `LEGAL_COMPANY_NAME`, `LEGAL_REGISTRATION_NUMBER`, `LEGAL_ADDRESS`, `LEGAL_COUNTRY`, `LEGAL_EFFECTIVE_DATE`, `SUPPORT_EMAIL`, `SUPPORT_PHONE`, `COMPLAINTS_EMAIL`, `DPO_NAME` and `DPO_EMAIL`. Reviewer notes are left out. Each page says it's a draft until `LEGAL_FINAL=true`. `/fees` is built from the server's live fee and limit settings, so it always matches what's charged. Edit the texts in `docs/go-live/legal` once your lawyer has approved them, then redeploy.
+
 **The [go-live pack](docs/go-live/README.md)** covers the non-code side: market research on regulators, licences and sandboxes in Kenya, Zambia, Nigeria, Ghana and neighbours; draft Terms, Privacy Policy, Fee Schedule, AML/CFT policy, Complaints Policy and Risk Warnings; a compliance pack mapping each requirement to what Aurex already does; and a server runbook (daily checks, backups and restore drills, incidents, and switching from sandbox to real money step by step).
 
 

@@ -24,6 +24,7 @@ import { FeaturesPage } from "./site/Features";
 import { HomePage } from "./site/Home";
 import { PricingPage } from "./site/Pricing";
 import { SecurityPage } from "./site/Security";
+import { FeesPage, LegalPage } from "./site/Legal";
 import { SiteLayout } from "./site/SiteLayout";
 import { setupPwa } from "./pwa";
 import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
@@ -87,6 +88,11 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/security" element={<SecurityPage />} />
+              <Route path="/terms" element={<LegalPage doc="terms" />} />
+              <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+              <Route path="/complaints" element={<LegalPage doc="complaints" />} />
+              <Route path="/risk" element={<LegalPage doc="risk" />} />
+              <Route path="/fees" element={<FeesPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/demo" element={<DemoPage />} />
             </Route>

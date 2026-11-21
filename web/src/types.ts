@@ -52,8 +52,8 @@ export interface Meta {
   appName: string;
   currencies: Currency[];
   rails: Rail[];
-  fees: { p2pBps: number; fxSpreadBps: number; withdrawalBps: number };
-  limits: { maxTxUsd: number; dailyUsd: number };
+  fees: { p2pBps: number; fxSpreadBps: number; withdrawalBps: number; merchantBps?: number };
+  limits: { maxTxUsd: number; dailyUsd: number; byLevel?: { level: number; txUsd: number; dailyUsd: number }[] | null; payoutReviewUsd?: number | null };
   fx: { source: "live" | "static"; asOf: string };
   ai?: { freeDailyRequests: number; freeModels: string[] };
   pro?: { price: number; currency: string; aiDailyRequests: number; freeWeb3Wallets: number } | null;

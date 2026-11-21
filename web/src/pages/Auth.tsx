@@ -302,6 +302,9 @@ export function RegisterPage() {
           <CurrencySelect value={form.defaultCurrency} onChange={set("defaultCurrency")} />
         </Field>
         <ErrorText error={error} />
+        <p className="xs muted" style={{ margin: 0 }}>
+          By creating an account you agree to the <Link to="/terms" target="_blank">Terms of Service</Link> and confirm you've read the <Link to="/privacy" target="_blank">Privacy Policy</Link> and <Link to="/risk" target="_blank">Risk warnings</Link>.
+        </p>
         <button className="btn block lg" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
         <p className="small muted" style={{ textAlign: "center" }}>
           Already have an account? <Link to={`/login${location.search}`}>Sign in</Link>

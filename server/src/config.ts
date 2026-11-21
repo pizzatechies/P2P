@@ -150,6 +150,21 @@ const EnvSchema = z.object({
   SMILEID_AUTO_APPROVE: bool.default(false),
   /** Your privacy policy's address, sent to Smile ID as the consent notice (defaults to APP_URL/privacy). */
   SMILEID_PRIVACY_URL: optionalString,
+
+  // ---- Legal pages (/terms, /privacy, /fees, /complaints, /risk): your details fill the placeholders ----
+  LEGAL_COMPANY_NAME: optionalString,
+  LEGAL_REGISTRATION_NUMBER: optionalString,
+  LEGAL_ADDRESS: optionalString,
+  LEGAL_COUNTRY: optionalString,
+  /** The date the terms take effect, e.g. 2027-01-15. */
+  LEGAL_EFFECTIVE_DATE: optionalString,
+  /** true once a lawyer has approved the texts: removes the "draft" notice from the legal pages. */
+  LEGAL_FINAL: bool.default(false),
+  SUPPORT_EMAIL: optionalString,
+  SUPPORT_PHONE: optionalString,
+  COMPLAINTS_EMAIL: optionalString,
+  DPO_NAME: optionalString,
+  DPO_EMAIL: optionalString,
   /** Aurex Pro: a monthly plan paid from the wallet (bigger AI allowance, Autopilot, more Web3 wallets). */
   PRO_ENABLED: bool.default(false),
   PRO_PRICE: z.coerce.number().positive().default(4.99),
