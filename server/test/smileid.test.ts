@@ -32,6 +32,10 @@ async function smileStub() {
       }
       return { body: { id_types: [] } };
     }
+    if (req.route === "/v3/compare" && req.method === "POST") {
+      if (req.headers["smileid-token"] !== "jwt-token") return { status: 401, body: { status: "Unauthorized", message: "token" } };
+      return { status: 202, body: { status: "accepted", message: "Job accepted", job_id: `cmp_${++jobs}`, user_id: req.body.user_id, created_at: new Date().toISOString() } };
+    }
     if (req.route === "/v3/enhanced_kyc" && req.method === "POST") {
       if (req.headers["smileid-token"] !== "jwt-token") return { status: 401, body: { status: "Unauthorized", message: "token" } };
       return { status: 202, body: { status: "accepted", message: "Job accepted", job_id: `job_${++jobs}`, user_id: req.body.user_id, created_at: new Date().toISOString() } };
@@ -171,5 +175,66 @@ describe("Smile ID government record checks", () => {
     expect(reasons[1]).toMatch(/doesn't look like a National ID/);
     // With no government check running, the old auto-approval still applies.
     expect((env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(a.user.id) as { kyc_level: number }).kyc_level).toBe(1);
+  });
+
+  it("also compares the selfie with the ID photo when switched on, and approves only when both checks pass", async () => {
+    const smile = await smileStub();
+    const env = makeApp({ SMILEID_PARTNER_ID: PARTNER, SMILEID_API_KEY: KEY, SMILEID_BASE_URL: smile.url, SMILEID_AUTO_APPROVE: "true", SMILEID_SELFIE_CHECK: "true", APP_URL: "https://aurex.example.com" });
+    const admin = await makeAdmin(env);
+    const { agent, user } = await signup(env.app, "selfie");
+    await submit(agent, kenyan);
+    const level = () => (env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(user.id) as { kyc_level: number }).kyc_level;
+
+    // Both checks went to Smile ID; the comparison is against the front of the ID document.
+    const gov = smile.calls.find((c) => c.route === "/v3/enhanced_kyc")!;
+    const cmp = smile.calls.find((c) => c.route === "/v3/compare")!;
+    expect(cmp.headers["smileid-partner-id"]).toBe(PARTNER);
+    expect(cmp.body).toMatchObject({ comparison_image_type: "DOCUMENT", user_id: user.id, callback_url: "https://aurex.example.com/api/webhooks/smileid" });
+    const cmpParams = JSON.parse(cmp.body.partner_params);
+    expect(cmpParams).toMatchObject({ aurex_kind: "selfie", aurex_check: expect.stringMatching(/^[0-9a-f]{40}$/) });
+    const govParams = JSON.parse(gov.body.partner_params);
+    expect(cmpParams.aurex_check).not.toBe(govParams.aurex_check); // each check has its own binding
+
+    // The government record matches: not approved yet, the selfie result is still to come.
+    const good = { first_name: "WANJIKU", other_names: "ACHIENG", last_name: "OTIENO", date_of_birth: "1992-07-14", id_number: "23456789" };
+    await webhook(env.app, { status: "clear", product: "enhanced_kyc", partner_params: { ...govParams, job_id: "job_1" }, id_fields: good });
+    expect(level()).toBe(0);
+
+    // A selfie result that isn't bound to the check is ignored.
+    await webhook(env.app, { status: "clear", product: "smart_selfie_compare", partner_params: { job_id: "cmp_2", aurex_submission: cmpParams.aurex_submission } });
+    expect(level()).toBe(0);
+    // The real one: same face, so both checks have passed.
+    await webhook(env.app, { status: "clear", message: "Verification successful", reason: null, product: "smart_selfie_compare", partner_params: { ...cmpParams, job_id: "cmp_2" } });
+    expect(level()).toBe(1);
+    const reviewed = (await admin.get("/api/admin/users/" + user.id)).body.verification[0];
+    expect(reviewed.selfieCheck).toMatchObject({ status: "clear", result: { matched: true } });
+  });
+
+  it("leaves a different face, or photos it can't compare, to a person", async () => {
+    const smile = await smileStub();
+    const env = makeApp({ SMILEID_PARTNER_ID: PARTNER, SMILEID_API_KEY: KEY, SMILEID_BASE_URL: smile.url, SMILEID_AUTO_APPROVE: "true", SMILEID_SELFIE_CHECK: "true" });
+    const admin = await makeAdmin(env);
+    const a = await signup(env.app, "mismatch");
+    await submit(a.agent, kenyan);
+    const govParams = JSON.parse(smile.calls.find((c) => c.route === "/v3/enhanced_kyc")!.body.partner_params);
+    const cmpParams = JSON.parse(smile.calls.find((c) => c.route === "/v3/compare")!.body.partner_params);
+    await webhook(env.app, { status: "clear", partner_params: { ...govParams, job_id: "job_1" }, id_fields: { full_name: "WANJIKU ACHIENG OTIENO", date_of_birth: "1992-07-14" } });
+    await webhook(env.app, { status: "block", reason: "face_verification_failed", message: "The submitted selfie did not match the comparison image.", product: "smart_selfie_compare", partner_params: { ...cmpParams, job_id: "cmp_2" } });
+    expect((env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(a.user.id) as { kyc_level: number }).kyc_level).toBe(0);
+    const queue = (await admin.get("/api/admin/kyc")).body.submissions;
+    expect(queue[0].selfieCheck).toMatchObject({ status: "block", result: { matched: false, reason: "face_verification_failed" } });
+
+    // A PNG selfie can't be sent for comparison: skipped, with the reason for the reviewer.
+    const b = await signup(env.app, "pngselfie");
+    const B = api(b.agent);
+    await B.put("/api/account/verification/1", kenyan);
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(4000, 3)]);
+    await b.agent.post("/api/account/documents/id_front").set("x-aurex-csrf", "1").set("Content-Type", "image/jpeg").send(jpeg());
+    await b.agent.post("/api/account/documents/id_back").set("x-aurex-csrf", "1").set("Content-Type", "image/jpeg").send(jpeg());
+    await b.agent.post("/api/account/documents/selfie").set("x-aurex-csrf", "1").set("Content-Type", "image/png").send(png);
+    await B.post("/api/account/verification/1/submit");
+    const row = env.ctx.db.prepare("SELECT selfie_status, selfie_result FROM kyc_submissions WHERE user_id = ?").get(b.user.id) as { selfie_status: string; selfie_result: string };
+    expect(row.selfie_status).toBe("skipped");
+    expect(JSON.parse(row.selfie_result).reason).toMatch(/JPEG/);
   });
 });

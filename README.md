@@ -195,6 +195,11 @@ Everything about a customer's account lives on the **Account** page (click your 
   - Aurex asks Smile ID which ID types each country supports and checks the number's format first.
   - It then compares the name and date of birth on record with what the customer entered, and shows the outcome on the review card.
   - `SMILEID_AUTO_APPROVE=true` approves level 1 automatically when the record confirms the ID and the name and birth date match (and there's no sanctions match). Anything else waits for a person.
+- Selfie check (`SMILEID_SELFIE_CHECK=true`): Smile ID's SmartSelfie Compare also compares the selfie with the photo on the front of the ID document.
+  - Reviewers see "same face", "different face" or "couldn't compare".
+  - With auto-approval, both the government record and the selfie must pass.
+  - PNG and WebP photos are turned into JPEG in the browser, since Smile ID needs JPEG.
+  - It doesn't include a liveness check. Smile ID's Biometric KYC, which compares the selfie with the government's photo, needs liveness frames from Smile ID's own SDK.
   - Results arrive at `/api/webhooks/smileid`, which checks Smile ID's signature (HMAC with your API key) and refuses old timestamps.
   - Use `SMILEID_ENV=sandbox` until you've run a few test checks, then `production`. Smile ID gives Enhanced KYC access to licensed organisations, so request it from them.
   - Countries or ID types Smile ID doesn't cover go straight to a person, as before.

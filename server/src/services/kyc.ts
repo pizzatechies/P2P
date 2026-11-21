@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { pepBlocksAutoApproval, screenPep } from "./pep.js";
-import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook } from "./smileid.js";
+import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook, isSelfieResult, recordSelfieResult, startSelfieCompare } from "./smileid.js";
 import { screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
@@ -94,6 +94,9 @@ interface SubmissionRow {
   provider_job_id?: string | null;
   provider_status?: string | null;
   provider_result?: string | null;
+  selfie_job_id?: string | null;
+  selfie_status?: string | null;
+  selfie_result?: string | null;
 }
 
 interface DocRow {
@@ -281,6 +284,20 @@ export async function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: s
     if (!started.started) {
       run(ctx.db, "UPDATE kyc_submissions SET provider = 'smileid', provider_status = 'skipped', provider_result = ? WHERE id = ?", JSON.stringify({ status: "skipped", reason: started.reason }), sub.id);
     }
+    // And, when switched on, the selfie is compared with the photo on the front of the ID.
+    if (ctx.config.SMILEID_SELFIE_CHECK) {
+      const selfieDoc = docs.get("selfie");
+      const frontDoc = docs.get("id_front");
+      const selfie = selfieDoc ? readDocument(ctx, selfieDoc.id) : null;
+      const front = frontDoc ? readDocument(ctx, frontDoc.id) : null;
+      const compared = selfie && front
+        ? await startSelfieCompare(ctx, userId, sub.id, selfie, front, data as unknown as IdentityDetails, user.email).catch((err: Error) => ({ started: false as const, reason: err.message }))
+        : { started: false as const, reason: "The selfie or the front of the ID is missing" };
+      checking = checking || compared.started;
+      if (!compared.started) {
+        run(ctx.db, "UPDATE kyc_submissions SET selfie_status = 'skipped', selfie_result = ? WHERE id = ?", JSON.stringify({ status: "skipped", reason: compared.reason }), sub.id);
+      }
+    }
   }
   if (ctx.config.KYC_AUTO_APPROVE && !checking && !flagged && !underSanctionsReview(ctx, userId)) applyReview(ctx, null, sub.id, "approve", "Approved automatically (KYC_AUTO_APPROVE)", ip);
   return verificationOverview(ctx, userId);
@@ -343,6 +360,7 @@ export function listSubmissions(ctx: Ctx, status: "submitted" | "all" = "submitt
       user: { id: r.user_id, email: r.email, handle: r.handle, displayName: r.display_name, kycLevel: r.kyc_level },
       data,
       check: r.provider ? { provider: r.provider, status: r.provider_status, result: r.provider_result ? (JSON.parse(r.provider_result) as Record<string, unknown>) : null } : null,
+      selfieCheck: r.selfie_status ? { status: r.selfie_status, result: r.selfie_result ? (JSON.parse(r.selfie_result) as Record<string, unknown>) : null } : null,
       documents: requiredDocs(r.level, r.level === 1 ? (data as Level1Data | null) : null).map((kind) => {
         const d = docs.get(kind);
         return { kind, label: DOC_LABEL[kind], id: d?.id ?? null, mime: d?.mime ?? null, size: d?.size ?? null, uploadedAt: d?.created_at ?? null };
@@ -403,12 +421,42 @@ export function submissionIdentity(ctx: Ctx, submissionId: string): IdentityDeta
  * with the result shown to the reviewer.
  */
 export function applySmileResult(ctx: Ctx, payload: SmileWebhook) {
+  if (isSelfieResult(payload)) {
+    const selfie = recordSelfieResult(ctx, payload);
+    if (!selfie) return null;
+    audit(ctx, null, "kyc.selfie_check", { submissionId: selfie.submissionId, status: selfie.result.status, matched: selfie.result.matched });
+    maybeAutoApprove(ctx, selfie.submissionId);
+    return selfie;
+  }
   const out = recordSmileResult(ctx, payload, (id) => submissionIdentity(ctx, id));
   if (!out) return null;
   audit(ctx, null, "kyc.government_check", { submissionId: out.submissionId, status: out.result.status, verified: out.verified });
-  const sub = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE id = ?", out.submissionId)!;
-  if (out.verified && sub.status === "submitted" && (ctx.config.SMILEID_AUTO_APPROVE || ctx.config.KYC_AUTO_APPROVE) && !underSanctionsReview(ctx, out.userId) && !pepBlocksAutoApproval(ctx, out.userId)) {
-    applyReview(ctx, null, sub.id, "approve", "Approved automatically: ID confirmed against government records (Smile ID), name and date of birth match");
-  }
+  maybeAutoApprove(ctx, out.submissionId);
   return out;
+}
+
+/**
+ * Approves an identity submission automatically once every check that applies has passed: the
+ * government record confirms the ID, name and date of birth; the selfie matches the ID photo (when
+ * SMILEID_SELFIE_CHECK is on); and there's no open sanctions or PEP question. Anything else waits
+ * for a person.
+ */
+function maybeAutoApprove(ctx: Ctx, submissionId: string) {
+  if (!(ctx.config.SMILEID_AUTO_APPROVE || ctx.config.KYC_AUTO_APPROVE)) return;
+  const sub = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE id = ?", submissionId);
+  if (!sub || sub.status !== "submitted") return;
+  const gov = sub.provider_result ? (JSON.parse(sub.provider_result) as { status?: string; nameMatch?: number | null; dobMatch?: boolean | null }) : null;
+  const governmentOk = gov?.status === "clear" && (gov.nameMatch ?? 0) >= 0.85 && gov.dobMatch !== false;
+  if (!governmentOk) return;
+  if (ctx.config.SMILEID_SELFIE_CHECK && sub.selfie_status !== "clear") return;
+  if (underSanctionsReview(ctx, sub.user_id) || pepBlocksAutoApproval(ctx, sub.user_id)) return;
+  applyReview(
+    ctx,
+    null,
+    sub.id,
+    "approve",
+    ctx.config.SMILEID_SELFIE_CHECK
+      ? "Approved automatically: ID confirmed against government records, name and date of birth match, and the selfie matches the ID photo (Smile ID)"
+      : "Approved automatically: ID confirmed against government records (Smile ID), name and date of birth match",
+  );
 }

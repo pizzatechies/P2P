@@ -58,6 +58,7 @@ How each level is checked:
 - **Government record (Smile ID):** where the country and ID type are supported, the ID number is checked against the issuing authority's records, and the name and date of birth are compared.
   - An exact match may be approved automatically, if `SMILEID_AUTO_APPROVE` is on.
   - Everything else goes to a person.
+- **Selfie check (when switched on):** the selfie is compared with the photo on the ID document (Smile ID SmartSelfie Compare). Automatic approval then also needs a match. There's no liveness check yet.
 - **Reviewers:** they see the record and the comparison. No one can approve their own verification.
 - **Withdrawals and receiving money by email:** these need a verified email address.
 

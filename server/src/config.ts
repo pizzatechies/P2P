@@ -157,6 +157,11 @@ const EnvSchema = z.object({
   SMILEID_AUTO_APPROVE: bool.default(false),
   /** Your privacy policy's address, sent to Smile ID as the consent notice (defaults to APP_URL/privacy). */
   SMILEID_PRIVACY_URL: optionalString,
+  /**
+   * Also compare the customer's selfie with the photo on their ID document (Smile ID SmartSelfie
+   * Compare, billed per check). With auto-approval, both checks must then pass.
+   */
+  SMILEID_SELFIE_CHECK: bool.default(false),
 
   // ---- Politically exposed person screening (OpenSanctions match API) ----
   OPENSANCTIONS_API_KEY: optionalString,

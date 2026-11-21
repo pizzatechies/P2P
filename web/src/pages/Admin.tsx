@@ -70,6 +70,7 @@ export interface KycSubmission {
   data: Record<string, unknown> | null;
   documents: { kind: string; label: string; id: string | null; mime: string | null; size: number | null; uploadedAt: string | null }[];
   check?: { provider: string; status: string | null; result: { status?: string; reason?: string | null; message?: string | null; nameMatch?: number | null; dobMatch?: boolean | null; recordName?: string | null; recordDob?: string | null } | null } | null;
+  selfieCheck?: { status: string; result: { matched?: boolean | null; reason?: string | null; message?: string | null } | null } | null;
 }
 
 export function AdminPage() {
@@ -351,6 +352,7 @@ export function KycSubmissionCard({ s, onReviewed }: { s: KycSubmission; onRevie
       </div>
       {s.reviewNote && <div className="small muted" style={{ marginTop: 6 }}>Note: {s.reviewNote}</div>}
       {s.check && <GovernmentCheck check={s.check} />}
+      {s.selfieCheck && <SelfieCheck check={s.selfieCheck} />}
       {s.data && (
         <div className="kv" style={{ marginTop: 8 }}>
           {Object.entries(s.data).filter(([k, v]) => v !== "" && k !== "address").map(([k, v]) => (
@@ -774,6 +776,21 @@ function GovernmentCheck({ check }: { check: NonNullable<KycSubmission["check"]>
           {r.recordName && <div className="faint xs">On record: {r.recordName}{r.recordDob ? `, born ${r.recordDob}` : ""}</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Smile ID's comparison of the selfie with the photo on the front of the ID document. */
+function SelfieCheck({ check }: { check: NonNullable<KycSubmission["selfieCheck"]> }) {
+  const r = check.result;
+  const label =
+    check.status === "pending" ? "waiting for result" : check.status === "skipped" ? "not compared" : r?.matched === true ? "same face" : r?.matched === false ? "different face" : "couldn't compare";
+  const tone = r?.matched === true && check.status === "clear" ? "good" : r?.matched === false || check.status === "block" ? "bad" : "";
+  return (
+    <div className="small" style={{ marginTop: 6, padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 8 }}>
+      <strong>Selfie vs ID photo</strong> <span className="faint xs">(Smile ID, without a liveness check)</span> <span className={`pill ${tone}`}>{label}</span>
+      {check.status === "attention" && <span className="faint"> · same face, but Smile ID flagged a risk</span>}
+      {r?.reason && <span className="faint"> · {String(r.reason).replace(/_/g, " ")}</span>}
     </div>
   );
 }

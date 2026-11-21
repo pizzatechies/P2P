@@ -144,6 +144,75 @@ export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: s
   return { started: true, jobId: r.job_id ?? "" };
 }
 
+/**
+ * Compares the customer's selfie with the photo on the front of their ID document (SmartSelfie
+ * Compare). Smile ID needs JPEG photos; without a liveness capture, Smile ID skips its active
+ * liveness check, so this confirms the same face, not that a live person took the selfie.
+ */
+export async function startSelfieCompare(
+  ctx: Ctx,
+  userId: string,
+  submissionId: string,
+  selfie: { bytes: Buffer; mime: string },
+  idFront: { bytes: Buffer; mime: string },
+  d: IdentityDetails,
+  email: string,
+): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
+  if (selfie.mime !== "image/jpeg" || idFront.mime !== "image/jpeg") {
+    return { started: false, reason: "The selfie and the front of the ID need to be JPEG photos for the automatic comparison; check them by eye" };
+  }
+  const tokens = d.legalName.trim().split(/\s+/);
+  const lastName = tokens.length > 1 ? tokens.pop()! : tokens[0];
+  const phone = d.phone.replace(/[\s()-]/g, "");
+  const form = new FormData();
+  form.append("selfie_image", new Blob([new Uint8Array(selfie.bytes)], { type: "image/jpeg" }), "selfie.jpg");
+  form.append("comparison_image", new Blob([new Uint8Array(idFront.bytes)], { type: "image/jpeg" }), "id-front.jpg");
+  form.append("comparison_image_type", "DOCUMENT");
+  form.append("user_id", userId);
+  form.append("callback_url", new URL("/api/webhooks/smileid", ctx.config.APP_URL).toString());
+  form.append("user_details", JSON.stringify({ given_names: tokens.join(" ") || lastName, last_name: lastName, email, ...(/^\+[1-9]\d{6,14}$/.test(phone) ? { phone_number: phone } : {}) }));
+  form.append(
+    "consent",
+    JSON.stringify({ granted: true, granted_at: nowIso(), notice_language: "EN", notice_privacy_policy_url: ctx.config.SMILEID_PRIVACY_URL ?? new URL("/privacy", ctx.config.APP_URL).toString() }),
+  );
+  form.append("partner_params", JSON.stringify({ aurex_submission: submissionId, aurex_user: userId, aurex_kind: "selfie", aurex_check: callbackCheck(ctx, `selfie:${submissionId}`) }));
+  const r = await call<{ job_id?: string }>(ctx, "/v3/compare", {
+    method: "POST",
+    headers: { "SmileID-Partner-ID": ctx.config.SMILEID_PARTNER_ID!, "SmileID-Token": await token(ctx, userId) },
+    form,
+  });
+  run(ctx.db, "UPDATE kyc_submissions SET selfie_job_id = ?, selfie_status = 'pending', selfie_result = NULL, updated_at = ? WHERE id = ?", r.job_id ?? null, nowIso(), submissionId);
+  return { started: true, jobId: r.job_id ?? "" };
+}
+
+/** True for a SmartSelfie Compare result (as opposed to a government record check). */
+export const isSelfieResult = (p: SmileWebhook) => p.product === "smart_selfie_compare" || p.partner_params?.aurex_kind === "selfie";
+
+/** Records a selfie comparison result for the check Aurex started (same binding rules as the government check). */
+export function recordSelfieResult(ctx: Ctx, payload: SmileWebhook) {
+  const p = payload.partner_params ?? {};
+  type Row = { id: string; user_id: string; selfie_job_id: string | null; selfie_status: string | null };
+  const cols = "id, user_id, selfie_job_id, selfie_status";
+  const byJob = p.job_id ? one<Row>(ctx.db, `SELECT ${cols} FROM kyc_submissions WHERE selfie_job_id = ?`, String(p.job_id)) : undefined;
+  const bySub = p.aurex_submission ? one<Row>(ctx.db, `SELECT ${cols} FROM kyc_submissions WHERE id = ?`, String(p.aurex_submission)) : undefined;
+  const sub = byJob ?? bySub;
+  if (!sub) return null;
+  if (!safeEqual(String(p.aurex_check ?? ""), callbackCheck(ctx, `selfie:${sub.id}`))) return null;
+  if (sub.selfie_job_id && p.job_id && String(p.job_id) !== sub.selfie_job_id) return null;
+  if (sub.selfie_status !== "pending") return null;
+  const status = payload.status ?? "error";
+  const result = {
+    status,
+    // clear: same face; block with face_verification_failed: a different face; error: couldn't compare.
+    matched: status === "clear" || status === "attention" ? true : payload.reason === "face_verification_failed" ? false : null,
+    reason: payload.reason ?? null,
+    message: payload.message ?? null,
+    checkedAt: nowIso(),
+  };
+  run(ctx.db, "UPDATE kyc_submissions SET selfie_status = ?, selfie_result = ?, updated_at = ? WHERE id = ?", status, JSON.stringify(result), nowIso(), sub.id);
+  return { submissionId: sub.id, userId: sub.user_id, result };
+}
+
 /** The value Smile ID must echo back for a result to count for this submission. */
 export function callbackCheck(ctx: Ctx, submissionId: string) {
   return createHmac("sha256", ctx.config.masterKey).update(`aurex:smileid-callback:${submissionId}`).digest("hex").slice(0, 40);

@@ -243,6 +243,26 @@ function LevelForm({ info, onChange, autoApprove }: { info: LevelInfo; onChange:
   );
 }
 
+/** PNG and WebP photos are re-saved as JPEG in the browser (PDFs and JPEGs go as they are). */
+async function asJpeg(file: File): Promise<Blob> {
+  if (file.type !== "image/png" && file.type !== "image/webp") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const g = canvas.getContext("2d");
+    if (!g) return file;
+    g.fillStyle = "#fff"; // transparent areas become white, not black
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    g.drawImage(bitmap, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    return blob && blob.size <= 5 * 1024 * 1024 ? blob : file;
+  } catch {
+    return file;
+  }
+}
+
 function DocumentRow({ doc, disabled, onUploaded }: { doc: DocStatus; disabled: boolean; onUploaded: () => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -250,7 +270,7 @@ function DocumentRow({ doc, disabled, onUploaded }: { doc: DocStatus; disabled: 
     if (!file) return;
     setBusy(true);
     try {
-      await upload(`/api/account/documents/${doc.kind}`, file);
+      await upload(`/api/account/documents/${doc.kind}`, await asJpeg(file));
       toast(`${doc.label} uploaded`);
       onUploaded();
     } catch (e) {

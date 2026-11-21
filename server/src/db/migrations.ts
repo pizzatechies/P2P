@@ -826,4 +826,11 @@ export const migrations: string[] = [
   `
   ALTER TABLE users ADD COLUMN pep_confirmed_at TEXT;
   `,
+  // 22: Smile ID selfie comparison (selfie vs the photo on the ID document), next to the government check.
+  `
+  ALTER TABLE kyc_submissions ADD COLUMN selfie_job_id TEXT;
+  ALTER TABLE kyc_submissions ADD COLUMN selfie_status TEXT;
+  ALTER TABLE kyc_submissions ADD COLUMN selfie_result TEXT;
+  CREATE INDEX kyc_submissions_selfie_job ON kyc_submissions(selfie_job_id) WHERE selfie_job_id IS NOT NULL;
+  `,
 ];
