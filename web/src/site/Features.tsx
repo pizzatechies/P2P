@@ -42,6 +42,26 @@ export function FeaturesPage() {
         </div>
       </Section>
 
+      <Section id="business">
+        <div className="split reverse">
+          <div>
+            <SectionHead eyebrow="Business accounts" title="Get paid as a business" lead="Sell from a stall, a shop or online: customers pay you by @handle or your pay link, and see your business name with a verified badge." />
+            <ul className="check-list">
+              <Check>Your business name and a "Verified business" badge on every payment to you</Check>
+              <Check>{meta?.fees.merchantBps ? `A ${(meta.fees.merchantBps / 100).toFixed(2)}% fee on each payment you receive; your customers pay exactly your price` : "Customers pay exactly your price"}</Check>
+              <Check>See what you've taken today, this week and this month, with the fees</Check>
+              <Check>Sole traders apply in minutes; registered companies add their directors, owners and documents</Check>
+            </ul>
+          </div>
+          <div className="feature-visual">
+            <div className="fv-title"><Icon.Wallet size={16} /> Pay link</div>
+            <div className="fv-field"><span className="faint xs">You're paying</span><strong>Mama Njeri Groceries</strong></div>
+            <div className="fv-field"><span className="faint xs">@mamanjeri</span><span className="pill good" style={{ alignSelf: "flex-start" }}>Verified business</span></div>
+            <div className="btn block" style={{ pointerEvents: "none" }}>Choose amount and pay</div>
+          </div>
+        </div>
+      </Section>
+
       <Section id="ai" tone="warm">
         <div className="split reverse">
           <div>
@@ -204,6 +224,8 @@ export function FeaturesPage() {
             ["Monthly statements", "Print one, save it as a PDF or download a CSV for your accountant."],
             ["Your data, your call", "Download everything we hold about you, or close your account yourself."],
             ["Account numbers", "Every account gets a number with a check digit, so a typo never pays a stranger."],
+            ["Help with a reference", "Every request gets a reference number, and complaints get a written answer within 15 business days."],
+            ["Forgot your password?", "Reset it with a single-use link to your email; your two-factor code still protects you."],
           ].map(([t, d]) => (
             <div key={t} className="mini">
               <h3>{t}</h3>

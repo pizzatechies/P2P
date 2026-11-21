@@ -1,13 +1,13 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../state";
-import { Check, CtaBand, Faq, PrimaryCta, Section, SectionHead, usePageTitle } from "./common";
+import { AppLink, Check, CtaBand, Faq, PrimaryCta, Section, SectionHead, usePageTitle } from "./common";
 
 const pctOrFree = (bps: number) => (bps === 0 ? "Free" : `${(bps / 100).toFixed(2)}%`);
 
 export function PricingPage() {
   usePageTitle("Pricing");
   const { meta } = useAuth();
-  const fees = meta?.fees ?? { p2pBps: 0, fxSpreadBps: 50, withdrawalBps: 0 };
+  const fees: { p2pBps: number; fxSpreadBps: number; withdrawalBps: number; merchantBps?: number } = meta?.fees ?? { p2pBps: 0, fxSpreadBps: 50, withdrawalBps: 0 };
   const limits = meta?.limits ?? { maxTxUsd: 10000, dailyUsd: 25000 };
   const freeAi = meta?.ai?.freeDailyRequests ?? 25;
   const pro = meta?.pro ?? null;
@@ -16,6 +16,11 @@ export function PricingPage() {
     ["Opening an account", "Free", "No monthly fee"],
     ["Sending money to Aurex users", pctOrFree(fees.p2pBps), "Any amount up to your limits"],
     ["Requesting money", "Free", "Your friend pays the amount you request"],
+    [
+      "Getting paid as a business",
+      fees.merchantBps ? `${(fees.merchantBps / 100).toFixed(2)}% of each payment` : "Free",
+      "Approved business accounts show your business name on your pay link; the fee comes out of what you receive, so your customers pay exactly your price",
+    ],
     ["Currency conversion", `${(fees.fxSpreadBps / 100).toFixed(2)}% spread`, "Shown before you confirm, no hidden markup"],
     ["Adding money", "Free from Aurex", "M-Pesa, MTN MoMo, PayPal, Skrill, card or bank; your provider may charge its own fees"],
     ["Withdrawing", pctOrFree(fees.withdrawalBps), "To M-Pesa, MTN MoMo, PayPal, Venmo, Skrill, a bank in 160+ countries or MoneyGram cash pickup, where enabled"],
@@ -39,7 +44,7 @@ export function PricingPage() {
         <div className="site-container">
           <span className="eyebrow">Pricing</span>
           <h1>Simple, <span className="gold-text">honest pricing.</span></h1>
-          <p className="lead">No subscriptions and no surprises. The figures on this page come straight from the live platform settings.</p>
+          <p className="lead">No required subscriptions and no surprises. The figures on this page come straight from the live platform settings.</p>
         </div>
       </section>
 
@@ -76,6 +81,9 @@ export function PricingPage() {
               </table>
             </div>
           </div>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            Every fee, and the limits for each verification level: <AppLink to="/fees">fees and limits</AppLink>.
+          </p>
         </div>
       </Section>
 
