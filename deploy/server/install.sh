@@ -136,7 +136,7 @@ if [ -n "$PARAM_PREFIX" ] && [ -n "$AWS_REGION" ] && command -v aws >/dev/null &
   while IFS=$'\t' read -r name value; do
     [ -n "$name" ] || continue
     if [ -n "$value" ]; then STORED[$name]="$value"; else GONE[$name]=1; fi
-  done < <(grep -oE '^[A-Z0-9_]+=' "$EXAMPLE" | tr -d '=' | grep -E 'KEY|SECRET|TOKEN|PASSWORD|PASSKEY|WORD' \
+  done < <(grep -oE '^[A-Z0-9_]+=' "$EXAMPLE" | tr -d '=' | grep -E 'KEY|SECRET|TOKEN|PASSWORD|PASSKEY|WORD|_PIN$' \
     | grep -Ev '^MASTER_KEY' | sort -u \
     | xargs -P 8 -I{} sh -c 'if out=$(aws ssm get-parameter --region "$0" --with-decryption --name "$1/{}" \
           --query Parameter.Value --output text 2>&1); then printf "%s\t%s\n" "{}" "$out";

@@ -259,6 +259,17 @@ const EnvSchema = z.object({
   MTN_MOMO_DISBURSEMENT_USER_ID: optionalString,
   MTN_MOMO_DISBURSEMENT_API_KEY: optionalString,
   MTN_MOMO_BASE_URL: optionalString,
+  /** Airtel Money (add "airtel" to PAYMENT_RAILS): collections, and payouts once the PIN and public key are set. */
+  AIRTEL_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  AIRTEL_CLIENT_ID: optionalString,
+  AIRTEL_CLIENT_SECRET: optionalString,
+  /** Country and currency of the Airtel merchant account, e.g. KE and KES, ZM and ZMW. */
+  AIRTEL_COUNTRY: z.string().length(2).default("KE"),
+  AIRTEL_CURRENCY: z.string().length(3).default("KES"),
+  /** Payouts: the disbursement PIN, and Airtel's RSA public key (from the portal) to encrypt it with. */
+  AIRTEL_DISBURSEMENT_PIN: optionalString,
+  AIRTEL_PUBLIC_KEY: optionalString,
+  AIRTEL_BASE_URL: optionalString,
   /** PayPal and Venmo (add "paypal" to PAYMENT_RAILS). */
   PAYPAL_ENV: z.enum(["sandbox", "live"]).default("sandbox"),
   PAYPAL_CLIENT_ID: optionalString,

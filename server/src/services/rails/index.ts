@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import type { Ctx } from "../../context.js";
 import { badRequest } from "../../lib/errors.js";
 import { CURRENCIES } from "../../lib/money.js";
+import { airtelRail } from "./airtel.js";
 import { flutterwaveRail } from "./flutterwave.js";
 import { moneygramRail } from "./moneygram.js";
 import { mpesaRail } from "./mpesa.js";
@@ -60,6 +61,22 @@ export function getRails(ctx: Ctx): Map<string, PaymentRail> {
           collection: keys(c.MTN_MOMO_COLLECTION_SUBSCRIPTION_KEY, c.MTN_MOMO_COLLECTION_USER_ID, c.MTN_MOMO_COLLECTION_API_KEY),
           disbursement: keys(c.MTN_MOMO_DISBURSEMENT_SUBSCRIPTION_KEY, c.MTN_MOMO_DISBURSEMENT_USER_ID, c.MTN_MOMO_DISBURSEMENT_API_KEY),
           callbackUrl: new URL("/api/webhooks/mtn-momo", c.APP_URL).toString(),
+        }),
+      );
+    } else if (id === "airtel" && c.AIRTEL_CLIENT_ID && c.AIRTEL_CLIENT_SECRET) {
+      const currency = c.AIRTEL_CURRENCY.toUpperCase();
+      if (!CURRENCIES[currency]) console.warn(`[rails] Airtel Money currency ${currency} isn't one Aurex holds; the rail will refuse every amount`);
+      rails.set(
+        id,
+        airtelRail({
+          baseUrl: c.AIRTEL_BASE_URL ?? (c.AIRTEL_ENV === "production" ? "https://openapi.airtel.africa" : "https://openapiuat.airtel.africa"),
+          sandbox: c.AIRTEL_ENV !== "production",
+          clientId: c.AIRTEL_CLIENT_ID,
+          clientSecret: c.AIRTEL_CLIENT_SECRET,
+          country: c.AIRTEL_COUNTRY,
+          currency,
+          disbursementPin: c.AIRTEL_DISBURSEMENT_PIN,
+          publicKey: c.AIRTEL_PUBLIC_KEY,
         }),
       );
     } else if (id === "paypal" && c.PAYPAL_CLIENT_ID && c.PAYPAL_CLIENT_SECRET) {

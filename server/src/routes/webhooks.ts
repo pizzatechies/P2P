@@ -207,6 +207,15 @@ export function webhookRoutes(ctx: Ctx) {
   r.post("/mtn-momo", momo);
   r.put("/mtn-momo", momo);
 
+  /** Airtel Money calls back with our transaction id; the result is then read from Airtel itself. */
+  r.post("/airtel", async (req, res) => {
+    const body = jsonBody<{ transaction?: { id?: string } }>(req.body);
+    const id = body?.transaction?.id;
+    const ext = id ? findExternalById(ctx, String(id)) : undefined;
+    if (ext && ext.rail === "airtel") await recheck(ext.id, "airtel");
+    res.json({ received: true });
+  });
+
   /** PayPal: order, capture and payout events only trigger a re-check through PayPal's API. */
   r.post("/paypal", async (req, res) => {
     const body = jsonBody<{
