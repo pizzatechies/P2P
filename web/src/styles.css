@@ -658,3 +658,15 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .legal-md h3 { font-size: 16px; margin: 20px 0 8px; }
 .legal-md li { margin-bottom: 4px; }
 .legal-links { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+/* Help and support threads */
+.case-row { display: block; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; color: inherit; font: inherit; }
+.case-row:hover { border-color: var(--border-strong); }
+.case-row.active { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+.thread { display: flex; flex-direction: column; gap: 10px; max-height: 460px; overflow-y: auto; padding-right: 2px; }
+.msg { border-radius: 12px; padding: 10px 12px; background: var(--surface-2); max-width: 92%; }
+.msg.customer { align-self: flex-end; background: var(--surface-2); border: 1px solid var(--border); }
+.msg.staff { background: var(--brand-soft); }
+.msg.system { background: transparent; border: 1px dashed var(--border-strong); }
+.msg.internal { background: var(--warn-soft); border-left: 3px solid var(--warn); }
+.msg-body { white-space: pre-wrap; font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }

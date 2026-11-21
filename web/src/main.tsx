@@ -30,6 +30,8 @@ import { setupPwa } from "./pwa";
 import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
 import { ReauthProvider } from "./components/reauth";
 import { LearnPage } from "./pages/Learn";
+import { HelpPage } from "./pages/Help";
+import { AdminSupportPage } from "./pages/AdminSupport";
 import { UpgradePage } from "./pages/Upgrade";
 import "./styles.css";
 
@@ -119,6 +121,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="trading/records" element={<TradingRecordsPage />} />
               <Route path="pro" element={<ProPage />} />
               <Route path="admin/ledger" element={<AdminLedgerPage />} />
+              <Route path="admin/support" element={<AdminSupportPage />} />
+              <Route path="help" element={<HelpPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

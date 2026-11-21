@@ -390,6 +390,19 @@ The software is a foundation. Running a real money or brokerage business has req
 
 **Legal pages.** `/terms`, `/privacy`, `/complaints` and `/risk` show the texts in `docs/go-live/legal`, with your company and contact details filled in from `LEGAL_COMPANY_NAME`, `LEGAL_REGISTRATION_NUMBER`, `LEGAL_ADDRESS`, `LEGAL_COUNTRY`, `LEGAL_EFFECTIVE_DATE`, `SUPPORT_EMAIL`, `SUPPORT_PHONE`, `COMPLAINTS_EMAIL`, `DPO_NAME` and `DPO_EMAIL`. Reviewer notes are left out. Each page says it's a draft until `LEGAL_FINAL=true`. `/fees` is built from the server's live fee and limit settings, so it always matches what's charged. Edit the texts in `docs/go-live/legal` once your lawyer has approved them, then redeploy.
 
+**Help and complaints.** Customers open requests under **Help**, and each gets a reference such as `AX-2611-0001`.
+- **Security or fraud reports** are marked urgent.
+- **Complaints:**
+  - The customer gets an acknowledgement straight away, with a deadline of `COMPLAINT_RESPONSE_DAYS` business days (15 by default).
+  - Any request can be turned into a formal complaint.
+  - The final answer must record an outcome (upheld, partly upheld, not upheld or withdrawn) and tells the customer where they can refer it.
+- **Admin → Support:**
+  - Staff reply, or leave internal notes the customer never sees, and nobody can handle their own case.
+  - Overdue complaints are flagged.
+  - The complaints report gives counts, outcomes, the median time to answer and late answers, and the complaints log downloads as CSV for regulators.
+- **Notifications:** customers get an in-app alert and an email when there's a reply. The email doesn't include the message.
+- **Data download:** cases are included, without staff notes.
+
 **The [go-live pack](docs/go-live/README.md)** covers the non-code side: market research on regulators, licences and sandboxes in Kenya, Zambia, Nigeria, Ghana and neighbours; draft Terms, Privacy Policy, Fee Schedule, AML/CFT policy, Complaints Policy and Risk Warnings; a compliance pack mapping each requirement to what Aurex already does; and a server runbook (daily checks, backups and restore drills, incidents, and switching from sandbox to real money step by step).
 
 

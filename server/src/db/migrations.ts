@@ -756,4 +756,37 @@ export const migrations: string[] = [
     attempts   INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // 18: Help and complaints: cases with a reference number, and their messages (staff notes included).
+  `
+  CREATE TABLE support_cases (
+    id                TEXT PRIMARY KEY,
+    reference         TEXT NOT NULL UNIQUE,
+    user_id           TEXT NOT NULL REFERENCES users(id),
+    category          TEXT NOT NULL CHECK (category IN ('question','payment','account','security','complaint','other')),
+    is_complaint      INTEGER NOT NULL DEFAULT 0,
+    priority          TEXT NOT NULL CHECK (priority IN ('normal','high')),
+    subject           TEXT NOT NULL,
+    status            TEXT NOT NULL CHECK (status IN ('open','waiting_customer','resolved')),
+    assigned_to       TEXT,
+    resolution        TEXT,
+    outcome           TEXT CHECK (outcome IS NULL OR outcome IN ('upheld','partly_upheld','not_upheld','withdrawn')),
+    due_at            TEXT,
+    first_response_at TEXT,
+    resolved_at       TEXT,
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+  );
+  CREATE INDEX support_cases_user ON support_cases(user_id, updated_at);
+  CREATE INDEX support_cases_status ON support_cases(status, updated_at);
+  CREATE TABLE support_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_id     TEXT NOT NULL REFERENCES support_cases(id),
+    author_type TEXT NOT NULL CHECK (author_type IN ('customer','staff','system')),
+    author_id   TEXT,
+    internal    INTEGER NOT NULL DEFAULT 0,
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX support_messages_case ON support_messages(case_id, id);
+  `,
 ];

@@ -14,6 +14,7 @@ const NAV = [
   { to: "/app/trading", label: "Trading", icon: Icon.Chart },
   { to: "/app/learn", label: "Learn", icon: Icon.Learn },
   { to: "/app/settings", label: "Settings", icon: Icon.Settings },
+  { to: "/app/help", label: "Help", icon: Icon.Mail },
 ];
 
 export function ThemeButton() {

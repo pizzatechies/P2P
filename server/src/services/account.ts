@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { exportCases } from "./support.js";
 import { toCsv } from "../lib/csv.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { badRequest, notFound, unprocessable } from "../lib/errors.js";
@@ -226,6 +227,7 @@ export function exportData(ctx: Ctx, userId: string) {
       },
     },
     plan: one(ctx.db, "SELECT status, currency, amount_minor AS amountMinor, started_at AS startedAt, current_period_end AS currentPeriodEnd, cancel_at_period_end AS cancelAtPeriodEnd, comped FROM subscriptions WHERE user_id = ?", userId) ?? null,
+    support: exportCases(ctx, userId),
     business: one(ctx.db, "SELECT business_name AS businessName, category, registration_number AS registrationNumber, country, website, status, review_note AS reviewNote, reviewed_at AS reviewedAt, created_at AS createdAt FROM business_profiles WHERE user_id = ?", userId) ?? null,
     aiConversations: conversations.map((c) => ({
       ...c,

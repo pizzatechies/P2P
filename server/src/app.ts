@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { proRoutes } from "./routes/pro.js";
+import { supportRoutes } from "./routes/support.js";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -152,6 +153,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   app.use("/api/trading", tradingRoutes(ctx));
   app.use("/api/learn", learnRoutes(ctx));
   app.use("/api/pro", proRoutes(ctx));
+  app.use("/api/support", supportRoutes(ctx));
   app.use("/api/admin", adminRoutes(ctx));
 
   app.use("/api", (_req, _res, next) => next(new HttpError(404, "not_found", "No such endpoint")));

@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { listBusinessApplications, reviewBusiness } from "../services/business.js";
+import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
+import { toCsv } from "../lib/csv.js";
 import { comp as compPro } from "../services/pro.js";
 import { createInvite, inviteFromWaitlist, listInvites, listWaitlist, revokeInvite, signupStatus } from "../services/beta.js";
 import { listStatus, refreshSanctionsLists, screenName } from "../services/sanctions.js";
@@ -66,6 +68,7 @@ export function adminRoutes(ctx: Ctx) {
     ).map((a) => ({ currency: a.currency, total: fromMinor(a.total, a.currency) }));
     const pendingPayouts = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM external_transfers WHERE status = 'pending' AND review_status = 'required'")!.n;
     const openAlerts = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM compliance_alerts WHERE status = 'open'")!.n;
+    const openSupport = openSupportCount(ctx);
     const safeguarding = safeguardingPosition(ctx).map((p) => ({ currency: p.currency, status: p.status, difference: p.difference }));
     res.json({
       users,
@@ -77,6 +80,7 @@ export function adminRoutes(ctx: Ctx) {
       integrity: recentIntegrity(ctx),
       pendingPayouts,
       openAlerts,
+      openSupport,
       safeguarding,
     });
   });
@@ -164,6 +168,51 @@ export function adminRoutes(ctx: Ctx) {
     const transfer = rejectPayout(ctx, req.user!.id, String(req.params.id), note);
     audit(ctx, req.user!.id, "payout.rejected", { id: req.params.id }, req.ip);
     res.json({ transfer });
+  });
+
+  // ---- Help and complaints ----
+  r.get("/support/cases", (req, res) => {
+    const q = parse(z.object({ status: z.enum(["active", "open", "waiting_customer", "resolved", "all"]).optional(), complaints: z.enum(["1", "0"]).optional() }), req.query);
+    res.json({ cases: listCases(ctx, { status: q.status, complaints: q.complaints === "1" }), open: openSupportCount(ctx) });
+  });
+
+  r.get("/support/cases/:id", (req, res) => {
+    res.json(staffCaseDetail(ctx, String(req.params.id)));
+  });
+
+  r.post("/support/cases/:id/messages", async (req, res) => {
+    const body = parse(z.object({ body: z.string().trim().min(2).max(5000), internal: z.boolean().optional() }), req.body);
+    res.json(await staffReply(ctx, req.user!.id, String(req.params.id), body.body, body.internal ?? false, req.ip));
+  });
+
+  r.post("/support/cases/:id/assign", (req, res) => {
+    const { toSelf } = parse(z.object({ toSelf: z.boolean() }), req.body);
+    res.json(assignCase(ctx, req.user!.id, String(req.params.id), toSelf, req.ip));
+  });
+
+  r.post("/support/cases/:id/resolve", async (req, res) => {
+    const body = parse(z.object({ resolution: z.string().trim().min(5).max(3000), outcome: z.enum(OUTCOMES).optional() }), req.body);
+    res.json(await resolveCase(ctx, req.user!.id, String(req.params.id), body.resolution, body.outcome, req.ip));
+  });
+
+  /** Complaints statistics and log for a period: ?from=2026-10-01&to=2026-12-31[&format=csv]. */
+  r.get("/support/report", (req, res) => {
+    const q = parse(z.object({ from: day, to: day, format: z.enum(["json", "csv"]).optional() }), req.query);
+    const report = complaintsReport(ctx, q.from, q.to);
+    if (q.format === "csv") {
+      audit(ctx, req.user!.id, "admin.complaints_exported", { from: q.from, to: q.to }, req.ip);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="aurex-complaints-${q.from}-to-${q.to}.csv"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(
+        toCsv([
+          ["Reference", "Received", "Customer", "Category", "Subject", "Status", "Outcome", "Due", "Resolved", "Days to resolve", "Within deadline"],
+          ...report.log.map((l) => [l.reference, l.received, l.customer, l.category, l.subject, l.status, l.outcome ?? "", l.due ?? "", l.resolved ?? "", l.daysToResolve ?? "", l.withinDeadline === null ? "" : l.withinDeadline ? "yes" : "no"]),
+        ]),
+      );
+      return;
+    }
+    res.json({ report });
   });
 
   // ---- Business accounts ----

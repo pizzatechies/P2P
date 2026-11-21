@@ -104,6 +104,8 @@ const EnvSchema = z.object({
   WITHDRAWAL_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(0),
   /** Kept from each payment an approved business account receives (100 = 1%); the payer pays nothing extra. */
   MERCHANT_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(0),
+  /** Business days to give a final answer to a complaint (the complaints policy promises 15). */
+  COMPLAINT_RESPONSE_DAYS: z.coerce.number().int().min(1).max(60).default(15),
   /** Largest single transfer/withdrawal, in USD-equivalent major units. */
   MAX_TX_USD: z.coerce.number().positive().default(10_000),
   /** Rolling 24h outbound limit per user, in USD-equivalent major units. */
