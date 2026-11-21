@@ -140,3 +140,25 @@ export function airtelRail(opts: AirtelOptions): PaymentRail {
     },
   };
 }
+
+/**
+ * The merchant wallet's balance (GET /standard/v1/users/balance), for the daily safeguarding
+ * reconciliation. Returns the balance as a decimal string in the account's currency.
+ */
+export async function airtelBalance(opts: { baseUrl: string; clientId: string; clientSecret: string; country: string; currency: string }) {
+  const auth = await railJson<{ access_token?: string }>("Airtel Money", `${opts.baseUrl}/auth/oauth2/token`, {
+    method: "POST",
+    body: { client_id: opts.clientId, client_secret: opts.clientSecret, grant_type: "client_credentials" },
+  });
+  if (!auth.access_token) throw new HttpError(502, "rail_error", "Airtel Money didn't return an access token");
+  const res = await railFetch<{ data?: { balance?: string | number; currency?: string; account_status?: string }; status?: { success?: boolean; message?: string } }>(
+    "Airtel Money",
+    `${opts.baseUrl}/standard/v1/users/balance`,
+    { headers: { Authorization: `Bearer ${auth.access_token}`, "X-Country": opts.country.toUpperCase(), "X-Currency": opts.currency } },
+  );
+  const balance = res.json.data?.balance;
+  if (!res.ok || res.json.status?.success === false || balance === undefined || balance === null || !/^-?\d+(\.\d+)?$/.test(String(balance).trim())) {
+    throw new HttpError(502, "rail_error", `Airtel Money: ${res.json.status?.message ?? providerMessage(res.json) ?? `HTTP ${res.status}`}`);
+  }
+  return { balance: String(balance).trim(), currency: (res.json.data?.currency ?? opts.currency).toUpperCase() };
+}

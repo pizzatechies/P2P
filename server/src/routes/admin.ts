@@ -333,7 +333,7 @@ export function adminRoutes(ctx: Ctx) {
         institution: z.string().trim().min(2).max(80),
         currency: z.string().trim().length(3),
         purpose: z.enum(["safeguarding", "operating"]).optional(),
-        source: z.enum(["manual", "stripe", "wise", "flutterwave"]).optional(),
+        source: z.enum(["manual", "stripe", "wise", "flutterwave", "airtel"]).optional(),
         details: z.string().trim().max(200).optional(),
       }),
       req.body,

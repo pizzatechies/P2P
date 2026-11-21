@@ -155,7 +155,7 @@ Alerts appear under **Admin → Monitoring alerts** and on the customer's admin 
 **Safeguarding** (Admin → Ledger & records → Safeguarding). Customers' money must be kept apart from the business's own and be there in full.
 
 - **Register where the money is held:** safeguarding bank accounts, mobile-money (e.g. an M-Pesa paybill) and provider balances. Account numbers are stored encrypted, and viewing one is audited.
-- **Record balances:** type them in from statements, or fetch them from **Stripe**, **Wise** and **Flutterwave** with the server's keys.
+- **Record balances:** type them in from statements, or fetch them from **Stripe**, **Wise**, **Flutterwave** and **Airtel Money** with the server's keys.
 - **Reconciliation** compares, per currency, what Aurex owes (every customer wallet plus withdrawals not yet paid out) with the latest balances held:
   - The result is **covered**, **shortfall** or **not verified** (no account, or a balance older than `SAFEGUARDING_STALE_HOURS`, 48).
   - It runs every 6 hours and on demand. Results are stored and can't be changed, and a shortfall alerts every admin.

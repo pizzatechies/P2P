@@ -741,6 +741,7 @@ function AddAccount({ onClose, onAdded }: { onClose: () => void; onAdded: () => 
               <option value="stripe">Stripe API</option>
               <option value="wise">Wise API</option>
               <option value="flutterwave">Flutterwave API</option>
+              <option value="airtel">Airtel Money API</option>
             </select>
           </Field>
         </div>

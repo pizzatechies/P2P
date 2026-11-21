@@ -18,7 +18,7 @@ import { audit } from "./users.js";
  */
 
 export type Kind = "bank" | "mobile_money" | "payment_provider" | "custodian" | "other";
-export type Source = "manual" | "stripe" | "wise" | "flutterwave";
+export type Source = "manual" | "stripe" | "wise" | "flutterwave" | "airtel";
 
 interface AccountRow {
   id: string;
@@ -205,6 +205,17 @@ async function providerBalances(ctx: Ctx, source: Exclude<Source, "manual">): Pr
     );
     if (!res.ok || !Array.isArray(res.json)) throw unprocessable("provider_error", `Wise answered ${res.status}`);
     for (const b of res.json) if (b.amount) add(b.amount.currency ?? b.currency ?? "", String(b.amount.value));
+  } else if (source === "airtel") {
+    if (!c.AIRTEL_CLIENT_ID || !c.AIRTEL_CLIENT_SECRET) throw unprocessable("not_configured", "Airtel Money isn't configured on this server");
+    const { airtelBalance } = await import("./rails/airtel.js");
+    const b = await airtelBalance({
+      baseUrl: c.AIRTEL_BASE_URL ?? (c.AIRTEL_ENV === "production" ? "https://openapi.airtel.africa" : "https://openapiuat.airtel.africa"),
+      clientId: c.AIRTEL_CLIENT_ID,
+      clientSecret: c.AIRTEL_CLIENT_SECRET,
+      country: c.AIRTEL_COUNTRY,
+      currency: c.AIRTEL_CURRENCY.toUpperCase(),
+    });
+    add(b.currency, b.balance);
   }
   return out;
 }

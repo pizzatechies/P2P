@@ -4,7 +4,14 @@
  *
  * Money is always stored as INTEGER minor units (cents) to avoid floating-point error.
  */
-export const migrations: string[] = [
+/**
+ * Each migration runs once, in order, inside a transaction. Changing a table's CHECK constraint means
+ * rebuilding it; when other tables point to it, that migration is written as { sql, foreignKeysOff }
+ * and runs with foreign-key enforcement off, after which every link is checked before it commits.
+ */
+export type Migration = string | { sql: string; foreignKeysOff: true };
+
+export const migrations: Migration[] = [
   /* 1: initial schema */ `
   CREATE TABLE users (
     id              TEXT PRIMARY KEY,
@@ -833,4 +840,28 @@ export const migrations: string[] = [
   ALTER TABLE kyc_submissions ADD COLUMN selfie_result TEXT;
   CREATE INDEX kyc_submissions_selfie_job ON kyc_submissions(selfie_job_id) WHERE selfie_job_id IS NOT NULL;
   `,
+  // 23: Safeguarding accounts can take their balance from Airtel Money (the source list is a CHECK).
+  {
+    foreignKeysOff: true,
+    sql: `
+    CREATE TABLE safeguarding_accounts_new (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      kind        TEXT NOT NULL CHECK (kind IN ('bank','mobile_money','payment_provider','custodian','other')),
+      institution TEXT NOT NULL,
+      currency    TEXT NOT NULL,
+      purpose     TEXT NOT NULL DEFAULT 'safeguarding' CHECK (purpose IN ('safeguarding','operating')),
+      source      TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','stripe','wise','flutterwave','airtel')),
+      details_enc TEXT,
+      active      INTEGER NOT NULL DEFAULT 1,
+      created_by  TEXT NOT NULL,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL
+    );
+    INSERT INTO safeguarding_accounts_new (id, name, kind, institution, currency, purpose, source, details_enc, active, created_by, created_at, updated_at)
+      SELECT id, name, kind, institution, currency, purpose, source, details_enc, active, created_by, created_at, updated_at FROM safeguarding_accounts;
+    DROP TABLE safeguarding_accounts;
+    ALTER TABLE safeguarding_accounts_new RENAME TO safeguarding_accounts;
+    `,
+  },
 ];

@@ -24,10 +24,23 @@ export function openDb(path: string): DB {
 function migrate(db: DB) {
   const current = (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
   for (let v = current; v < migrations.length; v++) {
-    tx(db, () => {
-      db.exec(migrations[v]);
-      db.exec(`PRAGMA user_version = ${v + 1}`);
-    });
+    const m = migrations[v];
+    const sql = typeof m === "string" ? m : m.sql;
+    const foreignKeysOff = typeof m !== "string" && m.foreignKeysOff;
+    // Foreign-key enforcement can only be switched outside a transaction.
+    if (foreignKeysOff) db.exec("PRAGMA foreign_keys = OFF");
+    try {
+      tx(db, () => {
+        db.exec(sql);
+        if (foreignKeysOff) {
+          const broken = db.prepare("PRAGMA foreign_key_check").all();
+          if (broken.length) throw new Error(`Migration ${v + 1} would break ${broken.length} foreign key link(s)`);
+        }
+        db.exec(`PRAGMA user_version = ${v + 1}`);
+      });
+    } finally {
+      if (foreignKeysOff) db.exec("PRAGMA foreign_keys = ON");
+    }
   }
 }
 
