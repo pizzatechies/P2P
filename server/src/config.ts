@@ -209,11 +209,21 @@ const EnvSchema = z.object({
   REGISTRATION_MODE: z.enum(["open", "invite", "closed"]).default("open"),
   /** Maximum number of customer accounts (0 = no cap); further sign-ups join the waitlist. */
   MAX_USERS: z.coerce.number().int().min(0).default(0),
-  /** Screen customers and payout recipients against the UN and OFAC sanctions lists (downloaded daily). */
+  /** Screen customers and payout recipients against sanctions lists (downloaded daily). */
   SANCTIONS_SCREENING: bool.default(true),
+  /** Which official lists to download: un, ofac, eu, uk. Your own uploaded list is always used. */
+  SANCTIONS_LISTS: z
+    .string()
+    .default("un,ofac,eu,uk")
+    .transform((v) => [...new Set(v.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean))])
+    .pipe(z.array(z.enum(["un", "ofac", "eu", "uk"]))),
   SANCTIONS_UN_URL: z.string().url().default("https://scsanctions.un.org/resources/xml/en/consolidated.xml"),
   SANCTIONS_OFAC_SDN_URL: z.string().url().default("https://www.treasury.gov/ofac/downloads/sdn.csv"),
   SANCTIONS_OFAC_ALT_URL: z.string().url().default("https://www.treasury.gov/ofac/downloads/alt.csv"),
+  /** The EU's consolidated list of persons, groups and entities subject to financial sanctions (XML 1.1). */
+  SANCTIONS_EU_URL: z.string().url().default("https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw"),
+  /** The UK Sanctions List (FCDO), which replaced OFSI's consolidated list. */
+  SANCTIONS_UK_URL: z.string().url().default("https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml"),
   /** Watch-only Web3 wallets (public addresses; balances from public blockchain data). */
   WEB3_WALLETS: bool.default(true),
   WEB3_ETHEREUM_RPC: z.string().url().default("https://ethereum-rpc.publicnode.com"),

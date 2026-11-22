@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "../services/business.js";
 import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
 import { pepConfigured, pepDue, rescreenPeps } from "../services/pep.js";
@@ -6,7 +6,7 @@ import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, re
 import { toCsv } from "../lib/csv.js";
 import { comp as compPro } from "../services/pro.js";
 import { createInvite, inviteFromWaitlist, listInvites, listWaitlist, revokeInvite, signupStatus } from "../services/beta.js";
-import { listStatus, refreshSanctionsLists, screenName } from "../services/sanctions.js";
+import { listStatus, refreshSanctionsLists, screenName, setOwnList } from "../services/sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { all, one, run } from "../db/index.js";
@@ -291,6 +291,20 @@ export function adminRoutes(ctx: Ctx) {
     const out = await refreshSanctionsLists(ctx);
     audit(ctx, req.user!.id, "sanctions.refreshed", { results: out.results.map((r) => ({ list: r.list, ok: r.ok, entries: r.entries })) }, req.ip);
     res.json({ ...out, lists: listStatus(ctx) });
+  });
+
+  /** Your own list (national designations and the like), uploaded as CSV. Replacing or removing it is audited. */
+  r.put("/sanctions/own-list", express.json({ limit: "8mb" }), async (req, res) => {
+    const body = parse(z.object({ csv: z.string().min(1).max(8_000_000) }), req.body);
+    const out = await setOwnList(ctx, body.csv);
+    audit(ctx, req.user!.id, "sanctions.own_list_uploaded", { entries: out.entries, matches: out.rescreened.matches }, req.ip);
+    res.json({ ...out, lists: listStatus(ctx) });
+  });
+
+  r.delete("/sanctions/own-list", async (req, res) => {
+    await setOwnList(ctx, null);
+    audit(ctx, req.user!.id, "sanctions.own_list_removed", {}, req.ip);
+    res.json({ ok: true, lists: listStatus(ctx) });
   });
 
   /** Check a name by hand, e.g. a new business partner. Each check is audited (without the name). */

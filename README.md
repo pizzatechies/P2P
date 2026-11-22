@@ -135,7 +135,7 @@ These provisions matter once real money flows through the rails.
 
 Alerts appear under **Admin → Monitoring alerts** and on the customer's admin page. An admin clears them with a note, or escalates them (optionally freezing the account). Customers never see alerts: in most AML regimes, telling a customer they're under review ("tipping off") is itself an offence.
 
-**Sanctions screening.** Aurex downloads the **UN Security Council Consolidated List** and the **US Treasury OFAC SDN list** (with its aliases) from the official sources, and checks them daily.
+**Sanctions screening.** Aurex downloads four official lists from their sources and checks them daily: the **UN Security Council Consolidated List**, the **US Treasury OFAC SDN list** (with its aliases), the **EU Consolidated Financial Sanctions List** and the **UK Sanctions List**. You can add **your own list** (national designations, or anyone else your regulator or banks name) by uploading a CSV under Admin → Sanctions lists.
 
 - **Who is screened, and when:**
   - customers, on the legal name and date of birth in their identity details and on the name they gave at sign-up;
@@ -150,7 +150,8 @@ Alerts appear under **Admin → Monitoring alerts** and on the customer's admin 
 - **Evidence:** every screening is recorded, with its outcome but not the name itself.
 - **Admin → Sanctions lists** shows each list's size and age, updates them on demand, and checks any name by hand.
 - **If a download fails or looks broken**, the previous copy is kept and the security checklist warns.
-- **Settings:** `SANCTIONS_SCREENING` (on by default) and `SANCTIONS_UN_URL`, `SANCTIONS_OFAC_SDN_URL`, `SANCTIONS_OFAC_ALT_URL`. Add your own national list as your regulator requires.
+- **Your own list:** a CSV with a header row: `name`, and optionally `type` (individual or entity), `aliases` (separated by `;`), `born`, `reference`, `programme` and `country`. A new upload replaces the old one, and everyone is re-screened. Uploads and removals are audited.
+- **Settings:** `SANCTIONS_SCREENING` (on by default), `SANCTIONS_LISTS` (default `un,ofac,eu,uk`), and the download addresses `SANCTIONS_UN_URL`, `SANCTIONS_OFAC_SDN_URL`, `SANCTIONS_OFAC_ALT_URL`, `SANCTIONS_EU_URL` and `SANCTIONS_UK_URL`.
 
 **Safeguarding** (Admin → Ledger & records → Safeguarding). Customers' money must be kept apart from the business's own and be there in full.
 

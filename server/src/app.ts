@@ -149,8 +149,9 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   );
 
   // A live selfie capture is several MB: its route parses its own body with a larger limit.
-  const LIVE_CAPTURE_PATH = "/api/account/verification/liveness";
-  app.use(express.json({ limit: "256kb", strict: true, type: (req) => req.url !== LIVE_CAPTURE_PATH && /^application\/json\b/i.test(String(req.headers["content-type"] ?? "")) }));
+  // Routes that take bigger bodies parse them themselves, with their own limits.
+  const OWN_BODY_PARSER = new Set(["/api/account/verification/liveness", "/api/admin/sanctions/own-list"]);
+  app.use(express.json({ limit: "256kb", strict: true, type: (req) => !OWN_BODY_PARSER.has(String(req.url).split("?")[0]) && /^application\/json\b/i.test(String(req.headers["content-type"] ?? "")) }));
   app.use("/api", rateLimit({ name: "api", windowMs: 60_000, max: config.isTest ? 100_000 : 600 }));
   app.use("/api", originGuard(ctx), loadSession(ctx), csrfGuard);
 

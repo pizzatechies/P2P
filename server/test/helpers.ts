@@ -15,6 +15,8 @@ export function makeApp(env: Record<string, string> = {}) {
     // Likewise identity-verification limits: the accounts suite turns them on.
     KYC_LIMITS: "false",
     PAYOUT_REVIEW: "false",
+    // Only the lists the sanctions suite stubs; nothing downloads the real ones in tests.
+    SANCTIONS_LISTS: "un,ofac",
     ...env,
   });
   return createApp(config, openDb(":memory:"));

@@ -1,7 +1,7 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { totp } from "../src/lib/crypto.js";
-import { nameScore, nameTokens, parseCsv, parseOfacList, parseUnList, refreshSanctionsLists, screenName } from "../src/services/sanctions.js";
+import { invalidateIndex, nameScore, nameTokens, parseCsv, parseEuList, parseOfacList, parseOwnList, parseUkList, parseUnList, refreshSanctionsLists, screenName } from "../src/services/sanctions.js";
 import { api, makeApp, signup } from "./helpers.js";
 import { stub } from "./stub.js";
 
@@ -36,15 +36,62 @@ const sdnCsv = () =>
   ].join("\r\n") + "\r\n\x1a";
 const altCsv = () => `2676,1,"aka","AL-ZAWAHIRI, Aiman Muhammad Rabi",-0- \r\n306,2,"aka","NATIONAL BANK OF CUBA",-0- \r\n`;
 
+// The EU list (XML 1.1) and the UK Sanctions List, in their real shapes.
+const euXml = () => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<export xmlns="http://eu.europa.ec/fpi/fsd/export" generationDate="2026-11-20T16:51:00.798+01:00">
+  <sanctionEntity designationDetails="" unitedNationId="" euReferenceNumber="EU.9001.11" logicalId="9001">
+    <regulation regulationType="regulation" programme="RUS" logicalId="1"><publicationUrl>http://eur-lex.europa.eu/x</publicationUrl></regulation>
+    <subjectType code="person" classificationCode="P"/>
+    <nameAlias firstName="Oleksandr" middleName="" lastName="Petrenkov" wholeName="Oleksandr Petrenkov" strong="true" nameLanguage="" logicalId="2"></nameAlias>
+    <nameAlias firstName="" middleName="" lastName="" wholeName="Олександр Петренков" strong="true" nameLanguage="UK" logicalId="3"></nameAlias>
+    <nameAlias firstName="" middleName="" lastName="" wholeName="Alexander Petrenkov" strong="true" nameLanguage="EN" logicalId="4"></nameAlias>
+    <citizenship region="" countryIso2Code="RU" countryDescription="RUSSIAN FEDERATION" logicalId="5"/>
+    <birthdate circa="false" calendarType="GREGORIAN" city="" birthdate="1971-03-02" dayOfMonth="2" monthOfYear="3" year="1971" logicalId="6"></birthdate>
+  </sanctionEntity>
+  <sanctionEntity designationDetails="" unitedNationId="" euReferenceNumber="EU.9002.12" logicalId="9002">
+    <regulation regulationType="regulation" programme="SYR" logicalId="7"></regulation>
+    <subjectType code="enterprise" classificationCode="E"/>
+    <nameAlias wholeName="Levant Shipping &amp; Trading Company" strong="true" nameLanguage="" logicalId="8"></nameAlias>
+  </sanctionEntity>
+  ${filler(55, (i) => `<sanctionEntity euReferenceNumber="EU.F.${i}" logicalId="${20000 + i}"><subjectType code="person" classificationCode="P"/><nameAlias wholeName="Eufiller${i} Personname${i}" strong="true" nameLanguage=""></nameAlias><birthdate yearRangeFrom="1950" yearRangeTo="1952" logicalId="${30000 + i}"></birthdate></sanctionEntity>`)}
+</export>`;
+
+const ukXml = () => `<?xml version="1.0" encoding="utf-8"?>
+<Designations xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <DateGenerated>20/11/2026</DateGenerated>
+  <Designation>
+    <UniqueID>GHA0001</UniqueID>
+    <Names>
+      <Name><Name1>Kwabena</Name1><Name2>Owusu</Name2><Name6>DARKWAH</Name6><NameType>Primary Name</NameType></Name>
+      <Name><Name1>Kobby</Name1><Name6>DARKWA</Name6><NameType>Alias</NameType><AliasStrength>Good quality a.k.a</AliasStrength></Name>
+    </Names>
+    <RegimeName>The Global Anti-Corruption Sanctions Regulations 2021</RegimeName>
+    <IndividualEntityShip>Individual</IndividualEntityShip>
+    <IndividualDetails><Individual><DOBs><DOB>dd/mm/1966</DOB><DOB>14/07/1967</DOB></DOBs><Nationalities><Nationality>Ghana</Nationality></Nationalities></Individual></IndividualDetails>
+  </Designation>
+  <Designation>
+    <UniqueID>RUS9999</UniqueID>
+    <Names><Name><Name6>OCEAN STAR</Name6><NameType>Primary Name</NameType></Name></Names>
+    <IndividualEntityShip>Ship</IndividualEntityShip>
+  </Designation>
+  ${filler(55, (i) => `<Designation><UniqueID>FIL${i}</UniqueID><Names><Name><Name1>Ukfiller${i}</Name1><Name6>SURNAME${i}</Name6><NameType>Primary Name</NameType></Name></Names><IndividualEntityShip>Individual</IndividualEntityShip></Designation>`)}
+</Designations>`;
+
 async function listsStub(un = unXml()) {
   const state = { un };
   const s = await stub((req) => {
     if (req.route === "/un.xml") return { text: state.un };
     if (req.route === "/sdn.csv") return { text: sdnCsv() };
     if (req.route === "/alt.csv") return { text: altCsv() };
+    if (req.route === "/eu.xml") return { text: euXml() };
+    if (req.route === "/uk.xml") return { text: ukXml() };
     return undefined;
   });
-  return { ...s, state, env: { SANCTIONS_UN_URL: `${s.url}/un.xml`, SANCTIONS_OFAC_SDN_URL: `${s.url}/sdn.csv`, SANCTIONS_OFAC_ALT_URL: `${s.url}/alt.csv` } };
+  return {
+    ...s,
+    state,
+    env: { SANCTIONS_UN_URL: `${s.url}/un.xml`, SANCTIONS_OFAC_SDN_URL: `${s.url}/sdn.csv`, SANCTIONS_OFAC_ALT_URL: `${s.url}/alt.csv`, SANCTIONS_EU_URL: `${s.url}/eu.xml`, SANCTIONS_UK_URL: `${s.url}/uk.xml` },
+  };
 }
 
 async function makeAdmin({ app, ctx }: App) {
@@ -208,5 +255,69 @@ describe("screening customers", () => {
 
     const checklist = (await admin.A.get("/api/admin/security")).body.checks.find((x: { id: string }) => x.id === "sanctions");
     expect(checklist.status).toBe("pass");
+  });
+});
+
+describe("EU, UK and your own list", () => {
+  it("reads the EU and UK files: Latin-script names and aliases, years of birth, countries; ships skipped", () => {
+    const eu = parseEuList(euXml());
+    expect(eu).toHaveLength(57);
+    expect(eu[0]).toMatchObject({ list: "eu", ref: "EU.9001.11", kind: "individual", name: "Oleksandr Petrenkov", aliases: ["Alexander Petrenkov"], birthYears: [1971], programs: "RUS", countries: ["RUSSIAN FEDERATION"] });
+    expect(eu[1]).toMatchObject({ kind: "entity", name: "Levant Shipping & Trading Company", programs: "SYR" });
+    expect(eu[2].birthYears).toEqual([1950, 1951, 1952]);
+    const uk = parseUkList(ukXml());
+    expect(uk).toHaveLength(56);
+    expect(uk[0]).toMatchObject({ list: "uk", ref: "GHA0001", kind: "individual", name: "Kwabena Owusu DARKWAH", aliases: ["Kobby DARKWA"], birthYears: [1966, 1967], countries: ["Ghana"] });
+    expect(uk.some((e) => e.ref === "RUS9999")).toBe(false);
+  });
+
+  it("downloads all four lists, screens against each, and stops using a list that's switched off", async () => {
+    const lists = await listsStub();
+    const env = makeApp({ ...lists.env, SANCTIONS_LISTS: "un,ofac,eu,uk" });
+    const admin = await makeAdmin(env);
+    const r = await admin.A.post("/api/admin/sanctions/refresh");
+    expect(r.body.results.map((x: { list: string; ok: boolean; entries: number }) => `${x.list}:${x.ok}:${x.entries}`)).toEqual(["un:true:63", "ofac:true:62", "eu:true:57", "uk:true:56"]);
+    expect(screenName(env.ctx, "Alexander Petrenkov", { birthYear: 1971 })[0]).toMatchObject({ list: "eu", ref: "EU.9001.11", listName: "EU Consolidated Financial Sanctions List" });
+    expect(screenName(env.ctx, "Kobby Darkwa", { birthYear: 1967 })[0]).toMatchObject({ list: "uk", ref: "GHA0001" });
+    expect(screenName(env.ctx, "Levant Shipping and Trading", { kinds: ["entity"] })[0].ref).toBe("EU.9002.12");
+    const checklist = (await admin.A.get("/api/admin/security")).body.checks.find((x: { id: string }) => x.id === "sanctions");
+    expect(checklist.status).toBe("pass");
+    expect(checklist.detail).toMatch(/UK Sanctions List: 56 entries/);
+
+    env.ctx.config.SANCTIONS_LISTS = ["un", "ofac"];
+    invalidateIndex(env.ctx);
+    expect(screenName(env.ctx, "Kobby Darkwa", { birthYear: 1967 })).toEqual([]);
+    expect((await admin.A.get("/api/admin/sanctions")).body.lists.map((l: { list: string }) => l.list)).toEqual(["un", "ofac"]);
+  });
+
+  it("takes your own list as CSV, screens existing customers against it, and removes it", async () => {
+    expect(() => parseOwnList("surname,born\nX,1970")).toThrow(/"name" column/);
+    const own = parseOwnList('\uFEFFName,Type,Aliases,Born,Reference,Programme,Country\n"Chileshe Mwansa Banda",individual,"C. M. Banda; Chileshe Banda",12/03/1975,ZM-001,National designation,Zambia\nKafue Gem Traders,company,,,,"Local list",\n,,,,,\n');
+    expect(own).toEqual([
+      expect.objectContaining({ list: "own", ref: "ZM-001", kind: "individual", name: "Chileshe Mwansa Banda", aliases: ["C. M. Banda", "Chileshe Banda"], birthYears: [1975], programs: "National designation", countries: ["Zambia"] }),
+      expect.objectContaining({ ref: "row-3", kind: "entity", name: "Kafue Gem Traders" }),
+    ]);
+
+    const env = makeApp({ SANCTIONS_LISTS: "" });
+    const admin = await makeAdmin(env);
+    const person = await signup(env.app, "cb");
+    env.ctx.db.prepare("UPDATE users SET display_name = 'Chileshe Banda' WHERE id = ?").run(person.user.id);
+
+    const bad = await admin.A.put("/api/admin/sanctions/own-list", { csv: "who\nnobody" });
+    expect(bad.status).toBe(400);
+    const up = await admin.A.put("/api/admin/sanctions/own-list", { csv: "name,type,aliases\nChileshe Mwansa Banda,individual,Chileshe Banda\nKafue Gem Traders,entity,\n" });
+    expect(up.status).toBe(200);
+    expect(up.body).toMatchObject({ entries: 2, rescreened: { matches: 1 } });
+    expect(up.body.lists).toEqual([expect.objectContaining({ list: "own", downloaded: false, name: "Your own list", entries: 2 })]);
+    const alert = env.ctx.db.prepare("SELECT rule, summary FROM compliance_alerts WHERE user_id = ?").get(person.user.id) as { rule: string; summary: string };
+    expect(alert.rule).toBe("sanctions_match");
+    expect(alert.summary).toMatch(/Your own list/);
+    // A payout to a company on your list is caught like any other.
+    expect(screenName(env.ctx, "Kafue Gem Traders", { kinds: ["individual", "entity"] })[0].list).toBe("own");
+
+    expect((await admin.A.del("/api/admin/sanctions/own-list")).body.lists).toEqual([]);
+    expect(screenName(env.ctx, "Chileshe Mwansa Banda")).toEqual([]);
+    const actions = (env.ctx.db.prepare("SELECT action, details FROM audit_events WHERE action LIKE 'sanctions.own_list%' ORDER BY id").all() as { action: string; details: string }[]).map((a) => a.action);
+    expect(actions).toEqual(["sanctions.own_list_uploaded", "sanctions.own_list_removed"]);
   });
 });

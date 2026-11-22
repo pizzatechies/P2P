@@ -201,7 +201,7 @@ export function securityPosture(ctx: Ctx) {
       : "Reviewers compare documents by eye; nothing checks the ID number with the government.",
     fix: "Set SMILEID_PARTNER_ID and SMILEID_API_KEY (and SMILEID_ENV=production once tested), and add /api/webhooks/smileid as your callback URL in the Smile ID portal.",
   });
-  const lists = listStatus(ctx);
+  const lists = listStatus(ctx).filter((l) => l.downloaded);
   const loaded = lists.filter((l) => l.entries > 0);
   const stale = loaded.filter((l) => !l.fetchedAt || Date.now() - Date.parse(l.fetchedAt) > 3 * 86_400_000);
   add({
@@ -212,9 +212,9 @@ export function securityPosture(ctx: Ctx) {
     detail: !c.SANCTIONS_SCREENING
       ? "Sanctions screening is switched off."
       : loaded.length === 0
-        ? "The UN and OFAC lists haven't been downloaded yet (the server fetches them shortly after starting)."
-        : `${loaded.map((l) => `${l.name}: ${l.entries.toLocaleString("en-US")} entries`).join("; ")}.${stale.length ? " Some lists are more than 3 days old." : ""}${loaded.length < lists.length ? " One list failed to download." : ""}`,
-    fix: "Keep SANCTIONS_SCREENING=true and make sure the server can reach scsanctions.un.org and treasury.gov; Admin → Sanctions lists → Refresh.",
+        ? "The sanctions lists haven't been downloaded yet (the server fetches them shortly after starting)."
+        : `${loaded.map((l) => `${l.name}: ${l.entries.toLocaleString("en-US")} entries`).join("; ")}.${stale.length ? " Some lists are more than 3 days old." : ""}${loaded.length < lists.length ? " A list hasn't downloaded yet." : ""}`,
+    fix: "Keep SANCTIONS_SCREENING=true and make sure the server can reach scsanctions.un.org, treasury.gov, webgate.ec.europa.eu and sanctionslist.fcdo.gov.uk; Admin → Sanctions lists → Update now.",
   });
 
   // Records

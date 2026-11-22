@@ -552,7 +552,7 @@ function SecurityChecklist() {
 
 interface SanctionsStatus {
   enabled: boolean;
-  lists: { list: string; name: string; entries: number; fetchedAt: string | null; error: string | null }[];
+  lists: { list: string; downloaded: boolean; name: string; entries: number; fetchedAt: string | null; error: string | null }[];
   openMatches: number;
   checks: number;
   possibleMatches: number;
@@ -592,6 +592,32 @@ function SanctionsCard() {
       setBusy(false);
     }
   }
+  async function uploadOwn(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 8_000_000) return toast("That file is over 8 MB.", "error");
+    setBusy(true);
+    try {
+      const r = await api.put<{ entries: number; rescreened: { customers: number; matches: number } }>("/api/admin/sanctions/own-list", { csv: await file.text() });
+      toast(`Your list has ${r.entries.toLocaleString()} names; ${r.rescreened.customers} customers re-screened, ${r.rescreened.matches} possible matches`);
+      status.reload();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeOwn() {
+    if (!confirm("Remove your own list? Customers will no longer be screened against it. Open alerts stay open.")) return;
+    try {
+      await api.del("/api/admin/sanctions/own-list");
+      toast("Your list was removed");
+      status.reload();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
   async function check(e: React.FormEvent) {
     e.preventDefault();
     try {
@@ -608,7 +634,7 @@ function SanctionsCard() {
         <button className="btn secondary sm" disabled={busy} onClick={refresh}>{busy ? "Updating…" : "Update now"}</button>
       </div>
       <p className="muted small" style={{ marginTop: 0 }}>
-        Customers are screened on their legal name and date of birth, and on their sign-up name; payout recipients before money is sent; and everyone again when the lists change (checked daily).
+        Customers are screened on their legal name and date of birth, and on their sign-up name; payout recipients before money is sent; and everyone again when the lists change (checked daily). SANCTIONS_LISTS chooses the official lists.
         A possible match pauses that customer's payments until someone clears it under Monitoring alerts.
       </p>
       {d && !d.enabled && <div className="banner">Sanctions screening is switched off (SANCTIONS_SCREENING=false).</div>}
@@ -617,12 +643,27 @@ function SanctionsCard() {
           <div key={l.list} className="row between wrap small" style={{ gap: 8 }}>
             <span><strong>{l.name}</strong></span>
             <span className={l.entries ? (l.error ? "warn-text" : "muted") : "bad"}>
-              {l.entries ? `${l.entries.toLocaleString()} entries · updated ${l.fetchedAt ? timeAgo(l.fetchedAt) : "—"}` : "Not downloaded yet"}
+              {l.entries ? `${l.entries.toLocaleString()} entries · ${l.downloaded ? "updated" : "uploaded"} ${l.fetchedAt ? timeAgo(l.fetchedAt) : "—"}` : "Not downloaded yet"}
               {l.error ? ` · last attempt failed: ${l.error}` : ""}
             </span>
           </div>
         ))}
         {d && <div className="faint xs">{d.checks.toLocaleString()} screenings so far · {d.possibleMatches} possible matches · {d.openMatches} open</div>}
+      </div>
+      <div className="row between wrap" style={{ gap: 8, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+        <div className="small" style={{ flex: "1 1 260px" }}>
+          <strong>Your own list</strong>
+          <div className="faint xs">
+            For national designations and anyone else you must screen for. Upload a CSV with a header row: <span className="mono">name</span>, and optionally <span className="mono">type</span> (individual or entity), <span className="mono">aliases</span> (separated by ;), <span className="mono">born</span>, <span className="mono">reference</span>, <span className="mono">programme</span>, <span className="mono">country</span>. A new upload replaces the old one.
+          </div>
+        </div>
+        <div className="row" style={{ gap: 8 }}>
+          <label className={`btn secondary sm${busy ? " disabled" : ""}`}>
+            {d?.lists.some((l) => l.list === "own") ? "Replace" : "Upload CSV"}
+            <input type="file" accept=".csv,text/csv" hidden disabled={busy} onChange={uploadOwn} />
+          </label>
+          {d?.lists.some((l) => l.list === "own") && <button className="btn ghost sm" onClick={removeOwn}>Remove</button>}
+        </div>
       </div>
       <form className="row wrap" style={{ gap: 8, alignItems: "flex-end", marginTop: 12 }} onSubmit={check}>
         <Field label="Check a name"><input className="input" required minLength={2} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name or company" /></Field>

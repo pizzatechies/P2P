@@ -1,12 +1,15 @@
+import type { Config } from "../config.js";
 import type { Ctx } from "../context.js";
 import { decryptSecret } from "../lib/crypto.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
-import { HttpError } from "../lib/errors.js";
+import { HttpError, badRequest } from "../lib/errors.js";
 import { openAlert } from "./monitoring.js";
 
 /**
- * Sanctions screening against the UN Security Council Consolidated List and the US Treasury's OFAC
- * SDN list (with its aliases). Both are downloaded from the official sources and refreshed daily.
+ * Sanctions screening against the UN Security Council Consolidated List, the US Treasury's OFAC SDN
+ * list (with its aliases), the EU's consolidated financial sanctions list and the UK Sanctions List,
+ * each downloaded from the official source and refreshed daily (SANCTIONS_LISTS chooses which), plus
+ * the operator's own list: national designations or anyone else they must screen for, uploaded as CSV.
  *
  * Customers are screened on their legal name and date of birth when they submit identity details,
  * on their display name at sign-up, and again whenever the lists change. Payout recipients are
@@ -16,7 +19,8 @@ import { openAlert } from "./monitoring.js";
  * punctuation and small spelling differences; a different year of birth rules a person out.
  */
 
-export type ListId = "un" | "ofac";
+export type DownloadedList = Config["SANCTIONS_LISTS"][number];
+export type ListId = DownloadedList | "own";
 export type EntryKind = "individual" | "entity";
 
 interface Entry {
@@ -33,7 +37,13 @@ interface Entry {
 export const LIST_NAMES: Record<ListId, string> = {
   un: "UN Security Council Consolidated List",
   ofac: "US Treasury OFAC SDN List",
+  eu: "EU Consolidated Financial Sanctions List",
+  uk: "UK Sanctions List",
+  own: "Your own list",
 };
+
+/** The official lists in use, in the order they're shown. */
+const enabledLists = (ctx: Ctx): DownloadedList[] => (ctx.config.SANCTIONS_SCREENING ? ctx.config.SANCTIONS_LISTS : []);
 
 // ---------------------------------------------------------------------------
 // Parsing the official files
@@ -149,6 +159,132 @@ export function parseOfacList(sdnCsv: string, altCsv: string): Entry[] {
   return out;
 }
 
+const attr = (tagText: string, name: string) => {
+  const m = new RegExp(`\\s${name}="([^"]*)"`).exec(tagText);
+  return m ? decodeXml(m[1]) : "";
+};
+const unique = (xs: string[]) => [...new Set(xs.filter(Boolean))];
+/** Years from a "from"-"to" range, when the range is narrow enough to mean something. */
+const addRange = (years: Set<number>, from: number, to: number) => {
+  if (from && to && to >= from && to - from <= 15) for (let y = from; y <= to; y++) years.add(y);
+};
+
+/**
+ * The EU consolidated list (XML 1.1): one sanctionEntity per person or organisation, each name and
+ * spelling a nameAlias (many in other alphabets; only names written in Latin letters are kept, as
+ * customers' names are), with dates of birth, citizenships and the sanctions programmes.
+ */
+export function parseEuList(xml: string): Entry[] {
+  const out: Entry[] = [];
+  for (const m of xml.matchAll(/<sanctionEntity\b([^>]*)>([\s\S]*?)<\/sanctionEntity>/g)) {
+    const [, head, body] = m;
+    const code = attr(/<subjectType\b[^>]*>/.exec(body)?.[0] ?? "", "code");
+    if (code !== "person" && code !== "enterprise") continue;
+    const names = unique([...body.matchAll(/<nameAlias\b[^>]*>/g)].map((n) => attr(n[0], "wholeName"))).filter((n) => nameTokens(n).length > 0);
+    if (!names.length) continue;
+    const years = new Set<number>();
+    for (const b of body.matchAll(/<birthdate\b[^>]*>/g)) {
+      const y = attr(b[0], "year") || attr(b[0], "birthdate").slice(0, 4);
+      if (/^\d{4}$/.test(y)) years.add(Number(y));
+      addRange(years, Number(attr(b[0], "yearRangeFrom")), Number(attr(b[0], "yearRangeTo")));
+    }
+    out.push({
+      list: "eu",
+      ref: attr(head, "euReferenceNumber") || `EU-${attr(head, "logicalId")}`,
+      kind: code === "person" ? "individual" : "entity",
+      name: names[0],
+      aliases: names.slice(1),
+      birthYears: [...years],
+      programs: unique([...body.matchAll(/<regulation\b[^>]*>/g)].map((r) => attr(r[0], "programme"))).join(", "),
+      countries: unique([...body.matchAll(/<citizenship\b[^>]*>/g)].map((c) => attr(c[0], "countryDescription"))).filter((c) => c !== "UNKNOWN"),
+    });
+  }
+  return out;
+}
+
+/**
+ * The UK Sanctions List (XML): one Designation per person, organisation or ship (ships are skipped).
+ * Each name is split into Name1-Name5 (given names) and Name6 (surname, or an organisation's name).
+ */
+export function parseUkList(xml: string): Entry[] {
+  const out: Entry[] = [];
+  for (const m of xml.matchAll(/<Designation>([\s\S]*?)<\/Designation>/g)) {
+    const b = m[1];
+    const type = tag(b, "IndividualEntityShip").toLowerCase();
+    if (type !== "individual" && type !== "entity") continue;
+    const primary: string[] = [];
+    const others: string[] = [];
+    for (const n of b.matchAll(/<Name>([\s\S]*?)<\/Name>/g)) {
+      const full = ["Name1", "Name2", "Name3", "Name4", "Name5", "Name6"].map((t) => tag(n[1], t)).filter(Boolean).join(" ");
+      if (full) (/^primary name$/i.test(tag(n[1], "NameType")) ? primary : others).push(full);
+    }
+    const names = unique([...primary, ...others]).filter((n) => nameTokens(n).length > 0);
+    if (!names.length) continue;
+    const years = new Set<number>();
+    for (const d of tags(b, "DOB")) {
+      const y = /(\d{4})$/.exec(d.trim());
+      if (y) years.add(Number(y[1]));
+    }
+    out.push({
+      list: "uk",
+      ref: tag(b, "UniqueID"),
+      kind: type === "individual" ? "individual" : "entity",
+      name: names[0],
+      aliases: names.slice(1),
+      birthYears: [...years],
+      programs: unique(tags(b, "RegimeName")).join(", "),
+      countries: unique(type === "individual" ? tags(b, "Nationality") : tags(b, "AddressCountry")),
+    });
+  }
+  return out;
+}
+
+const OWN_COLUMNS = {
+  name: ["name", "fullname"],
+  type: ["type", "kind"],
+  aliases: ["aliases", "alias", "aka", "alsoknownas"],
+  born: ["birthyears", "birthyear", "yearofbirth", "born", "dateofbirth", "dob"],
+  ref: ["reference", "ref", "id"],
+  programs: ["programme", "program", "programs", "regime", "source", "list"],
+  countries: ["countries", "country", "nationality", "nationalities"],
+} as const;
+const OWN_MAX_ROWS = 50_000;
+
+/**
+ * Your own list, as CSV with a header row: a "name" column, and optionally type (individual or
+ * entity), aliases (separated by ;), born (years of birth, or dates), reference, programme and
+ * countries. For national designations that aren't published in a format we can download.
+ */
+export function parseOwnList(csv: string): Entry[] {
+  const rows = parseCsv(csv.replace(/^\uFEFF/, ""));
+  const head = (rows[0] ?? []).map((h) => h.trim().toLowerCase().replace(/[^a-z]/g, ""));
+  const col = (k: keyof typeof OWN_COLUMNS) => head.findIndex((h) => (OWN_COLUMNS[k] as readonly string[]).includes(h));
+  const at = Object.fromEntries((Object.keys(OWN_COLUMNS) as (keyof typeof OWN_COLUMNS)[]).map((k) => [k, col(k)])) as Record<keyof typeof OWN_COLUMNS, number>;
+  if (at.name < 0) throw badRequest('The first row must name the columns, with at least a "name" column.');
+  if (rows.length - 1 > OWN_MAX_ROWS) throw badRequest(`Up to ${OWN_MAX_ROWS.toLocaleString("en-US")} names per list.`);
+  const cell = (r: string[], i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
+  const out: Entry[] = [];
+  const refs = new Set<string>();
+  rows.slice(1).forEach((r, i) => {
+    const name = cell(r, at.name);
+    if (!nameTokens(name).length) return;
+    let ref = cell(r, at.ref) || `row-${i + 2}`;
+    if (refs.has(ref)) ref = `${ref}-row-${i + 2}`;
+    refs.add(ref);
+    out.push({
+      list: "own",
+      ref: ref.slice(0, 80),
+      kind: /^(entity|company|organi[sz]ation|business|group)$/i.test(cell(r, at.type)) ? "entity" : "individual",
+      name: name.slice(0, 300),
+      aliases: unique(cell(r, at.aliases).split(/[;|]/).map((a) => a.trim().slice(0, 300))).filter((a) => nameTokens(a).length > 0).slice(0, 50),
+      birthYears: [...new Set([...cell(r, at.born).matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((y) => Number(y[1])))],
+      programs: cell(r, at.programs).slice(0, 200),
+      countries: unique(cell(r, at.countries).split(/[;|]/).map((c) => c.trim().slice(0, 80))),
+    });
+  });
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Loading and refreshing
 // ---------------------------------------------------------------------------
@@ -165,8 +301,9 @@ async function download(url: string) {
 
 function store(ctx: Ctx, list: ListId, source: string, entries: Entry[]) {
   // A file that suddenly lists almost nobody is more likely broken than a real change; keep the old one.
+  // (Your own list can be any size: you uploaded it.)
   const before = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM sanctions_entries WHERE list = ?", list)!.n;
-  if (entries.length < 50 || (before > 0 && entries.length < before * 0.5)) {
+  if (list !== "own" && (entries.length < 50 || (before > 0 && entries.length < before * 0.5))) {
     throw new Error(`${LIST_NAMES[list]}: only ${entries.length} entries parsed (had ${before}); keeping the previous copy`);
   }
   tx(ctx.db, () => {
@@ -211,37 +348,63 @@ function recordError(ctx: Ctx, list: ListId, source: string, message: string) {
   );
 }
 
-/** Downloads both lists; a list that fails keeps its previous copy. Then re-screens every customer. */
-export async function refreshSanctionsLists(ctx: Ctx) {
-  const c = ctx.config;
-  const results: { list: ListId; ok: boolean; entries: number; error?: string }[] = [];
-  try {
-    const entries = parseUnList(await download(c.SANCTIONS_UN_URL));
-    store(ctx, "un", c.SANCTIONS_UN_URL, entries);
-    results.push({ list: "un", ok: true, entries: entries.length });
-  } catch (err) {
-    recordError(ctx, "un", c.SANCTIONS_UN_URL, (err as Error).message);
-    results.push({ list: "un", ok: false, entries: 0, error: (err as Error).message });
-  }
-  try {
+const SOURCE_URL: Record<DownloadedList, (c: Config) => string> = {
+  un: (c) => c.SANCTIONS_UN_URL,
+  ofac: (c) => c.SANCTIONS_OFAC_SDN_URL,
+  eu: (c) => c.SANCTIONS_EU_URL,
+  uk: (c) => c.SANCTIONS_UK_URL,
+};
+const FETCH: Record<DownloadedList, (c: Config) => Promise<Entry[]>> = {
+  un: async (c) => parseUnList(await download(c.SANCTIONS_UN_URL)),
+  ofac: async (c) => {
     const [sdn, alt] = await Promise.all([download(c.SANCTIONS_OFAC_SDN_URL), download(c.SANCTIONS_OFAC_ALT_URL)]);
-    const entries = parseOfacList(sdn, alt);
-    store(ctx, "ofac", c.SANCTIONS_OFAC_SDN_URL, entries);
-    results.push({ list: "ofac", ok: true, entries: entries.length });
-  } catch (err) {
-    recordError(ctx, "ofac", c.SANCTIONS_OFAC_SDN_URL, (err as Error).message);
-    results.push({ list: "ofac", ok: false, entries: 0, error: (err as Error).message });
+    return parseOfacList(sdn, alt);
+  },
+  eu: async (c) => parseEuList(await download(c.SANCTIONS_EU_URL)),
+  uk: async (c) => parseUkList(await download(c.SANCTIONS_UK_URL)),
+};
+
+/** Downloads the lists in use, one at a time (some are 20+ MB); a list that fails keeps its previous copy. Then re-screens every customer. */
+export async function refreshSanctionsLists(ctx: Ctx) {
+  const results: { list: ListId; ok: boolean; entries: number; error?: string }[] = [];
+  for (const list of enabledLists(ctx)) {
+    const source = SOURCE_URL[list](ctx.config);
+    try {
+      const entries = await FETCH[list](ctx.config);
+      store(ctx, list, source, entries);
+      results.push({ list, ok: true, entries: entries.length });
+    } catch (err) {
+      recordError(ctx, list, source, (err as Error).message);
+      results.push({ list, ok: false, entries: 0, error: (err as Error).message });
+    }
   }
   const rescreened = results.some((r) => r.ok) ? await rescreenAll(ctx) : { customers: 0, matches: 0 };
   return { results, rescreened };
 }
 
+/** Replaces your own list with an uploaded CSV (or removes it, with no rows), then re-screens everyone. */
+export async function setOwnList(ctx: Ctx, csv: string | null) {
+  const entries = csv === null ? [] : parseOwnList(csv);
+  if (csv !== null && entries.length === 0) throw badRequest("No names found in that file.");
+  if (entries.length) store(ctx, "own", "uploaded", entries);
+  else
+    tx(ctx.db, () => {
+      run(ctx.db, "DELETE FROM sanctions_entries WHERE list = 'own'");
+      run(ctx.db, "DELETE FROM sanctions_lists WHERE list = 'own'");
+    });
+  invalidateIndex(ctx);
+  const rescreened = entries.length ? await rescreenAll(ctx) : { customers: 0, matches: 0 };
+  return { entries: entries.length, rescreened };
+}
+
 export function listStatus(ctx: Ctx) {
   const rows = all<{ list: ListId; source: string; entries: number; fetched_at: string; error: string | null; checked_at: string | null }>(ctx.db, "SELECT * FROM sanctions_lists");
-  return (["un", "ofac"] as const).map((list) => {
+  const own = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM sanctions_entries WHERE list = 'own'")!.n;
+  return [...enabledLists(ctx), ...(own > 0 ? (["own"] as const) : [])].map((list) => {
     const r = rows.find((x) => x.list === list);
     return {
       list,
+      downloaded: list !== "own",
       name: LIST_NAMES[list],
       entries: one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM sanctions_entries WHERE list = ?", list)!.n,
       fetchedAt: r?.fetched_at || null,
@@ -258,7 +421,7 @@ export function startSanctionsJob(ctx: Ctx, everyMs = 6 * 3600_000) {
   let busy = false;
   const tick = async () => {
     if (busy) return;
-    const stale = listStatus(ctx).some((l) => !l.fetchedAt || Date.now() - Date.parse(l.fetchedAt) > 20 * 3600_000);
+    const stale = listStatus(ctx).some((l) => l.downloaded && (!l.fetchedAt || Date.now() - Date.parse(l.fetchedAt) > 20 * 3600_000));
     if (!stale) return;
     busy = true;
     try {
@@ -366,9 +529,12 @@ export function invalidateIndex(ctx: Ctx) {
 function getIndex(ctx: Ctx): Index {
   const hit = indexes.get(ctx.db);
   if (hit) return hit;
+  // Only the lists in use (a list switched off in SANCTIONS_LISTS keeps its rows but isn't screened against).
+  const inUse: ListId[] = [...enabledLists(ctx), "own"];
   const rows = all<{ id: number; list: ListId; ref: string; kind: EntryKind; name: string; aliases: string; birth_years: string; programs: string; countries: string }>(
     ctx.db,
-    "SELECT * FROM sanctions_entries",
+    `SELECT * FROM sanctions_entries WHERE list IN (${inUse.map(() => "?").join(",")})`,
+    ...inUse,
   );
   const idx: Index = { entries: [], names: [], byPrefix: new Map() };
   for (const r of rows) {
