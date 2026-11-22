@@ -66,8 +66,11 @@ describe("keeping identity details current", () => {
     expect((await sendRefreshReminders(env.ctx)).reminded).toBe(1);
     expect((await G.post("/api/payments/send", { to: friend.user.handle, amount: "1", currency: "USD" })).status).toBe(201);
 
-    // After the grace period: sending and withdrawing pause; receiving still works.
+    // Not paused while the grace period since the first reminder is still running...
     approvedAgo(env, grace.user.id, 3 * 366 + 40);
+    expect(refreshStatus(env.ctx, grace.user.id).state).toBe("due");
+    // ...and after it: sending and withdrawing pause; receiving still works.
+    env.ctx.db.prepare("UPDATE users SET kyc_refresh_noticed_at = ? WHERE id = ?").run(new Date(Date.now() - 31 * DAY).toISOString(), grace.user.id);
     const blocked = await G.post("/api/payments/send", { to: friend.user.handle, amount: "1", currency: "USD" });
     expect(blocked.status).toBe(403);
     expect(blocked.body.error.code).toBe("identity_refresh_required");
@@ -107,6 +110,17 @@ describe("keeping identity details current", () => {
     env.ctx.db.prepare("UPDATE users SET pep_confirmed_at = ? WHERE id = ?").run(new Date().toISOString(), fine.user.id);
     approvedAgo(env, fine.user.id, 370);
     expect(refreshStatus(env.ctx, fine.user.id)).toMatchObject({ state: "due", highRisk: true });
+  });
+
+  it("never pauses someone who hasn't been reminded, even if they were overdue before it was switched on", async () => {
+    const env = makeApp({ KYC_AUTO_APPROVE: "true" });
+    const u = await signup(env.app, "longago");
+    await verify(u.agent);
+    approvedAgo(env, u.user.id, 5 * 365);
+    expect(refreshStatus(env.ctx, u.user.id).state).toBe("due");
+    await sendRefreshReminders(env.ctx);
+    expect(refreshStatus(env.ctx, u.user.id).state).toBe("due");
+    expect(refreshStatus(env.ctx, u.user.id, Date.now() + 31 * DAY).state).toBe("restricted");
   });
 
   it("can be switched off (KYC_REFRESH_YEARS=0)", async () => {

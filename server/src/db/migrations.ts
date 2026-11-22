@@ -980,4 +980,9 @@ export const migrations: Migration[] = [
   ALTER TABLE users ADD COLUMN legal_hold_at TEXT;
   ALTER TABLE users ADD COLUMN legal_hold_reason TEXT;
   `,
+  // 31: When a customer was first reminded to update their identity details (this cycle): nothing pauses
+  //     until the grace period has passed since then, so nobody is paused without warning.
+  `
+  ALTER TABLE users ADD COLUMN kyc_refresh_noticed_at TEXT;
+  `,
 ];

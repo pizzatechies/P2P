@@ -11,7 +11,9 @@ import { addAlert } from "./security.js";
  * were approved (KYC_REFRESH_HIGH_RISK_YEARS for confirmed politically exposed persons and customers
  * with an escalated case), whichever comes first. They're reminded 30 days before, on the day, and
  * when the grace period (KYC_REFRESH_GRACE_DAYS) ends; after that, sending and withdrawing pause until
- * they've re-verified with fresh photos. Receiving money keeps working.
+ * they've re-verified with fresh photos. Receiving money keeps working. The grace period also runs from
+ * their first reminder, so nobody is paused without warning (customers already overdue when this was
+ * switched on, say).
  */
 
 const DAY = 86_400_000;
@@ -43,7 +45,7 @@ function isHighRisk(ctx: Ctx, userId: string) {
 /** Where a customer stands on keeping their identity details current. */
 export function refreshStatus(ctx: Ctx, userId: string, now = Date.now()): RefreshStatus {
   if (!refreshOn(ctx)) return OK;
-  const user = one<{ kyc_level: number; role: string }>(ctx.db, "SELECT kyc_level, role FROM users WHERE id = ?", userId);
+  const user = one<{ kyc_level: number; role: string; kyc_refresh_noticed_at: string | null }>(ctx.db, "SELECT kyc_level, role, kyc_refresh_noticed_at FROM users WHERE id = ?", userId);
   if (!user || user.kyc_level < 1 || user.role === "admin") return OK;
   const approved = one<{ data_enc: string | null; reviewed_at: string | null; submitted_at: string | null; created_at: string }>(
     ctx.db,
@@ -65,7 +67,10 @@ export function refreshStatus(ctx: Ctx, userId: string, now = Date.now()): Refre
   const expiry = idExpiry ? Date.parse(`${idExpiry}T00:00:00Z`) : Number.POSITIVE_INFINITY;
   const due = Math.min(periodic.getTime(), expiry);
   const reason: RefreshReason = expiry <= periodic.getTime() ? "id_expired" : "periodic";
-  const restrictAt = due + ctx.config.KYC_REFRESH_GRACE_DAYS * DAY;
+  const grace = ctx.config.KYC_REFRESH_GRACE_DAYS * DAY;
+  // Reminded since this approval? The pause waits for the grace period from then, too.
+  const noticed = user.kyc_refresh_noticed_at && user.kyc_refresh_noticed_at > approved.reviewed_at ? Date.parse(user.kyc_refresh_noticed_at) : null;
+  const restrictAt = noticed === null ? Math.max(due, now) + grace : Math.max(due, noticed) + grace;
   const base = { reason, dueAt: new Date(due).toISOString(), restrictAt: new Date(restrictAt).toISOString(), highRisk, lastVerifiedAt: approved.submitted_at ?? approved.created_at };
   if (now < due - REMIND_DAYS * DAY) return { ...OK, highRisk, lastVerifiedAt: base.lastVerifiedAt };
   // A refresh they've already sent isn't held against them while it's being reviewed.
@@ -112,7 +117,7 @@ export async function sendRefreshReminders(ctx: Ctx, now = Date.now()) {
     if (s.state !== "soon" && s.state !== "due" && s.state !== "restricted") continue;
     const notice = `${s.state}:${s.dueAt!.slice(0, 10)}`;
     if (u.kyc_refresh_notice === notice) continue;
-    run(ctx.db, "UPDATE users SET kyc_refresh_notice = ? WHERE id = ?", notice, u.id);
+    run(ctx.db, "UPDATE users SET kyc_refresh_notice = ?, kyc_refresh_noticed_at = COALESCE(kyc_refresh_noticed_at, ?) WHERE id = ?", notice, new Date(now).toISOString(), u.id);
     const message = MESSAGES[s.state](s);
     addAlert(ctx, u.id, "account", message);
     await emailNotice(ctx, u.id, s.state === "restricted" ? "Sending is paused: please update your identity details" : "Please update your identity details", [message], { label: "Update my details", url: new URL("/app/account#verification", ctx.config.APP_URL).toString() }).catch(() => false);

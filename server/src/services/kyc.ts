@@ -430,6 +430,7 @@ function applyReview(ctx: Ctx, reviewerId: string | null, submissionId: string, 
     );
     if (decision === "approve") run(ctx.db, "UPDATE users SET kyc_level = MAX(kyc_level, ?) WHERE id = ?", sub.level, sub.user_id);
     if (decision === "approve" && sub.level === 1) {
+      run(ctx.db, "UPDATE users SET kyc_refresh_noticed_at = NULL, kyc_refresh_notice = NULL WHERE id = ?", sub.user_id);
       const country = decryptData<Level1Data>(ctx, sub)?.address?.country;
       if (country) run(ctx.db, "UPDATE users SET residence_country = ? WHERE id = ?", country, sub.user_id);
     }

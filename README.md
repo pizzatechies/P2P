@@ -225,7 +225,7 @@ Everything about a customer's account lives on the **Account** page (click your 
 
 **Keeping details current.** A verified customer is asked to update their identity details when their ID expires, or every `KYC_REFRESH_YEARS` (3 by default; `KYC_REFRESH_HIGH_RISK_YEARS`, 1, for confirmed PEPs and customers with an escalated case).
 - **Reminders:** in the app and by email, 30 days before and on the due date.
-- **After `KYC_REFRESH_GRACE_DAYS` (30):** sending and withdrawing pause until they re-verify with fresh photos. Receiving keeps working, and nothing is held while an update is being reviewed.
+- **After `KYC_REFRESH_GRACE_DAYS` (30):** sending and withdrawing pause until they re-verify with fresh photos. The grace period runs from their first reminder too, so nobody is paused without warning. Receiving keeps working, and nothing is held while an update is being reviewed.
 - **Admin:** a list shows who is due, overdue or paused. `KYC_REFRESH_YEARS=0` switches it off.
 
 **Limits by country.** Where a regulator sets its own limits for a verification level (tiered KYC), Admin → Limits by country sets them, with the rule they follow.
