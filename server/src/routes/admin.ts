@@ -34,7 +34,7 @@ import {
   verifySnapshots,
 } from "../services/ledgerData.js";
 import { rateLimit } from "../lib/rateLimit.js";
-import { listAlerts, reviewAlert } from "../services/monitoring.js";
+import { addCaseNote, caseFile, decideReport, listAlerts, reportRegister, reviewAlert } from "../services/monitoring.js";
 import { approvePayout, listPayoutReviews, rejectPayout } from "../services/payments.js";
 import {
   accountDetails,
@@ -328,6 +328,47 @@ export function adminRoutes(ctx: Ctx) {
   r.get("/compliance", (req, res) => {
     const { status, user } = parse(z.object({ status: z.enum(["open", "cleared", "escalated", "all"]).optional(), user: z.string().max(64).optional() }), req.query);
     res.json({ alerts: listAlerts(ctx, status ?? "open", user) });
+  });
+
+  /** The register of reporting decisions (filed with the FIU, or not and why), as CSV. Exporting it is audited. */
+  r.get("/compliance/register.csv", exportLimiter, (req, res) => {
+    const q = parse(z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }), req.query);
+    const rows = reportRegister(ctx, q.from, q.to);
+    audit(ctx, req.user!.id, "compliance.register_exported", { rows: rows.length, from: q.from ?? null, to: q.to ?? null }, req.ip);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="aurex-reporting-decisions-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.send(
+      toCsv([
+        ["Alert", "Raised", "Customer", "Account number", "Rule", "Severity", "What happened", "Escalated by", "Escalated at", "Why escalated", "Decision", "Reasons", "FIU reference", "Filed on", "Decided by", "Decided at"],
+        ...rows.map((a) => [a.id, a.created_at, `@${a.handle}`, a.account_number ?? "", a.rule, a.severity, a.summary, a.reviewer ? `@${a.reviewer}` : "", a.reviewed_at ?? "", a.review_note ?? "", a.report_decision === "report" ? "Reported to the FIU" : "Not reported", a.report_reason ?? "", a.report_ref ?? "", a.reported_on ?? "", a.decider ? `@${a.decider}` : "", a.decided_at ?? ""]),
+      ]),
+    );
+  });
+
+  /** One alert's case file: notes, review and reporting decision. Opening it is audited. */
+  r.get("/compliance/:id", (req, res) => {
+    const out = caseFile(ctx, req.user!.id, String(req.params.id));
+    audit(ctx, req.user!.id, "compliance.case_viewed", { alert: req.params.id }, req.ip);
+    res.json(out);
+  });
+
+  r.post("/compliance/:id/notes", (req, res) => {
+    const body = parse(z.object({ body: z.string().trim().min(3).max(4000) }), req.body);
+    res.status(201).json(addCaseNote(ctx, req.user!.id, String(req.params.id), body.body, req.ip));
+  });
+
+  r.post("/compliance/:id/decision", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(
+      z.object({
+        decision: z.enum(["report", "no_report"]),
+        reason: z.string().trim().max(2000),
+        reference: z.string().trim().max(100).optional(),
+        reportedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-11-22").optional(),
+      }),
+      req.body,
+    );
+    res.json(decideReport(ctx, req.user!.id, String(req.params.id), body, req.ip));
   });
 
   r.post("/compliance/:id", requireRecentAuth(ctx), (req, res) => {

@@ -909,4 +909,24 @@ export const migrations: Migration[] = [
   );
   CREATE INDEX business_person_documents_check ON business_person_documents(check_id);
   `,
+  // 26: Case files for compliance alerts: running notes (never changed or deleted) and the decision on
+  //     reporting an escalated case to the Financial Intelligence Unit, with the filing reference.
+  `
+  CREATE TABLE compliance_notes (
+    id         TEXT PRIMARY KEY,
+    alert_id   TEXT NOT NULL REFERENCES compliance_alerts(id),
+    author_id  TEXT NOT NULL REFERENCES users(id),
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX compliance_notes_alert ON compliance_notes(alert_id, created_at);
+  CREATE TRIGGER compliance_notes_no_update BEFORE UPDATE ON compliance_notes BEGIN SELECT RAISE(ABORT, 'case notes cannot be changed'); END;
+  CREATE TRIGGER compliance_notes_no_delete BEFORE DELETE ON compliance_notes BEGIN SELECT RAISE(ABORT, 'case notes cannot be deleted'); END;
+  ALTER TABLE compliance_alerts ADD COLUMN report_decision TEXT CHECK (report_decision IN ('report','no_report'));
+  ALTER TABLE compliance_alerts ADD COLUMN report_reason TEXT;
+  ALTER TABLE compliance_alerts ADD COLUMN report_ref TEXT;
+  ALTER TABLE compliance_alerts ADD COLUMN reported_on TEXT;
+  ALTER TABLE compliance_alerts ADD COLUMN decided_by TEXT;
+  ALTER TABLE compliance_alerts ADD COLUMN decided_at TEXT;
+  `,
 ];

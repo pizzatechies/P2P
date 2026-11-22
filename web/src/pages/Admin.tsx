@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, downloadFile } from "../api";
 import { ErrorText, Field } from "../components/ui";
 import { COUNTRIES } from "../countries";
 import { money, timeAgo } from "../format";
@@ -42,8 +42,106 @@ export interface ComplianceAlert {
   status: "open" | "cleared" | "escalated";
   reviewNote: string | null;
   reviewedAt: string | null;
+  report: { decision: "report" | "no_report"; reason: string | null; reference: string | null; reportedOn: string | null; decidedAt: string | null } | null;
+  notes: number;
   createdAt: string;
   user: { id: string; handle?: string; email?: string; accountNumber?: string | null };
+}
+
+interface CaseFileData {
+  alert: ComplianceAlert;
+  notes: { id: string; body: string; createdAt: string; author: { handle: string | null; name: string | null } }[];
+  reviewedBy: { handle: string; name: string } | null;
+  decidedBy: { handle: string; name: string } | null;
+  canDecide: boolean;
+}
+
+/** An alert's case file: the running notes, and the decision on reporting an escalated case to the FIU. */
+function CaseFile({ id, onChanged }: { id: string; onChanged: () => void }) {
+  const toast = useToast();
+  const file = useLoad(() => api.get<CaseFileData>(`/api/admin/compliance/${id}`), [id]);
+  const [note, setNote] = useState("");
+  const [decision, setDecision] = useState<"report" | "no_report">("report");
+  const [reason, setReason] = useState("");
+  const [reference, setReference] = useState("");
+  const [reportedOn, setReportedOn] = useState(new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const f = file.data;
+  if (!f) return <div className="faint small" style={{ padding: "8px 0" }}>Opening the case file…</div>;
+  async function addNote(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      file.setData(await api.post<CaseFileData>(`/api/admin/compliance/${id}/notes`, { body: note }));
+      setNote("");
+      onChanged();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function decide(e: React.FormEvent) {
+    e.preventDefault();
+    if (!confirm(decision === "report" ? "Record that this case was reported to the FIU? This can't be changed afterwards." : "Record that this case won't be reported, and close it? This can't be changed afterwards.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      file.setData(await api.post<CaseFileData>(`/api/admin/compliance/${id}/decision`, { decision, reason, reference: decision === "report" ? reference : undefined, reportedOn: decision === "report" ? reportedOn : undefined }));
+      toast("Decision recorded");
+      onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const a = f.alert;
+  return (
+    <div className="stack-sm" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--border)", width: "100%" }}>
+      <div className="xs faint">Case file · never shown to the customer · notes can't be edited or deleted</div>
+      <ol className="stack-sm small" style={{ margin: 0, paddingLeft: 18 }}>
+        <li><span className="faint">{new Date(a.createdAt).toLocaleString()}</span> · Alert raised: {a.summary}</li>
+        {f.notes.map((n) => (
+          <li key={n.id}><span className="faint">{new Date(n.createdAt).toLocaleString()} · @{n.author.handle ?? "former admin"}</span><div style={{ whiteSpace: "pre-wrap" }}>{n.body}</div></li>
+        ))}
+        {a.reviewedAt && a.status !== "open" && (
+          <li><span className="faint">{new Date(a.reviewedAt).toLocaleString()} · @{f.reviewedBy?.handle ?? "admin"}</span> · {a.status === "escalated" || a.report ? "Escalated" : "Cleared"}: {a.reviewNote}</li>
+        )}
+        {a.report && (
+          <li>
+            <span className="faint">{a.report.decidedAt ? new Date(a.report.decidedAt).toLocaleString() : ""} · @{f.decidedBy?.handle ?? "admin"}</span> ·{" "}
+            <strong>{a.report.decision === "report" ? `Reported to the FIU on ${a.report.reportedOn} (reference ${a.report.reference})` : "Not reported"}</strong>: {a.report.reason}
+          </li>
+        )}
+      </ol>
+      <form className="row wrap" style={{ gap: 8, alignItems: "flex-end" }} onSubmit={addNote}>
+        <textarea className="input" rows={2} style={{ flex: "1 1 280px" }} placeholder="Add a note: calls, documents asked for or received, what you found" value={note} onChange={(e) => setNote(e.target.value)} />
+        <button className="btn secondary sm" disabled={busy || note.trim().length < 3}>Add note</button>
+      </form>
+      {f.canDecide && (
+        <form className="stack-sm" onSubmit={decide} style={{ padding: 10, background: "var(--surface-2, rgba(0,0,0,.03))", borderRadius: 10 }}>
+          <strong className="small">Reporting decision</strong>
+          <div className="row wrap small" style={{ gap: 14 }}>
+            <label className="row" style={{ gap: 6 }}><input type="radio" checked={decision === "report"} onChange={() => setDecision("report")} /> Reported to the FIU</label>
+            <label className="row" style={{ gap: 6 }}><input type="radio" checked={decision === "no_report"} onChange={() => setDecision("no_report")} /> Not reporting (closes the case)</label>
+          </div>
+          {decision === "report" && (
+            <div className="grid grid-2">
+              <Field label="FIU reference"><input className="input" required maxLength={100} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="From goAML or the FIU's receipt" /></Field>
+              <Field label="Filed on"><input className="input" type="date" required value={reportedOn} onChange={(e) => setReportedOn(e.target.value)} /></Field>
+            </div>
+          )}
+          <Field label={decision === "report" ? "Why it was reported" : "Why it isn't suspicious"}>
+            <textarea className="input" rows={3} required minLength={20} maxLength={2000} value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          <ErrorText error={error} />
+          <button className="btn sm" style={{ alignSelf: "flex-start" }} disabled={busy}>Record decision</button>
+        </form>
+      )}
+    </div>
+  );
 }
 
 interface AdminUser {
@@ -448,6 +546,7 @@ const SEVERITY_PILL: Record<string, string> = { high: "bad", medium: "warn", low
 /** One monitoring alert, with clear / escalate. Used on the Admin page and a customer's page. */
 export function ComplianceAlertRow({ a, onReviewed, showUser = true }: { a: ComplianceAlert; onReviewed: () => void; showUser?: boolean }) {
   const toast = useToast();
+  const [open, setOpen] = useState(false);
   async function review(action: "clear" | "escalate") {
     const note = prompt(action === "clear" ? "What did you find? (kept in the audit log)" : "Why escalate? (kept in the audit log)");
     if (!note || note.trim().length < 3) return;
@@ -469,31 +568,51 @@ export function ComplianceAlertRow({ a, onReviewed, showUser = true }: { a: Comp
         <div className="faint xs">
           {timeAgo(a.createdAt)}
           {a.status !== "open" && ` · ${a.status}${a.reviewNote ? `: ${a.reviewNote}` : ""}`}
+          {a.report ? ` · ${a.report.decision === "report" ? `reported to the FIU (${a.report.reference})` : "not reported"}` : a.status === "escalated" ? " · reporting decision needed" : ""}
+          {a.notes ? ` · ${a.notes} note${a.notes === 1 ? "" : "s"}` : ""}
         </div>
       </div>
-      {a.status !== "cleared" && (
-        <div className="row" style={{ gap: 6 }}>
-          <button className="btn secondary sm" onClick={() => review("clear")}>Clear</button>
-          {a.status === "open" && <button className="btn ghost sm" onClick={() => review("escalate")}>Escalate</button>}
-        </div>
-      )}
+      <div className="row" style={{ gap: 6 }}>
+        <button className="btn ghost sm" onClick={() => setOpen(!open)}>{open ? "Hide case file" : "Case file"}</button>
+        {a.status !== "cleared" && <button className="btn secondary sm" onClick={() => review("clear")}>Clear</button>}
+        {a.status === "open" && <button className="btn ghost sm" onClick={() => review("escalate")}>Escalate</button>}
+      </div>
+      {open && <CaseFile id={a.id} onChanged={onReviewed} />}
     </div>
   );
 }
 
-/** Transaction-monitoring alerts waiting for a look. */
+/** Transaction-monitoring alerts waiting for a look, and escalated cases. */
 function ComplianceQueue({ onChange }: { onChange: () => void }) {
-  const list = useLoad(() => api.get<{ alerts: ComplianceAlert[] }>("/api/admin/compliance").then((r) => r.alerts));
-  if (!list.data || list.data.length === 0) return null;
+  const toast = useToast();
+  const list = useLoad(() =>
+    Promise.all([api.get<{ alerts: ComplianceAlert[] }>("/api/admin/compliance"), api.get<{ alerts: ComplianceAlert[] }>("/api/admin/compliance?status=escalated")]).then(([o, e]) => ({ open: o.alerts, escalated: e.alerts })),
+  );
+  if (!list.data) return null;
+  const { open, escalated } = list.data;
+  const reload = () => { list.reload(); onChange(); };
   return (
     <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-head"><h2>Monitoring alerts</h2><span className="faint small">{list.data.length} open</span></div>
-      <p className="muted small" style={{ marginTop: 0 }}>Patterns worth a look. Customers never see these. Withdrawals from a customer with an open medium or high alert wait for review.</p>
-      <div className="stack">
-        {list.data.map((a) => (
-          <ComplianceAlertRow key={a.id} a={a} onReviewed={() => { list.reload(); onChange(); }} />
-        ))}
+      <div className="card-head">
+        <h2>Monitoring alerts</h2>
+        <span className="row" style={{ gap: 10 }}>
+          <span className="faint small">{open.length} open · {escalated.length} escalated</span>
+          <button className="btn ghost sm" onClick={() => downloadFile("/api/admin/compliance/register.csv", "aurex-reporting-decisions.csv").catch((e) => toast((e as Error).message, "error"))}>Reporting register (CSV)</button>
+        </span>
       </div>
+      <p className="muted small" style={{ marginTop: 0 }}>Patterns worth a look. Customers never see these. Withdrawals from a customer with an open or escalated medium or high alert wait for review. Each alert has a case file for notes; escalated cases need a reporting decision.</p>
+      {open.length === 0 && escalated.length === 0 && <p className="faint small" style={{ margin: 0 }}>Nothing waiting.</p>}
+      <div className="stack">
+        {open.map((a) => <ComplianceAlertRow key={a.id} a={a} onReviewed={reload} />)}
+      </div>
+      {escalated.length > 0 && (
+        <>
+          <h3 style={{ fontSize: 15, margin: "16px 0 8px" }}>Escalated cases</h3>
+          <div className="stack">
+            {escalated.map((a) => <ComplianceAlertRow key={a.id} a={a} onReviewed={reload} />)}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Ctx } from "../context.js";
 import { all, nowIso, one, run } from "../db/index.js";
-import { badRequest, HttpError, notFound } from "../lib/errors.js";
+import { badRequest, HttpError, notFound, unprocessable } from "../lib/errors.js";
 import { newId } from "../lib/ids.js";
 import { fromMinor } from "../lib/money.js";
 import { toUsdMinor } from "./fx.js";
@@ -172,10 +172,17 @@ interface AlertRow {
   reviewed_by: string | null;
   reviewed_at: string | null;
   review_note: string | null;
+  report_decision: "report" | "no_report" | null;
+  report_reason: string | null;
+  report_ref: string | null;
+  reported_on: string | null;
+  decided_by: string | null;
+  decided_at: string | null;
   created_at: string;
   handle?: string;
   email?: string;
   account_number?: string | null;
+  notes?: number;
 }
 
 const alertView = (a: AlertRow) => ({
@@ -189,6 +196,8 @@ const alertView = (a: AlertRow) => ({
   status: a.status,
   reviewedAt: a.reviewed_at,
   reviewNote: a.review_note,
+  report: a.report_decision ? { decision: a.report_decision, reason: a.report_reason, reference: a.report_ref, reportedOn: a.reported_on, decidedAt: a.decided_at } : null,
+  notes: a.notes ?? 0,
   createdAt: a.created_at,
   user: a.handle ? { id: a.user_id, handle: a.handle, email: a.email, accountNumber: a.account_number ?? null } : { id: a.user_id },
 });
@@ -196,7 +205,8 @@ const alertView = (a: AlertRow) => ({
 export function listAlerts(ctx: Ctx, status: "open" | "cleared" | "escalated" | "all" = "open", userId?: string) {
   return all<AlertRow>(
     ctx.db,
-    `SELECT c.*, u.handle, u.email, u.account_number FROM compliance_alerts c JOIN users u ON u.id = c.user_id
+    `SELECT c.*, u.handle, u.email, u.account_number, (SELECT COUNT(*) FROM compliance_notes n WHERE n.alert_id = c.id) AS notes
+     FROM compliance_alerts c JOIN users u ON u.id = c.user_id
      WHERE (? = 'all' OR c.status = ?) AND (? IS NULL OR c.user_id = ?)
      ORDER BY CASE c.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, c.created_at DESC LIMIT 200`,
     status,
@@ -237,6 +247,103 @@ export function reviewAlert(ctx: Ctx, adminId: string, id: string, action: "clea
   }
   audit(ctx, adminId, `compliance.${action === "clear" ? "cleared" : "escalated"}`, { alert: id, target: a.user_id, rule: a.rule, freeze }, ip);
   return alertView({ ...a, status: action === "clear" ? "cleared" : "escalated", review_note: note, reviewed_at: nowIso() });
+}
+
+// ---------------------------------------------------------------------------
+// Case files: notes, and the decision on reporting to the Financial Intelligence Unit
+// ---------------------------------------------------------------------------
+function alertForCase(ctx: Ctx, adminId: string, id: string) {
+  const a = one<AlertRow>(ctx.db, "SELECT * FROM compliance_alerts WHERE id = ?", id);
+  if (!a) throw notFound("No such alert");
+  if (a.user_id === adminId) throw new HttpError(403, "forbidden", "You can't work on alerts about your own account");
+  return a;
+}
+
+const handleOf = (ctx: Ctx, id: string | null) => (id ? (one<{ handle: string; display_name: string }>(ctx.db, "SELECT handle, display_name FROM users WHERE id = ?", id) ?? null) : null);
+
+/** Everything on one alert: what happened, the notes, the review and the reporting decision, oldest first. */
+export function caseFile(ctx: Ctx, adminId: string, id: string) {
+  const a = alertForCase(ctx, adminId, id);
+  const u = one<{ handle: string; email: string; account_number: string | null }>(ctx.db, "SELECT handle, email, account_number FROM users WHERE id = ?", a.user_id);
+  const notes = all<{ id: string; author_id: string; body: string; created_at: string; handle: string | null; display_name: string | null }>(
+    ctx.db,
+    "SELECT n.*, u.handle, u.display_name FROM compliance_notes n LEFT JOIN users u ON u.id = n.author_id WHERE n.alert_id = ? ORDER BY n.created_at, n.rowid",
+    id,
+  ).map((n) => ({ id: n.id, body: n.body, createdAt: n.created_at, author: { id: n.author_id, handle: n.handle, name: n.display_name } }));
+  const reviewer = handleOf(ctx, a.reviewed_by);
+  const decider = handleOf(ctx, a.decided_by);
+  return {
+    alert: alertView({ ...a, handle: u?.handle, email: u?.email, account_number: u?.account_number, notes: notes.length }),
+    notes,
+    reviewedBy: reviewer ? { handle: reviewer.handle, name: reviewer.display_name } : null,
+    decidedBy: decider ? { handle: decider.handle, name: decider.display_name } : null,
+    canDecide: a.status === "escalated" && !a.report_decision,
+  };
+}
+
+/** A note on an alert's case file. Notes can't be changed or deleted (the database refuses). */
+export function addCaseNote(ctx: Ctx, adminId: string, id: string, body: string, ip?: string) {
+  const a = alertForCase(ctx, adminId, id);
+  const text = body.trim();
+  if (text.length < 3) throw badRequest("Write a note");
+  run(ctx.db, "INSERT INTO compliance_notes (id, alert_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)", newId("cnote"), id, adminId, text.slice(0, 4000), nowIso());
+  audit(ctx, adminId, "compliance.note_added", { alert: id, target: a.user_id }, ip);
+  return caseFile(ctx, adminId, id);
+}
+
+export interface ReportDecision {
+  decision: "report" | "no_report";
+  reason: string;
+  reference?: string;
+  reportedOn?: string;
+}
+
+/**
+ * The reporting decision on an escalated case: filed with the Financial Intelligence Unit (with the
+ * date and its reference), or not reported, with the reasons. It's final: anything later goes in a
+ * note. Not reporting closes the case, releasing the payout hold (a frozen account stays frozen).
+ */
+export function decideReport(ctx: Ctx, adminId: string, id: string, d: ReportDecision, ip?: string) {
+  const a = alertForCase(ctx, adminId, id);
+  if (a.status !== "escalated") throw unprocessable("not_escalated", "Escalate the alert first; clearing an open alert records why it isn't suspicious");
+  if (a.report_decision) throw unprocessable("already_decided", "The reporting decision has already been recorded. Add a note instead.");
+  const reason = d.reason.trim();
+  if (reason.length < 20) throw badRequest("Give the reasons in a sentence or two (the regulator may ask)");
+  if (d.decision === "report") {
+    if (!d.reference?.trim()) throw badRequest("Enter the reference the FIU gave the report");
+    if (!d.reportedOn || !/^\d{4}-\d{2}-\d{2}$/.test(d.reportedOn) || Date.parse(d.reportedOn) > Date.now()) throw badRequest("Enter the date the report was filed");
+  }
+  const now = nowIso();
+  run(
+    ctx.db,
+    `UPDATE compliance_alerts SET report_decision = ?, report_reason = ?, report_ref = ?, reported_on = ?, decided_by = ?, decided_at = ?,
+       status = CASE WHEN ? = 'no_report' THEN 'cleared' ELSE status END WHERE id = ?`,
+    d.decision,
+    reason.slice(0, 2000),
+    d.decision === "report" ? d.reference!.trim().slice(0, 100) : null,
+    d.decision === "report" ? d.reportedOn! : null,
+    adminId,
+    now,
+    d.decision,
+    id,
+  );
+  audit(ctx, adminId, "compliance.report_decided", { alert: id, target: a.user_id, decision: d.decision }, ip);
+  return caseFile(ctx, adminId, id);
+}
+
+/** Every reporting decision, for the reporting officer's register and the regulator. */
+export function reportRegister(ctx: Ctx, from?: string, to?: string) {
+  return all<AlertRow & { handle: string; account_number: string | null; reviewer: string | null; decider: string | null }>(
+    ctx.db,
+    `SELECT c.*, u.handle, u.account_number, r.handle AS reviewer, d.handle AS decider
+     FROM compliance_alerts c JOIN users u ON u.id = c.user_id LEFT JOIN users r ON r.id = c.reviewed_by LEFT JOIN users d ON d.id = c.decided_by
+     WHERE c.report_decision IS NOT NULL AND (? IS NULL OR c.decided_at >= ?) AND (? IS NULL OR c.decided_at < ?)
+     ORDER BY c.decided_at`,
+    from ?? null,
+    from ?? null,
+    to ?? null,
+    to ?? null,
+  );
 }
 
 /** Lets every admin know (in-app and by email) about something that needs them. */
