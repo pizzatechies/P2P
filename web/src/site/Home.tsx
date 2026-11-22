@@ -56,7 +56,7 @@ export function HomePage() {
       </div>
 
       <Section id="demo">
-        <SectionHead center eyebrow="Watch the demo" title="Aurex in 55 seconds" lead="Sign up, top up with M-Pesa, send money, link your bank, ask an AI, learn to trade and lock down your account, all in one tour." />
+        <SectionHead center eyebrow="Watch the demo" title="Aurex in 46 seconds" lead="Sign up, add money, send it by @handle, pay a verified business, get help with a reference number and ask an AI about a stock, all in one tour." />
         <div className="demo-home">
           <DemoVideo />
           <p style={{ textAlign: "center", marginTop: 14 }}>

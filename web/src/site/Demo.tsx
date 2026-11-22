@@ -6,16 +6,14 @@ const BASE = import.meta.env.BASE_URL;
 
 export const CHAPTERS: { t: number; label: string }[] = [
   { t: 0, label: "Welcome to Aurex" },
-  { t: 5, label: "Create an account and verify your email" },
-  { t: 10, label: "Add money with M-Pesa" },
-  { t: 18, label: "Send money by @handle" },
-  { t: 20, label: "Link your bank" },
-  { t: 25, label: "Ask any AI model" },
-  { t: 31, label: "Learn to trade" },
-  { t: 37, label: "Practise in a demo account" },
-  { t: 42, label: "Security built in" },
-  { t: 49, label: "Upgrade to a real account" },
-  { t: 52, label: "Wrap-up" },
+  { t: 5, label: "Create an account" },
+  { t: 10, label: "Add money and send by @handle" },
+  { t: 15, label: "Business accounts" },
+  { t: 19, label: "Help and complaints" },
+  { t: 25, label: "Fees and limits" },
+  { t: 29, label: "The support inbox" },
+  { t: 37, label: "AI and trading" },
+  { t: 43, label: "Wrap-up" },
 ];
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -47,7 +45,7 @@ export function DemoVideo({ withChapters }: { withChapters?: boolean }) {
           playsInline
           preload="none"
           poster={`${BASE}demo/tour-poster.jpg`}
-          aria-label="Aurex product tour, 55 seconds, with on-screen captions"
+          aria-label="Aurex product tour, 46 seconds, with on-screen captions"
         >
           <source src={`${BASE}demo/aurex-tour.mp4`} type="video/mp4" />
           Your browser can't play this video. <a href={`${BASE}demo/aurex-tour.mp4`}>Download the tour (MP4)</a>.
@@ -77,7 +75,7 @@ export function DemoPage() {
         <div className="site-container">
           <span className="eyebrow">Demo</span>
           <h1>See Aurex <span className="gold-text">in action.</span></h1>
-          <p className="lead">A 55-second tour: open an account and verify your email, top up with M-Pesa, send money, link a bank, ask an AI, take a lesson, practise in a demo account, turn on two-factor sign-in and see how to upgrade to a real account. Captions are on screen, so no sound is needed.</p>
+          <p className="lead">A 46-second tour: open an account, add money and send it by @handle, pay a verified business, ask for help and get a reference number, check fees and limits, see how the support team answers, and get an AI view on a stock. Captions are on screen, so no sound is needed.</p>
         </div>
       </section>
       <Section>
