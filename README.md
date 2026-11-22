@@ -199,7 +199,13 @@ Everything about a customer's account lives on the **Account** page (click your 
   - Reviewers see "same face", "different face" or "couldn't compare".
   - With auto-approval, both the government record and the selfie must pass.
   - PNG and WebP photos are turned into JPEG in the browser, since Smile ID needs JPEG.
-  - It doesn't include a liveness check. Smile ID's Biometric KYC, which compares the selfie with the government's photo, needs liveness frames from Smile ID's own SDK.
+  - It doesn't include a liveness check. For that, use the live selfie below.
+- Live selfie (`SMILEID_LIVENESS=true`): customers take their selfie with Smile ID's camera component (`@smileid/web-sdk`, pinned to 12.2.3 and loaded only on that step), which asks them to move a little.
+  - At submission, Smile ID's Biometric KYC checks the ID number with the issuing authority, compares the live selfie with the photo on that record, and checks liveness. It replaces the plain government check.
+  - The liveness frames are encrypted until they're sent, then deleted.
+  - Reviewers see "live selfie matches the government photo" and "liveness passed" (or a possible spoof). Auto-approval needs a clear result.
+  - While it's on, the page's security policy allows the camera, WebAssembly, and Smile ID's face-detection files from `web-models.smileidentity.com`. The component's animation player is also allowed from jsdelivr or unpkg.
+  - Smile ID's package doesn't state a licence; it's provided for Smile ID customers, so check your agreement covers it.
   - Results arrive at `/api/webhooks/smileid`, which checks Smile ID's signature (HMAC with your API key) and refuses old timestamps.
   - Use `SMILEID_ENV=sandbox` until you've run a few test checks, then `production`. Smile ID gives Enhanced KYC access to licensed organisations, so request it from them.
   - Countries or ID types Smile ID doesn't cover go straight to a person, as before.

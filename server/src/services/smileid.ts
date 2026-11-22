@@ -98,19 +98,82 @@ export interface IdentityDetails {
  * Starts a government-record check for an identity submission. Returns why it was skipped when the
  * country or ID type isn't covered (the submission then just goes to a person, as before).
  */
-export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: string, d: IdentityDetails, email: string): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
-  if (!smileConfigured(ctx)) return { started: false, reason: "not configured" };
+/** The Smile ID country, ID type and number for a customer's ID, or why it can't be checked. */
+async function resolveId(ctx: Ctx, userId: string, d: IdentityDetails): Promise<{ ok: true; country: string; type: IdTypeInfo; idNumber: string } | { ok: false; reason: string }> {
   const country = d.idCountry.toUpperCase();
   const type = pickIdType(await supportedTypes(ctx, userId, country), d.idType);
-  if (!type) return { started: false, reason: `Smile ID doesn't cover this ID type in ${country}` };
+  if (!type) return { ok: false, reason: `Smile ID doesn't cover this ID type in ${country}` };
   const idNumber = d.idNumber.replace(/\s+/g, "");
   if (type.regex) {
     try {
-      if (!new RegExp(type.regex).test(idNumber)) return { started: false, reason: `The ID number doesn't look like a ${type.label ?? type.type}` };
+      if (!new RegExp(type.regex).test(idNumber)) return { ok: false, reason: `The ID number doesn't look like a ${type.label ?? type.type}` };
     } catch {
       /* a pattern JavaScript can't read: let Smile ID decide */
     }
   }
+  return { ok: true, country, type, idNumber };
+}
+
+function userDetails(d: IdentityDetails, email: string) {
+  const tokens = d.legalName.trim().split(/\s+/);
+  const lastName = tokens.length > 1 ? tokens.pop()! : tokens[0];
+  const phone = d.phone.replace(/[\s()-]/g, "");
+  return JSON.stringify({ given_names: tokens.join(" ") || lastName, last_name: lastName, email, ...(/^\+[1-9]\d{6,14}$/.test(phone) ? { phone_number: phone } : {}) });
+}
+
+function consent(ctx: Ctx) {
+  return JSON.stringify({ granted: true, granted_at: nowIso(), notice_language: "EN", notice_privacy_policy_url: ctx.config.SMILEID_PRIVACY_URL ?? new URL("/privacy", ctx.config.APP_URL).toString() });
+}
+
+/**
+ * Biometric KYC: the ID number is checked with the issuing authority AND the live selfie (with its
+ * liveness frames from Smile ID's camera component) is compared with the photo on that record. It
+ * replaces the plain government check when live selfies are on; the result arrives on the same
+ * webhook and is bound to the submission the same way.
+ */
+export async function startBiometricKyc(
+  ctx: Ctx,
+  userId: string,
+  submissionId: string,
+  d: IdentityDetails,
+  email: string,
+  selfie: Buffer,
+  frames: Buffer[],
+): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
+  if (!smileConfigured(ctx)) return { started: false, reason: "not configured" };
+  const id = await resolveId(ctx, userId, d);
+  if (!id.ok) return { started: false, reason: id.reason };
+  const form = new FormData();
+  form.append("selfie_image", new Blob([new Uint8Array(selfie)], { type: "image/jpeg" }), "selfie.jpg");
+  frames.forEach((f, i) => form.append("liveness_images", new Blob([new Uint8Array(f)], { type: "image/jpeg" }), `liveness-${i + 1}.jpg`));
+  form.append("country", id.country);
+  form.append("id_type", id.type.type);
+  form.append("id_number", id.idNumber);
+  form.append("user_id", userId);
+  form.append("callback_url", new URL("/api/webhooks/smileid", ctx.config.APP_URL).toString());
+  form.append("user_details", userDetails(d, email));
+  form.append("consent", consent(ctx));
+  form.append("partner_params", JSON.stringify({ aurex_submission: submissionId, aurex_user: userId, aurex_check: callbackCheck(ctx, submissionId) }));
+  const r = await call<{ job_id?: string }>(ctx, "/v3/biometric_kyc", {
+    method: "POST",
+    headers: { "SmileID-Partner-ID": ctx.config.SMILEID_PARTNER_ID!, "SmileID-Token": await token(ctx, userId) },
+    form,
+  });
+  run(
+    ctx.db,
+    "UPDATE kyc_submissions SET provider = 'smileid', provider_job_id = ?, provider_status = 'pending', provider_result = NULL, updated_at = ? WHERE id = ?",
+    r.job_id ?? null,
+    nowIso(),
+    submissionId,
+  );
+  return { started: true, jobId: r.job_id ?? "" };
+}
+
+export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: string, d: IdentityDetails, email: string): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
+  if (!smileConfigured(ctx)) return { started: false, reason: "not configured" };
+  const id = await resolveId(ctx, userId, d);
+  if (!id.ok) return { started: false, reason: id.reason };
+  const { country, type, idNumber } = id;
   const tokens = d.legalName.trim().split(/\s+/);
   const lastName = tokens.length > 1 ? tokens.pop()! : tokens[0];
   const phone = d.phone.replace(/[\s()-]/g, "");
@@ -262,8 +325,17 @@ export function recordSmileResult(ctx: Ctx, payload: SmileWebhook, submitted: (s
   const nameMatch = mine && recordName ? nameScore(nameTokens(mine.legalName), nameTokens(recordName)) : null;
   const dobMatch = mine && f?.date_of_birth ? f.date_of_birth.slice(0, 10) === mine.dateOfBirth : null;
   const status = payload.status ?? "error";
+  const biometric = payload.product === "biometric_kyc";
   const result = {
     status,
+    product: payload.product ?? null,
+    // Biometric KYC only: the live selfie against the photo on the government record, and liveness.
+    ...(biometric
+      ? {
+          faceMatch: status === "clear" || status === "attention" ? true : payload.reason === "face_verification_failed" ? false : null,
+          liveness: status === "clear" || status === "attention" ? true : payload.reason === "spoof_detected" ? false : null,
+        }
+      : {}),
     reason: payload.reason ?? null,
     message: payload.message ?? null,
     nameMatch: nameMatch === null ? null : Math.round(nameMatch * 100) / 100,

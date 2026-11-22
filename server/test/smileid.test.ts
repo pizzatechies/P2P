@@ -32,6 +32,10 @@ async function smileStub() {
       }
       return { body: { id_types: [] } };
     }
+    if (req.route === "/v3/biometric_kyc" && req.method === "POST") {
+      if (req.headers["smileid-token"] !== "jwt-token") return { status: 401, body: { status: "Unauthorized", message: "token" } };
+      return { status: 202, body: { status: "accepted", message: "Job accepted", job_id: `bio_${++jobs}`, user_id: req.body.user_id, created_at: new Date().toISOString() } };
+    }
     if (req.route === "/v3/compare" && req.method === "POST") {
       if (req.headers["smileid-token"] !== "jwt-token") return { status: 401, body: { status: "Unauthorized", message: "token" } };
       return { status: 202, body: { status: "accepted", message: "Job accepted", job_id: `cmp_${++jobs}`, user_id: req.body.user_id, created_at: new Date().toISOString() } };
@@ -236,5 +240,75 @@ describe("Smile ID government record checks", () => {
     const row = env.ctx.db.prepare("SELECT selfie_status, selfie_result FROM kyc_submissions WHERE user_id = ?").get(b.user.id) as { selfie_status: string; selfie_result: string };
     expect(row.selfie_status).toBe("skipped");
     expect(JSON.parse(row.selfie_result).reason).toMatch(/JPEG/);
+  });
+
+  it("takes a live selfie from Smile ID's camera and sends it with Biometric KYC", async () => {
+    const smile = await smileStub();
+    const env = makeApp({ SMILEID_PARTNER_ID: PARTNER, SMILEID_API_KEY: KEY, SMILEID_BASE_URL: smile.url, SMILEID_AUTO_APPROVE: "true", SMILEID_LIVENESS: "true", APP_URL: "https://aurex.example.com" });
+    const admin = await makeAdmin(env);
+    const { agent, user } = await signup(env.app, "live");
+    const A = api(agent);
+    const level = () => (env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(user.id) as { kyc_level: number }).kyc_level;
+
+    // The page may use the camera and Smile ID's face-detection files; nothing else changes.
+    const page = await request(env.app).get("/api/health");
+    expect(page.headers["permissions-policy"]).toContain("camera=(self)");
+    expect(page.headers["content-security-policy"]).toMatch(/script-src 'self' 'wasm-unsafe-eval' https:\/\/web-models\.smileidentity\.com/);
+    expect(page.headers["content-security-policy"]).toMatch(/connect-src 'self' https:\/\/web-models\.smileidentity\.com/);
+
+    await A.put("/api/account/verification/1", kenyan);
+    for (const kind of ["id_front", "id_back"]) await agent.post(`/api/account/documents/${kind}`).set("x-aurex-csrf", "1").set("Content-Type", "image/jpeg").send(jpeg());
+    // A selfie file isn't accepted: it has to come from the camera.
+    expect((await agent.post("/api/account/documents/selfie").set("x-aurex-csrf", "1").set("Content-Type", "image/jpeg").send(jpeg())).status).toBe(400);
+    expect((await A.post("/api/account/verification/1/submit")).body.error.code).toBe("live_selfie_missing");
+    expect((await A.get("/api/account/verification")).body.liveness).toEqual({ required: true, capturedAt: null });
+
+    const b64 = (b: Buffer) => `data:image/jpeg;base64,${b.toString("base64")}`;
+    const frames = (n: number) => Array.from({ length: n }, () => b64(jpeg()));
+    expect((await A.post("/api/account/verification/liveness", { selfie: b64(jpeg()), liveness: frames(4) })).status).toBe(400); // too short
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(4000, 3)]);
+    expect((await A.post("/api/account/verification/liveness", { selfie: b64(jpeg()), liveness: [...frames(7), b64(png)] })).status).toBe(400);
+    const cap = await A.post("/api/account/verification/liveness", { selfie: b64(jpeg()), liveness: frames(12) });
+    expect(cap.status).toBe(201);
+    expect(cap.body.liveness.capturedAt).toBeTruthy();
+    const row = env.ctx.db.prepare("SELECT frame_count, frames_enc FROM kyc_liveness WHERE user_id = ?").get(user.id) as { frame_count: number; frames_enc: string };
+    expect(row.frame_count).toBe(8); // Smile ID takes 6 to 8: 8 kept, spread across the capture
+    expect(row.frames_enc).not.toContain("/9j/"); // encrypted, not raw base64 JPEG
+
+    expect((await A.post("/api/account/verification/1/submit")).status).toBe(200);
+    // Biometric KYC instead of the plain government check, with the selfie and 8 liveness frames.
+    expect(smile.calls.some((c) => c.route === "/v3/enhanced_kyc")).toBe(false);
+    const bio = smile.calls.find((c) => c.route === "/v3/biometric_kyc")!;
+    expect(bio.body).toMatchObject({ country: "KE", id_type: "NATIONAL_ID", id_number: "23456789", "selfie_image#count": "1", "liveness_images#count": "8" });
+    // The frames aren't kept once sent.
+    expect(env.ctx.db.prepare("SELECT 1 FROM kyc_liveness WHERE user_id = ?").get(user.id)).toBeUndefined();
+
+    const params = { ...JSON.parse(bio.body.partner_params), job_id: "bio_1" };
+    await webhook(env.app, { status: "clear", product: "biometric_kyc", partner_params: params, id_fields: { first_name: "WANJIKU", other_names: "ACHIENG", last_name: "OTIENO", date_of_birth: "1992-07-14" } });
+    expect(level()).toBe(1);
+    const reviewed = (await admin.get("/api/admin/users/" + user.id)).body.verification[0];
+    expect(reviewed.check.result).toMatchObject({ product: "biometric_kyc", faceMatch: true, liveness: true, nameMatch: 1, dobMatch: true });
+  });
+
+  it("leaves a failed liveness check to a person, and changes nothing when live selfies are off", async () => {
+    const smile = await smileStub();
+    const env = makeApp({ SMILEID_PARTNER_ID: PARTNER, SMILEID_API_KEY: KEY, SMILEID_BASE_URL: smile.url, SMILEID_AUTO_APPROVE: "true", SMILEID_LIVENESS: "true" });
+    const { agent, user } = await signup(env.app, "spoof");
+    const A = api(agent);
+    await A.put("/api/account/verification/1", kenyan);
+    for (const kind of ["id_front", "id_back"]) await agent.post(`/api/account/documents/${kind}`).set("x-aurex-csrf", "1").set("Content-Type", "image/jpeg").send(jpeg());
+    const b64 = (b: Buffer) => b.toString("base64");
+    await A.post("/api/account/verification/liveness", { selfie: b64(jpeg()), liveness: Array.from({ length: 8 }, () => b64(jpeg())) });
+    await A.post("/api/account/verification/1/submit");
+    const params = { ...JSON.parse(smile.calls.find((c) => c.route === "/v3/biometric_kyc")!.body.partner_params), job_id: "bio_1" };
+    await webhook(env.app, { status: "block", reason: "spoof_detected", product: "biometric_kyc", partner_params: params, id_fields: { full_name: "WANJIKU ACHIENG OTIENO", date_of_birth: "1992-07-14" } });
+    expect((env.ctx.db.prepare("SELECT kyc_level FROM users WHERE id = ?").get(user.id) as { kyc_level: number }).kyc_level).toBe(0);
+    const result = JSON.parse((env.ctx.db.prepare("SELECT provider_result FROM kyc_submissions WHERE user_id = ?").get(user.id) as { provider_result: string }).provider_result);
+    expect(result).toMatchObject({ product: "biometric_kyc", liveness: false, status: "block" });
+
+    const off = makeApp();
+    const page = await request(off.app).get("/api/health");
+    expect(page.headers["permissions-policy"]).toContain("camera=()");
+    expect(page.headers["content-security-policy"]).not.toContain("smileidentity");
   });
 });

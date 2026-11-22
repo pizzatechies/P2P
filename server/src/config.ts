@@ -162,6 +162,12 @@ const EnvSchema = z.object({
    * Compare, billed per check). With auto-approval, both checks must then pass.
    */
   SMILEID_SELFIE_CHECK: bool.default(false),
+  /**
+   * Live selfie: customers take their selfie with Smile ID's camera component (with liveness frames),
+   * and Biometric KYC compares it with the photo on the government record. Allows the camera and
+   * Smile ID's face-detection files in the page's security policy.
+   */
+  SMILEID_LIVENESS: bool.default(false),
 
   // ---- Politically exposed person screening (OpenSanctions match API) ----
   OPENSANCTIONS_API_KEY: optionalString,

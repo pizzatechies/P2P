@@ -63,7 +63,10 @@ function parseMultipart(raw: string, boundary: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of raw.split(`--${boundary}`)) {
     const m = /name="([^"]+)"[^\r\n]*\r\n(?:[^\r\n]+\r\n)*\r\n([\s\S]*?)\r\n$/.exec(part);
-    if (m) out[m[1]] = m[2];
+    if (m) {
+      out[m[1]] = m[2];
+      out[`${m[1]}#count`] = String(Number(out[`${m[1]}#count`] ?? 0) + 1);
+    }
   }
   return out;
 }

@@ -69,7 +69,7 @@ export interface KycSubmission {
   user: { id: string; email: string; handle: string; displayName: string; kycLevel: number };
   data: Record<string, unknown> | null;
   documents: { kind: string; label: string; id: string | null; mime: string | null; size: number | null; uploadedAt: string | null }[];
-  check?: { provider: string; status: string | null; result: { status?: string; reason?: string | null; message?: string | null; nameMatch?: number | null; dobMatch?: boolean | null; recordName?: string | null; recordDob?: string | null } | null } | null;
+  check?: { provider: string; status: string | null; result: { status?: string; product?: string | null; faceMatch?: boolean | null; liveness?: boolean | null; reason?: string | null; message?: string | null; nameMatch?: number | null; dobMatch?: boolean | null; recordName?: string | null; recordDob?: string | null } | null } | null;
   selfieCheck?: { status: string; result: { matched?: boolean | null; reason?: string | null; message?: string | null } | null } | null;
 }
 
@@ -775,6 +775,12 @@ function GovernmentCheck({ check }: { check: NonNullable<KycSubmission["check"]>
           {r.nameMatch !== null && r.nameMatch !== undefined && <span className={r.nameMatch >= 0.85 ? "good" : "bad"}>Name {Math.round(r.nameMatch * 100)}% match</span>}
           {r.dobMatch !== null && r.dobMatch !== undefined && <span className={r.dobMatch ? "good" : "bad"}> · birth date {r.dobMatch ? "matches" : "differs"}</span>}
           {r.recordName && <div className="faint xs">On record: {r.recordName}{r.recordDob ? `, born ${r.recordDob}` : ""}</div>}
+          {r.product === "biometric_kyc" && (
+            <div style={{ marginTop: 2 }}>
+              <span className={r.faceMatch ? "good" : r.faceMatch === false ? "bad" : "faint"}>Live selfie {r.faceMatch ? "matches" : r.faceMatch === false ? "doesn't match" : "not compared with"} the government photo</span>
+              <span className={r.liveness ? "good" : r.liveness === false ? "bad" : "faint"}> · liveness {r.liveness ? "passed" : r.liveness === false ? "failed (possible spoof)" : "unknown"}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

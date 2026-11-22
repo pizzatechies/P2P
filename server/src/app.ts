@@ -76,6 +76,12 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   // Cloudflare Turnstile's script and challenge frame, allowed only when bot protection is on.
   const turnstile = Boolean(config.TURNSTILE_SITE_KEY && config.TURNSTILE_SECRET_KEY);
   const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
+  // Smile ID's camera component (live selfies): it loads its face-detection code and model from
+  // web-models.smileidentity.com, runs WebAssembly, and its animations fetch a WebAssembly player from
+  // jsdelivr or unpkg (and the animation itself from a data: URL). Allowed, with the camera, only when
+  // live selfies are on.
+  const liveSelfie = Boolean(config.SMILEID_LIVENESS && config.SMILEID_PARTNER_ID && config.SMILEID_API_KEY);
+  const SMILE_MODELS = "https://web-models.smileidentity.com";
   if (config.TRUST_PROXY) app.set("trust proxy", 1);
 
   app.use(
@@ -84,10 +90,11 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
         useDefaults: true,
         directives: {
           "default-src": ["'self'"],
-          "script-src": ["'self'", ...(turnstile ? [TURNSTILE_ORIGIN] : [])],
+          "script-src": ["'self'", ...(turnstile ? [TURNSTILE_ORIGIN] : []), ...(liveSelfie ? ["'wasm-unsafe-eval'", SMILE_MODELS] : [])],
           "script-src-attr": ["'none'"],
-          "connect-src": ["'self'"],
-          "img-src": ["'self'", "data:"],
+          // (data: for the component's own animation, which it fetches from an inline data: URL.)
+          "connect-src": ["'self'", ...(liveSelfie ? [SMILE_MODELS, "https://cdn.jsdelivr.net", "https://unpkg.com", "data:"] : [])],
+          "img-src": ["'self'", "data:", ...(liveSelfie ? ["blob:"] : [])],
           "media-src": ["'self'"],
           "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           "font-src": ["'self'", "https://fonts.gstatic.com"],
@@ -110,8 +117,9 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
       xFrameOptions: { action: "deny" },
     }),
   );
+  const permissions = liveSelfie ? PERMISSIONS_POLICY.replace("camera=()", "camera=(self)") : PERMISSIONS_POLICY;
   app.use((_req, res, next) => {
-    res.setHeader("Permissions-Policy", PERMISSIONS_POLICY);
+    res.setHeader("Permissions-Policy", permissions);
     next();
   });
 
@@ -140,7 +148,9 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
     webhookRoutes(ctx),
   );
 
-  app.use(express.json({ limit: "256kb", strict: true }));
+  // A live selfie capture is several MB: its route parses its own body with a larger limit.
+  const LIVE_CAPTURE_PATH = "/api/account/verification/liveness";
+  app.use(express.json({ limit: "256kb", strict: true, type: (req) => req.url !== LIVE_CAPTURE_PATH && /^application\/json\b/i.test(String(req.headers["content-type"] ?? "")) }));
   app.use("/api", rateLimit({ name: "api", windowMs: 60_000, max: config.isTest ? 100_000 : 600 }));
   app.use("/api", originGuard(ctx), loadSession(ctx), csrfGuard);
 

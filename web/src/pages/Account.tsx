@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { LiveSelfieButton } from "../components/LiveSelfie";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, upload, downloadFile } from "../api";
 import { Icon } from "../components/icons";
@@ -22,6 +23,7 @@ interface Verification {
   identity: LevelInfo;
   enhanced: LevelInfo;
   autoApprove: boolean;
+  liveness?: { required: boolean; capturedAt: string | null };
 }
 interface AccountData {
   accountNumber: string | null;
@@ -176,12 +178,12 @@ function VerificationCard({ v, onChange }: { v: Verification; onChange: () => vo
           );
         })}
       </div>
-      {next ? <LevelForm info={next} onChange={onChange} autoApprove={v.autoApprove} /> : <p className="good small">You're fully verified. Thank you.</p>}
+      {next ? <LevelForm info={next} onChange={onChange} autoApprove={v.autoApprove} liveness={next.level === 1 ? v.liveness : undefined} /> : <p className="good small">You're fully verified. Thank you.</p>}
     </div>
   );
 }
 
-function LevelForm({ info, onChange, autoApprove }: { info: LevelInfo; onChange: () => void; autoApprove: boolean }) {
+function LevelForm({ info, onChange, autoApprove, liveness }: { info: LevelInfo; onChange: () => void; autoApprove: boolean; liveness?: Verification["liveness"] }) {
   const toast = useToast();
   const status = info.submission?.status;
   const [editing, setEditing] = useState(false);
@@ -227,15 +229,25 @@ function LevelForm({ info, onChange, autoApprove }: { info: LevelInfo; onChange:
       {info.data && (
         <div className="stack" style={{ gap: 8 }}>
           <div className="stat-label">Documents</div>
-          {info.documents.map((d) => (
-            <DocumentRow key={d.kind} doc={d} disabled={locked} onUploaded={onChange} />
-          ))}
+          {info.documents.map((d) =>
+            d.kind === "selfie" && liveness?.required ? (
+              <div key={d.kind} className="row between wrap" style={{ gap: 8 }}>
+                <div>
+                  <strong className="small">Live selfie</strong>
+                  <div className="faint xs">{liveness.capturedAt ? `Taken ${timeAgo(liveness.capturedAt)}` : "Taken with your camera, so we know it's really you"}</div>
+                </div>
+                <LiveSelfieButton captured={Boolean(liveness.capturedAt)} disabled={locked} onSaved={onChange} />
+              </div>
+            ) : (
+              <DocumentRow key={d.kind} doc={d} disabled={locked} onUploaded={onChange} />
+            ),
+          )}
           <p className="faint xs" style={{ margin: 0 }}>Clear photos or scans (JPEG, PNG, WebP or PDF, up to 5 MB). All four corners visible, nothing covered.</p>
         </div>
       )}
       <ErrorText error={error} />
       {info.data && !locked && (
-        <button className="btn" disabled={busy || info.documents.some((d) => !d.uploaded)} onClick={submit}>
+        <button className="btn" disabled={busy || info.documents.some((d) => !d.uploaded) || Boolean(liveness?.required && !liveness.capturedAt)} onClick={submit}>
           {busy ? "Submitting…" : "Submit for review"}
         </button>
       )}

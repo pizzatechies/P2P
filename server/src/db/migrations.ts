@@ -864,4 +864,15 @@ export const migrations: Migration[] = [
     ALTER TABLE safeguarding_accounts_new RENAME TO safeguarding_accounts;
     `,
   },
+  // 24: Live selfie captures (Smile ID camera component): the liveness frames, encrypted, until they're
+  // sent with the identity check. The selfie itself is stored as the "selfie" document.
+  `
+  CREATE TABLE kyc_liveness (
+    user_id       TEXT PRIMARY KEY REFERENCES users(id),
+    selfie_doc_id TEXT NOT NULL,
+    frames_enc    TEXT NOT NULL,
+    frame_count   INTEGER NOT NULL,
+    created_at    TEXT NOT NULL
+  );
+  `,
 ];

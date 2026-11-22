@@ -7,7 +7,7 @@ import { rateLimit } from "../lib/rateLimit.js";
 import { parse } from "../lib/validate.js";
 import { clearSessionCookie, requireAuth, requireRecentAuth } from "../middleware/auth.js";
 import { accountOverview, buildRangeStatement, buildStatement, closeAccount, closureBlockers, exportData, statementCsv, statementPeriods } from "../services/account.js";
-import { documentHeaders, readDocument, saveDetails, submitLevel, uploadDocument, verificationOverview, type DocKind } from "../services/kyc.js";
+import { documentHeaders, readDocument, saveDetails, submitLevel, uploadDocument, verificationOverview, type DocKind, livenessRequired, saveLiveCapture } from "../services/kyc.js";
 import { audit } from "../services/users.js";
 
 const Level = z.coerce.number().int().pipe(z.union([z.literal(1), z.literal(2)]));
@@ -41,12 +41,23 @@ export function accountRoutes(ctx: Ctx) {
     express.raw({ type: ["image/jpeg", "image/png", "image/webp", "application/pdf", "application/octet-stream"], limit: "5mb" }),
     (req, res) => {
       const kind = parse(z.enum(DOC_KINDS), req.params.kind) as DocKind;
+      if (kind === "selfie" && livenessRequired(ctx)) throw badRequest("Take your selfie with the camera instead (Take a live selfie)");
       if (!Buffer.isBuffer(req.body)) throw badRequest("Upload a JPEG, PNG or WebP photo, or a PDF");
       const doc = uploadDocument(ctx, req.user!.id, kind, req.body);
       audit(ctx, req.user!.id, "kyc.document_uploaded", { kind, size: doc.size, mime: doc.mime }, req.ip);
       res.status(201).json({ document: doc, verification: verificationOverview(ctx, req.user!.id) });
     },
   );
+
+  /**
+   * A live selfie from Smile ID's camera component: { selfie, liveness: [...] }, base64 JPEGs (a data:
+   * prefix is fine). Its body can be several MB, so it has its own JSON parser.
+   */
+  r.post("/verification/liveness", uploadLimiter, express.json({ limit: "16mb" }), (req, res) => {
+    const body = parse(z.object({ selfie: z.string().min(100).max(5_000_000), liveness: z.array(z.string().min(100).max(3_000_000)).min(1).max(20) }), req.body);
+    const decode = (s: string) => Buffer.from(s.replace(/^data:[^,]*,/, ""), "base64");
+    res.status(201).json(saveLiveCapture(ctx, req.user!.id, decode(body.selfie), body.liveness.map(decode), req.ip));
+  });
 
   /** Your own document (e.g. to check what you uploaded, or as part of your data). */
   r.get("/documents/:id", (req, res) => {

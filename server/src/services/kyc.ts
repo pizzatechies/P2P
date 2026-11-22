@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { pepBlocksAutoApproval, screenPep } from "./pep.js";
-import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook, isSelfieResult, recordSelfieResult, startSelfieCompare } from "./smileid.js";
+import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook, isSelfieResult, recordSelfieResult, startSelfieCompare, startBiometricKyc } from "./smileid.js";
 import { screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
@@ -187,7 +187,52 @@ export function verificationOverview(ctx: Ctx, userId: string) {
     identity: level(1, l1, l1Data),
     enhanced: level(2, l2, decryptData<Level2Data>(ctx, l2)),
     autoApprove: ctx.config.KYC_AUTO_APPROVE,
+    liveness: livenessRequired(ctx) ? { required: true, capturedAt: liveCapture(ctx, userId)?.created_at ?? null } : { required: false, capturedAt: null },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Live selfie (Smile ID camera component): a selfie plus liveness frames, sent with Biometric KYC
+// ---------------------------------------------------------------------------
+export const livenessRequired = (ctx: Ctx) => ctx.config.SMILEID_LIVENESS && smileConfigured(ctx);
+
+interface LiveRow {
+  user_id: string;
+  selfie_doc_id: string;
+  frames_enc: string;
+  frame_count: number;
+  created_at: string;
+}
+const liveCapture = (ctx: Ctx, userId: string) => one<LiveRow>(ctx.db, "SELECT * FROM kyc_liveness WHERE user_id = ?", userId);
+
+/** Smile ID's Biometric KYC takes 6 to 8 liveness frames: keep 8 spread across the capture. */
+function pickFrames(frames: Buffer[]) {
+  if (frames.length <= 8) return frames;
+  return Array.from({ length: 8 }, (_, i) => frames[Math.round((i * (frames.length - 1)) / 7)]);
+}
+
+export function saveLiveCapture(ctx: Ctx, userId: string, selfie: Buffer, frames: Buffer[], ip?: string) {
+  if (!livenessRequired(ctx)) throw badRequest("Live selfies aren't switched on");
+  const sub = latest(ctx, userId, 1);
+  if (sub && sub.status !== "draft" && sub.status !== "rejected") throw unprocessable("locked", "Your identity details are being reviewed or are already approved");
+  const jpeg = (b: Buffer) => sniffDocument(b) === "image/jpeg";
+  if (!jpeg(selfie) || frames.some((f) => !jpeg(f))) throw badRequest("The camera didn't send JPEG photos. Please try again.");
+  if (selfie.length > 3 * 1024 * 1024 || frames.some((f) => f.length > 2 * 1024 * 1024)) throw badRequest("The photos are too large. Please try again.");
+  if (frames.length < 6) throw badRequest("The capture was too short to check it's really you. Please try again and follow the prompts.");
+  const kept = pickFrames(frames);
+  const doc = uploadDocument(ctx, userId, "selfie", selfie);
+  run(
+    ctx.db,
+    `INSERT INTO kyc_liveness (user_id, selfie_doc_id, frames_enc, frame_count, created_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (user_id) DO UPDATE SET selfie_doc_id = excluded.selfie_doc_id, frames_enc = excluded.frames_enc, frame_count = excluded.frame_count, created_at = excluded.created_at`,
+    userId,
+    doc.id,
+    encryptSecret(JSON.stringify(kept.map((f) => f.toString("base64"))), ctx.config.masterKey),
+    kept.length,
+    nowIso(),
+  );
+  audit(ctx, userId, "kyc.live_selfie_captured", { frames: kept.length }, ip);
+  return verificationOverview(ctx, userId);
 }
 
 /** Saves (or replaces) the details for a level while it isn't under review or approved. */
@@ -267,8 +312,14 @@ export async function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: s
   if (!sub || sub.status !== "draft" || !sub.data_enc) throw unprocessable("details_missing", "Fill in and save your details first");
   const data = decryptData<Level1Data>(ctx, sub);
   const docs = latestDocs(ctx, userId);
-  const missing = requiredDocs(level, level === 1 ? data : null).filter((k) => !docs.has(k));
+  const liveNeeded = level === 1 && livenessRequired(ctx);
+  // With live selfies on, the selfie comes from the camera, not an upload.
+  const missing = requiredDocs(level, level === 1 ? data : null).filter((k) => !docs.has(k) && !(liveNeeded && k === "selfie"));
   if (missing.length) throw unprocessable("documents_missing", `Upload: ${missing.map((k) => DOC_LABEL[k]).join(", ")}`);
+  const live = liveNeeded ? liveCapture(ctx, userId) : undefined;
+  if (liveNeeded && (!live || live.selfie_doc_id !== docs.get("selfie")?.id)) {
+    throw unprocessable("live_selfie_missing", "Take your selfie with the camera first (Identity verification → Take a live selfie)");
+  }
   run(ctx.db, "UPDATE kyc_submissions SET status = 'submitted', submitted_at = ?, updated_at = ? WHERE id = ?", nowIso(), nowIso(), sub.id);
   audit(ctx, userId, "kyc.submitted", { level, submissionId: sub.id }, ip);
   const sanctionsHit = level === 1 && data?.legalName ? screenForCustomer(ctx, userId, data.legalName, "legal_name", Number(data.dateOfBirth?.slice(0, 4)) || null).length > 0 : false;
@@ -279,13 +330,26 @@ export async function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: s
   let checking = false;
   if (level === 1 && data && smileConfigured(ctx)) {
     const user = getUserRow(ctx, userId);
-    const started = await startEnhancedKyc(ctx, userId, sub.id, data as unknown as IdentityDetails, user.email).catch((err: Error) => ({ started: false as const, reason: err.message }));
+    const started = live
+      ? await startBiometricKyc(
+          ctx,
+          userId,
+          sub.id,
+          data as unknown as IdentityDetails,
+          user.email,
+          readDocument(ctx, live.selfie_doc_id).bytes,
+          (JSON.parse(decryptSecret(live.frames_enc, ctx.config.masterKey)) as string[]).map((f) => Buffer.from(f, "base64")),
+        ).catch((err: Error) => ({ started: false as const, reason: err.message }))
+      : await startEnhancedKyc(ctx, userId, sub.id, data as unknown as IdentityDetails, user.email).catch((err: Error) => ({ started: false as const, reason: err.message }));
+    // The liveness frames have done their job (Smile ID keeps its own copy): don't keep them.
+    if (live) run(ctx.db, "DELETE FROM kyc_liveness WHERE user_id = ?", userId);
     checking = started.started;
     if (!started.started) {
       run(ctx.db, "UPDATE kyc_submissions SET provider = 'smileid', provider_status = 'skipped', provider_result = ? WHERE id = ?", JSON.stringify({ status: "skipped", reason: started.reason }), sub.id);
     }
     // And, when switched on, the selfie is compared with the photo on the front of the ID.
-    if (ctx.config.SMILEID_SELFIE_CHECK) {
+    // (Biometric KYC already compares the live selfie with the government photo.)
+    if (ctx.config.SMILEID_SELFIE_CHECK && !live) {
       const selfieDoc = docs.get("selfie");
       const frontDoc = docs.get("id_front");
       const selfie = selfieDoc ? readDocument(ctx, selfieDoc.id) : null;
@@ -448,7 +512,9 @@ function maybeAutoApprove(ctx: Ctx, submissionId: string) {
   const gov = sub.provider_result ? (JSON.parse(sub.provider_result) as { status?: string; nameMatch?: number | null; dobMatch?: boolean | null }) : null;
   const governmentOk = gov?.status === "clear" && (gov.nameMatch ?? 0) >= 0.85 && gov.dobMatch !== false;
   if (!governmentOk) return;
-  if (ctx.config.SMILEID_SELFIE_CHECK && sub.selfie_status !== "clear") return;
+  // Biometric KYC's "clear" already means the live selfie matched the government photo.
+  const biometric = (gov as { product?: string | null }).product === "biometric_kyc";
+  if (ctx.config.SMILEID_SELFIE_CHECK && !biometric && sub.selfie_status !== "clear") return;
   if (underSanctionsReview(ctx, sub.user_id) || pepBlocksAutoApproval(ctx, sub.user_id)) return;
   applyReview(
     ctx,
