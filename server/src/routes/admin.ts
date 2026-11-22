@@ -1,4 +1,5 @@
 import express, { Router } from "express";
+import { retentionQueue, runRetention, setLegalHold } from "../services/retention.js";
 import { refreshQueue } from "../services/kycRefresh.js";
 import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "../services/business.js";
 import { readPersonDocument } from "../services/kybPeople.js";
@@ -512,6 +513,7 @@ export function adminRoutes(ctx: Ctx) {
         role: user.role,
         status: user.closed_at ? "closed" : user.status,
         closedAt: user.closed_at,
+        retention: one<{ purged_at: string | null; legal_hold_at: string | null; legal_hold_reason: string | null }>(ctx.db, "SELECT purged_at, legal_hold_at, legal_hold_reason FROM users WHERE id = ?", user.id),
         accountNumber: user.account_number,
         kycLevel: user.kyc_level,
         twoFactor: user.totp_enabled === 1,
@@ -556,6 +558,28 @@ export function adminRoutes(ctx: Ctx) {
     );
     const result = requestChange(ctx, req.user!.id, "limits", String(req.params.id), body, req.ip);
     res.status(result.applied ? 200 : 202).json({ ok: true, ...result });
+  });
+
+  // ---- Record retention ----
+  r.get("/retention", (_req, res) => {
+    res.json({
+      years: ctx.config.RECORD_RETENTION_YEARS,
+      accounts: retentionQueue(ctx),
+      purged: one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM users WHERE purged_at IS NOT NULL")!.n,
+      onHold: all<{ id: string; handle: string; legal_hold_at: string; legal_hold_reason: string | null }>(ctx.db, "SELECT id, handle, legal_hold_at, legal_hold_reason FROM users WHERE legal_hold_at IS NOT NULL ORDER BY legal_hold_at").map((u) => ({ id: u.id, handle: u.handle, since: u.legal_hold_at, reason: u.legal_hold_reason })),
+    });
+  });
+
+  /** Deletes personal data for every closed account past the retention period now (the daily job does the same). */
+  r.post("/retention/run", requireRecentAuth(ctx), (req, res) => {
+    if (!ctx.config.RECORD_RETENTION_YEARS) throw badRequest("Set RECORD_RETENTION_YEARS first");
+    res.json(runRetention(ctx, req.user!.id, req.ip));
+  });
+
+  r.post("/users/:id/legal-hold", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(z.object({ hold: z.boolean(), reason: z.string().trim().max(300).optional() }), req.body);
+    setLegalHold(ctx, req.user!.id, String(req.params.id), body.hold, body.reason, req.ip);
+    res.json({ ok: true });
   });
 
   /** Each level's limits by country (where a regulator sets its own), and the defaults they replace. */

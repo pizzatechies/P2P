@@ -218,6 +218,17 @@ export function securityPosture(ctx: Ctx) {
   });
 
   // Records
+  add({
+    id: "retention",
+    area: "Records",
+    label: "Closed accounts' personal data is deleted after the retention period",
+    status: c.RECORD_RETENTION_YEARS > 0 ? "pass" : "warn",
+    detail:
+      c.RECORD_RETENTION_YEARS > 0
+        ? `Personal data is deleted ${c.RECORD_RETENTION_YEARS} years after an account closes (the ledger, audit log and compliance records are kept).`
+        : "Closed accounts' personal data is kept indefinitely; data protection law expects a defined retention period.",
+    fix: "Set RECORD_RETENTION_YEARS to the longest period the law requires in your countries (often 5 to 10 years).",
+  });
   const ledger = verifyLedger(ctx);
   add({
     id: "ledger",

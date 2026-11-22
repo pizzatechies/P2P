@@ -289,6 +289,7 @@ export function closeAccount(ctx: Ctx, userId: string, confirmHandle: string, ip
 export function reopenAccount(ctx: Ctx, adminId: string, userId: string, ip?: string) {
   const user = getUserRow(ctx, userId);
   if (!user.closed_at) throw unprocessable("not_closed", "This account isn't closed");
+  if (one(ctx.db, "SELECT 1 FROM users WHERE id = ? AND purged_at IS NOT NULL", userId)) throw unprocessable("purged", "This account's personal data was deleted under the retention policy, so it can't be reopened");
   run(ctx.db, "UPDATE users SET status = 'active', closed_at = NULL WHERE id = ?", userId);
   audit(ctx, adminId, "admin.account_reopened", { target: userId }, ip);
 }

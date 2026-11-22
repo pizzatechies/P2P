@@ -16,6 +16,7 @@ interface Detail {
     role: string;
     status: string;
     closedAt: string | null;
+    retention?: { purged_at: string | null; legal_hold_at: string | null; legal_hold_reason: string | null } | null;
     accountNumber: string | null;
     kycLevel: number;
     pepConfirmedAt?: string | null;
@@ -71,11 +72,18 @@ export function AdminUserPage() {
               <span className={`pill ${u.kycLevel >= 1 ? "good" : "warn"}`}>{LEVELS[u.kycLevel]}</span>
               {u.pepConfirmedAt && <span className="pill warn" title="Politically exposed person: enhanced due diligence, every payout is reviewed">PEP</span>}
               {u.role === "admin" && <span className="pill brand">admin</span>}
+              {u.retention?.legal_hold_at && <span className="pill warn" title={u.retention.legal_hold_reason ?? ""}>Legal hold</span>}
+              {u.retention?.purged_at && <span className="pill" title="Personal data deleted under the retention policy">Data deleted {new Date(u.retention.purged_at).toLocaleDateString()}</span>}
             </p>
           )}
         </div>
         {u && !self && (
           <div className="row" style={{ gap: 6 }}>
+            {!u.retention?.purged_at && (u.retention?.legal_hold_at ? (
+              <button className="btn ghost sm" onClick={() => confirm(`Lift the legal hold on @${u.handle}? Their records follow the normal retention period again.`) && act("Legal hold lifted", () => api.post(`/api/admin/users/${u.id}/legal-hold`, { hold: false }))}>Lift legal hold</button>
+            ) : (
+              <button className="btn ghost sm" onClick={() => { const reason = prompt("Why must these records be kept past the retention period? (an investigation, a court order, a dispute)"); if (reason && reason.trim().length >= 3) act("Legal hold set", () => api.post(`/api/admin/users/${u.id}/legal-hold`, { hold: true, reason })); }}>Legal hold</button>
+            ))}
             {u.status === "active" ? (
               <button className="btn danger sm" onClick={() => confirm(`Freeze @${u.handle}? They're signed out and can't move money.`) && act("Account frozen", () => api.post(`/api/admin/users/${u.id}/status`, { status: "frozen" }))}>
                 Freeze

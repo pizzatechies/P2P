@@ -217,6 +217,8 @@ const EnvSchema = z.object({
   MAX_USERS: z.coerce.number().int().min(0).default(0),
   /** Screen customers and payout recipients against sanctions lists (downloaded daily). */
   SANCTIONS_SCREENING: bool.default(true),
+  /** Years after an account closes before its personal data is deleted (0 = keep everything). Set it to your longest legal retention period. */
+  RECORD_RETENTION_YEARS: z.coerce.number().int().min(0).max(30).default(0),
   /** Companies' directors and owners (other than the applicant) confirm their identity through a private link before approval. */
   KYB_PERSON_CHECKS: bool.default(true),
   /** Which official lists to download: un, ofac, eu, uk. Your own uploaded list is always used. */

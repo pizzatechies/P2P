@@ -974,4 +974,10 @@ export const migrations: Migration[] = [
   );
   ALTER TABLE users ADD COLUMN residence_country TEXT;
   `,
+  // 30: Record retention: when a closed account's personal data was deleted, and legal holds that keep it.
+  `
+  ALTER TABLE users ADD COLUMN purged_at TEXT;
+  ALTER TABLE users ADD COLUMN legal_hold_at TEXT;
+  ALTER TABLE users ADD COLUMN legal_hold_reason TEXT;
+  `,
 ];

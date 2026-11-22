@@ -267,6 +267,7 @@ export function AdminPage() {
       {!overview.error && <KycQueue />}
       {!overview.error && <IdentityRefreshCard />}
       {!overview.error && <CountryLimitsCard />}
+      {!overview.error && <RetentionCard />}
       {!overview.error && <ApprovalQueue />}
       {!overview.error && <BusinessQueue />}
       {!overview.error && <UpgradeQueue />}
@@ -480,6 +481,71 @@ export function KycSubmissionCard({ s, onReviewed }: { s: KycSubmission; onRevie
 }
 
 /** Identity submissions waiting for review. */
+interface RetentionData {
+  years: number;
+  accounts: { id: string; handle: string; closedAt: string; purgeAfter: string; due: boolean; hold: string | null }[];
+  purged: number;
+  onHold: { id: string; handle: string; since: string; reason: string | null }[];
+}
+
+/** Record retention: closed accounts whose personal data is due for deletion, and legal holds. */
+function RetentionCard() {
+  const toast = useToast();
+  const data = useLoad(() => api.get<RetentionData>("/api/admin/retention"));
+  const d = data.data;
+  if (!d) return null;
+  async function runNow() {
+    const due = d!.accounts.filter((a) => a.due && !a.hold).length;
+    if (!confirm(`Delete the personal data of ${due} closed account${due === 1 ? "" : "s"} now? This can't be undone. The ledger, audit log and compliance records are kept.`)) return;
+    try {
+      const r = await api.post<{ purged: number; kept: number }>("/api/admin/retention/run");
+      toast(`${r.purged} deleted · ${r.kept} kept on hold`);
+      data.reload();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  if (d.years === 0) {
+    return (
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head"><h2>Record retention</h2><span className="pill">Off</span></div>
+        <p className="muted small" style={{ margin: 0 }}>Closed accounts' personal data is kept indefinitely. Set RECORD_RETENTION_YEARS to the longest period the law requires in your countries (often 5 to 10 years after the relationship ends) to delete it automatically after that.{d.onHold.length ? ` ${d.onHold.length} account${d.onHold.length === 1 ? " is" : "s are"} on legal hold.` : ""}</p>
+      </div>
+    );
+  }
+  const due = d.accounts.filter((a) => a.due);
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head">
+        <h2>Record retention</h2>
+        {due.some((a) => !a.hold) && <button className="btn secondary sm" onClick={runNow}>Delete due data now</button>}
+      </div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        {d.years} years after an account closes, its personal data is deleted (checked daily): identity details and documents, company documents and people, support messages, payout destinations, security history and staff notes; the account is anonymised. The ledger, audit log and compliance records are kept. Accounts on legal hold or with an open case are skipped. {d.purged} deleted so far.
+      </p>
+      {d.accounts.length === 0 ? (
+        <p className="faint small" style={{ margin: 0 }}>Nothing due in the next 90 days.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead><tr><th>Account</th><th>Closed</th><th>Delete after</th><th>Status</th></tr></thead>
+            <tbody>
+              {d.accounts.slice(0, 50).map((a) => (
+                <tr key={a.id}>
+                  <td><Link to={`/app/admin/users/${a.id}`}>@{a.handle}</Link></td>
+                  <td className="small">{a.closedAt.slice(0, 10)}</td>
+                  <td className="small">{a.purgeAfter.slice(0, 10)}</td>
+                  <td className={`small ${a.hold ? "warn-text" : a.due ? "bad" : "faint"}`}>{a.hold ? `Kept: ${a.hold}` : a.due ? "Due now" : "Coming up"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface CountryLimitsData {
   tiered: boolean;
   caps: { txUsd: number; dailyUsd: number };
