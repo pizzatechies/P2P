@@ -33,7 +33,7 @@ export function SecurityPage() {
         "After a password change or 2FA removal, money can't leave for 24 hours, so a hijacker can't empty your account",
         "Withdrawals are held aside before payout and returned automatically if a payout fails",
         "Per-payment and daily limits apply across every currency, rise only as you verify your identity, and can't be dodged by sending several payments at once",
-        "Customers, businesses and the people who own them are screened against the UN and US sanctions lists, which are refreshed every day",
+        "Customers, businesses and the people who own them are screened against the UN, US, EU and UK sanctions lists, refreshed every day",
         "Larger withdrawals are checked by a second person before they're sent; the money is set aside meanwhile",
         "Customers' money is kept apart from the business's own and reconciled against the bank several times a day",
         "Every payment and admin action is sealed in a tamper-evident chain, so records can't be changed after the fact",

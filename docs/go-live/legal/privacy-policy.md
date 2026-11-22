@@ -72,7 +72,8 @@ Some of these partners, and our hosting, are outside your country (for example i
   - [Ghana Act 1044: 5 years].
   - Confirm each period.
 - **Everything else:** kept while your account is open and for [2] years after, unless needed for a dispute.
-- **Ledger and audit records:** these are tamper-evident and can't be edited. When their retention period ends they're deleted under a documented procedure.
+- **When the period ends:** the personal data of a closed account is deleted automatically: identity documents and details, support messages, payout details and contact details. Your account record is anonymised. We keep it longer only when the law requires it, for example during an investigation.
+- **Ledger and audit records:** these are tamper-evident and can't be edited, so they're kept as financial records. Once your personal data is deleted, they're linked only to the anonymised account.
 
 ## 6. Your rights
 

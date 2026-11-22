@@ -61,12 +61,13 @@ How each level is checked:
 - **Selfie check (when switched on):** the selfie is compared with the photo on the ID document (Smile ID SmartSelfie Compare). Automatic approval then also needs a match.
 - **Live selfie (when switched on):** customers take a live selfie with Smile ID's camera. Biometric KYC compares it with the photo on the government record and checks liveness, to catch photos of photos and masks.
 - **Reviewers:** they see the record and the comparison. No one can approve their own verification.
+- **Limits by country [SYSTEM]:** where a regulator sets its own limits for a level, they apply to customers by the country in their verified address. Admins set them under Admin → Limits by country, and a second admin approves each change.
 - **Withdrawals and receiving money by email:** these need a verified email address.
 
 **[TO DO]**
 
 - Decide whether Level 0 accounts may hold balances at all in each country. Some regulators require identity verification before any value is held.
-- Set limits per regulator's tiered-KYC rules (for example CBN's tiered KYC for Nigeria).
+- Enter each regulator's tiered-KYC limits (for example CBN's tiered KYC for Nigeria) under Admin → Limits by country.
 
 ### 4.2 Business accounts (know your business) [SYSTEM]
 
@@ -76,10 +77,13 @@ How each level is checked:
 - **Review:** an admin reviews each application; no one can approve their own.
 
 - **Registered companies [SYSTEM]:** they also list their directors and everyone owning 25% or more, each sanctions-screened, and upload a registration certificate and a record of directors and shareholders. Reviewers check the documents name the same people.
+- **Directors' and owners' identity [SYSTEM]:**
+  - everyone listed other than the applicant gets a private link to confirm their identity: ID details, a photo of their ID and a selfie;
+  - where Smile ID covers their ID, the number is checked with the issuing authority;
+  - the company isn't approved until everyone has done this.
 
 **[TO DO]**
 
-- Verify the identity of directors and owners who aren't themselves Aurex customers.
 - For higher-risk categories, record the nature of the business and expected volumes.
 
 ### 4.3 Enhanced due diligence (EDD)
@@ -107,12 +111,17 @@ EDD means source of funds and wealth, senior-management approval, and closer mon
 ### 4.4 Ongoing due diligence
 
 - **Re-screening [SYSTEM]:** customers are re-screened whenever the sanctions lists change.
-- **Refreshing details [TO DO]:** refresh customer details periodically, for example every [3] years for standard risk and every year for high risk.
+- **Refreshing details [SYSTEM]:**
+  - **When:** verified customers update their identity details when their ID expires, or every `KYC_REFRESH_YEARS` (3 by default). For confirmed PEPs and customers with an escalated case, it's every `KYC_REFRESH_HIGH_RISK_YEARS` (1 by default).
+  - **Reminders:** they're reminded 30 days before and on the due date.
+  - **If they don't:** after the grace period (`KYC_REFRESH_GRACE_DAYS`, 30), sending and withdrawing pause until they've re-verified with fresh photos.
+- **[TO DO]** Confirm these intervals in the risk assessment.
 
 ## 5. Sanctions screening [SYSTEM]
 
 - **Lists:**
-  - the UN Security Council Consolidated List and the US OFAC SDN list, downloaded from the official sources every day;
+  - the UN Security Council Consolidated List, the US OFAC SDN list, the EU Consolidated Financial Sanctions List and the UK Sanctions List, downloaded from the official sources every day (`SANCTIONS_LISTS`);
+  - our own list, uploaded under Admin → Sanctions lists, for national designations and anyone else we must screen for;
   - a broken download never replaces a good copy.
 - **Who is screened:**
   - names given at sign-up;
@@ -128,7 +137,7 @@ EDD means source of funds and wealth, senior-management approval, and closer mon
 
 **[TO DO]**
 
-- Add the national lists that apply (for example, each country's domestic terrorism designations) and, if your banks require it, the EU and UK lists.
+- Upload the national lists that apply (for example, each country's domestic terrorism designations) as our own list, and keep it current.
 - Document the freezing and reporting procedure for a confirmed match (to the FIU and, where required, the sanctions authority), within the legal deadline.
 
 ## 6. Transaction monitoring [SYSTEM]
@@ -150,6 +159,7 @@ How alerts are handled:
 - **Who sees them:** alerts are visible only to admins, never to the customer, to avoid tipping off.
 - **Effect on payouts:** an open medium or high alert holds the customer's withdrawals for review.
 - **Reviewing:** a reviewer clears the alert (with a reason) or escalates it. Reviewers can't review alerts on their own account.
+- **Case files [SYSTEM]:** each alert has running notes, which can't be edited or deleted. Each escalated case gets a recorded reporting decision.
 - **Payout review:** withdrawals at or above `PAYOUT_REVIEW_USD` (US$1,000), or by customers with open alerts, wait for a second person. Rejected payouts are refunded to the wallet.
 
 **[TO DO]** Tune thresholds to real customer behaviour after the first [3] months, and record why.
@@ -165,7 +175,7 @@ How alerts are handled:
   - Uganda: FIA.
 - **Cash and threshold reports:** these are filed where the law requires them, such as currency transaction reports above national thresholds.
 - **No tipping off:** we don't tell a customer that a report is being considered or has been made. The software never shows customers compliance alerts.
-- **Records:** every decision not to report is recorded with reasons.
+- **Records [SYSTEM]:** every decision on an escalated case is recorded, as reported (with the FIU's reference and the filing date) or not reported, with the reasons. Admin → Monitoring alerts → Reporting register exports them all.
 
 ## 8. Record keeping [SYSTEM, partly]
 
@@ -173,6 +183,9 @@ How alerts are handled:
 - **Audit log:** customer and staff actions are logged in a sealed audit log, including every view of an identity document.
 - **Other records:** identity records, screening results and alert decisions are kept.
 - **Retention:** records are kept for at least [the longest period required in our countries: 5–10 years] after the relationship ends.
+  - **[SYSTEM]** With `RECORD_RETENTION_YEARS` set to that period, a closed account's personal data is deleted when it ends, and the account is anonymised.
+  - The ledger, audit log and compliance records are kept.
+  - Accounts under a legal hold, or with an open case, are kept.
 - **Exports:** records can be exported for regulators (Admin → Ledger: trial balance, journal export).
 
 ## 9. Safeguarding customer money [SYSTEM, partly]

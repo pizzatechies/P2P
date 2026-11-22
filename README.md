@@ -135,6 +135,14 @@ These provisions matter once real money flows through the rails.
 
 Alerts appear under **Admin → Monitoring alerts** and on the customer's admin page. An admin clears them with a note, or escalates them (optionally freezing the account). Customers never see alerts: in most AML regimes, telling a customer they're under review ("tipping off") is itself an offence.
 
+**Case files.**
+- **Notes:** every alert has a case file of running notes, which the database won't let anyone edit or delete.
+- **Reporting decision:** each escalated case gets one, either filed with the Financial Intelligence Unit (with the FIU's reference and the filing date) or not reported (with the reasons).
+  - The decision is final; later information goes in a note.
+  - Not reporting closes the case.
+- **Reporting register:** the **Reporting register** button exports every decision as CSV.
+- **Audit:** opening a case file, adding notes and making decisions are all audited. Nobody can work on alerts about their own account.
+
 **Sanctions screening.** Aurex downloads four official lists from their sources and checks them daily: the **UN Security Council Consolidated List**, the **US Treasury OFAC SDN list** (with its aliases), the **EU Consolidated Financial Sanctions List** and the **UK Sanctions List**. You can add **your own list** (national designations, or anyone else your regulator or banks name) by uploading a CSV under Admin → Sanctions lists.
 
 - **Who is screened, and when:**
@@ -214,6 +222,16 @@ Everything about a customer's account lives on the **Account** page (click your 
 - `KYC_LIMITS=false` turns the levels off and applies `MAX_TX_USD` / `DAILY_LIMIT_USD` to everyone. Admin accounts are never tiered.
 
 **Statements.** Customers pick a month and a wallet and get the opening balance, every movement and the closing balance, built from the ledger. The page prints cleanly, so "Save as PDF" in the browser gives a PDF statement, and there's a CSV download. Cells that would start a spreadsheet formula are neutralised.
+
+**Keeping details current.** A verified customer is asked to update their identity details when their ID expires, or every `KYC_REFRESH_YEARS` (3 by default; `KYC_REFRESH_HIGH_RISK_YEARS`, 1, for confirmed PEPs and customers with an escalated case).
+- **Reminders:** in the app and by email, 30 days before and on the due date.
+- **After `KYC_REFRESH_GRACE_DAYS` (30):** sending and withdrawing pause until they re-verify with fresh photos. Receiving keeps working, and nothing is held while an update is being reviewed.
+- **Admin:** a list shows who is due, overdue or paused. `KYC_REFRESH_YEARS=0` switches it off.
+
+**Limits by country.** Where a regulator sets its own limits for a verification level (tiered KYC), Admin → Limits by country sets them, with the rule they follow.
+- **Who they apply to:** customers, by the country in their verified address. Everyone else keeps the defaults, and nothing goes above `MAX_TX_USD`/`DAILY_LIMIT_USD`.
+- **Approval:** each change needs a second admin.
+- **Where they're shown:** on the public fees page.
 
 **Your data.** "Download my data" exports a JSON file with the profile, verification details, wallets, transactions, payment requests, deposits and withdrawals, linked accounts, trading, AI conversations, academy progress and security history. Password hashes, 2FA secrets and API keys are never included. It needs a recent sign-in and is rate-limited.
 
@@ -427,9 +445,17 @@ The software is a foundation. Running a real money or brokerage business has req
 - **Admin → Support:**
   - Staff reply, or leave internal notes the customer never sees, and nobody can handle their own case.
   - Overdue complaints are flagged.
-  - The complaints report gives counts, outcomes, the median time to answer and late answers, and the complaints log downloads as CSV for regulators.
+  - The final answer on an upheld complaint can record the redress paid or offered. A complaint the customer took to the regulator or ombudsman is recorded with the body and date.
+  - The complaints report gives counts, outcomes, the median time to answer, the share answered on time, late answers, redress, external referrals, and breakdowns by month and subject. The complaints log downloads as CSV for regulators.
 - **Notifications:** customers get an in-app alert and an email when there's a reply. The email doesn't include the message.
 - **Data download:** cases are included, without staff notes.
+
+**Record retention.** Set `RECORD_RETENTION_YEARS` to the longest retention period the law requires in your countries (0, the default, keeps everything).
+- **Deleted:** once an account has been closed that long, its personal data is deleted daily: identity details and documents, company documents and people, support message text, payout destinations, staff notes and security history.
+- **Anonymised:** the account itself, which then can't be reopened.
+- **Kept:** the ledger, the sealed audit log, and compliance cases and screening evidence. They can't be edited, and the law requires them.
+- **Skipped:** accounts under a legal hold (set with a reason on the customer's admin page), or with an open compliance case.
+- **Admin → Record retention** shows what's due.
 
 **The [go-live pack](docs/go-live/README.md)** covers the non-code side: market research on regulators, licences and sandboxes in Kenya, Zambia, Nigeria, Ghana and neighbours; draft Terms, Privacy Policy, Fee Schedule, AML/CFT policy, Complaints Policy and Risk Warnings; a compliance pack mapping each requirement to what Aurex already does; and a server runbook (daily checks, backups and restore drills, incidents, and switching from sandbox to real money step by step).
 
