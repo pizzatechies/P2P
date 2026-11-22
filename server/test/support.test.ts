@@ -67,16 +67,26 @@ describe("help and complaints", () => {
 
     const id = complaint.case.id;
     expect((await admin.A.post(`/api/admin/support/cases/${id}/resolve`, { resolution: "We reviewed the hold." })).status).toBe(400);
-    const done = await admin.A.post(`/api/admin/support/cases/${id}/resolve`, { resolution: "The hold was longer than our standard; we've refunded the fee.", outcome: "partly_upheld" });
-    expect(done.body.case).toMatchObject({ status: "resolved", outcome: "partly_upheld" });
+    // Redress is for upheld complaints only.
+    expect((await admin.A.post(`/api/admin/support/cases/${id}/resolve`, { resolution: "We reviewed the hold.", outcome: "not_upheld", redress: { amount: "5", currency: "USD" } })).status).toBe(400);
+    const done = await admin.A.post(`/api/admin/support/cases/${id}/resolve`, { resolution: "The hold was longer than our standard; we've refunded the fee.", outcome: "partly_upheld", redress: { amount: "4.50", currency: "USD" } });
+    expect(done.body.case).toMatchObject({ status: "resolved", outcome: "partly_upheld", redress: { amount: "4.50", currency: "USD" } });
+    // The customer took it to the regulator.
+    expect((await admin.A.post(`/api/admin/support/cases/${q.case.id}/referral`, { to: "Central Bank", on: "2999-01-01" })).status).toBe(400);
+    const referred = await admin.A.post(`/api/admin/support/cases/${id}/referral`, { to: "Central Bank of Kenya", on: new Date().toISOString().slice(0, 10) });
+    expect(referred.body.case.referral).toMatchObject({ to: "Central Bank of Kenya" });
+    expect(referred.body.messages.at(-1)).toMatchObject({ internal: true, body: expect.stringMatching(/referred to Central Bank of Kenya/) });
     expect((await C.get(`/api/support/cases/${id}`)).body.messages.at(-1).body).toMatch(/partly upheld.*regulator or ombudsman/s);
 
     const today = new Date().toISOString().slice(0, 10);
     const report = (await admin.A.get(`/api/admin/support/report?from=${today}&to=${today}`)).body.report;
-    expect(report).toMatchObject({ received: 2, resolved: 1, open: 1, outcomes: { partly_upheld: 1 }, resolvedLate: 0 });
+    expect(report).toMatchObject({ received: 2, resolved: 1, open: 1, outcomes: { partly_upheld: 1 }, resolvedLate: 0, withinDeadline: 1, withinDeadlinePct: 100, referred: 1, redress: { USD: "4.50" } });
+    expect(report.months).toEqual([{ month: today.slice(0, 7), received: 2, resolved: 1, withinDeadline: 1, upheld: 1 }]);
+    expect(report.categories).toEqual(expect.arrayContaining([expect.objectContaining({ category: "complaint", received: 1, upheld: 1, withinDeadline: 1 })]));
     const csv = await admin.A.get(`/api/admin/support/report?from=${today}&to=${today}&format=csv`);
     expect(csv.text.split("\r\n")[0]).toContain('"Reference","Received"');
     expect(csv.text).toContain('"partly_upheld"');
+    expect(csv.text).toContain('"4.50 USD","Central Bank of Kenya"');
   });
 
   it("doesn't let an admin handle their own case, and counts business days", async () => {

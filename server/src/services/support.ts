@@ -2,6 +2,7 @@ import type { Ctx } from "../context.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
 import { badRequest, forbidden, notFound, unprocessable } from "../lib/errors.js";
 import { newId } from "../lib/ids.js";
+import { assertCurrency, fromMinor, toMinor } from "../lib/money.js";
 import { sendEmail, simpleHtml } from "../lib/mailer.js";
 import { notifyAdmins } from "./monitoring.js";
 import { addAlert } from "./security.js";
@@ -45,6 +46,10 @@ interface CaseRow {
   due_at: string | null;
   first_response_at: string | null;
   resolved_at: string | null;
+  redress_minor: number | null;
+  redress_currency: string | null;
+  referred_at: string | null;
+  referred_to: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -84,6 +89,8 @@ const caseView = (c: CaseRow, now = nowIso()) => ({
   outcome: c.outcome,
   dueAt: c.due_at,
   overdue: c.status !== "resolved" && !!c.due_at && c.due_at < now,
+  redress: c.redress_minor !== null && c.redress_currency ? { amount: fromMinor(c.redress_minor, c.redress_currency), currency: c.redress_currency } : null,
+  referral: c.referred_at ? { to: c.referred_to, on: c.referred_at } : null,
   createdAt: c.created_at,
   updatedAt: c.updated_at,
   resolvedAt: c.resolved_at,
@@ -290,18 +297,28 @@ export async function staffReply(ctx: Ctx, adminId: string, id: string, body: st
   return staffCaseDetail(ctx, id);
 }
 
-export async function resolveCase(ctx: Ctx, adminId: string, id: string, resolution: string, outcome: Outcome | undefined, ip?: string) {
+export async function resolveCase(ctx: Ctx, adminId: string, id: string, resolution: string, outcome: Outcome | undefined, ip?: string, redress?: { amount: string; currency: string }) {
   const c = loadCase(ctx, id);
   if (c.user_id === adminId) throw forbidden("Another admin must handle your own case");
   if (c.status === "resolved") throw unprocessable("already_resolved", "This case is already resolved");
   if (c.is_complaint && !outcome) throw badRequest("Record the complaint's outcome: upheld, partly upheld, not upheld or withdrawn");
+  // Redress (a refund or compensation, paid or offered) is recorded for upheld complaints, for the report.
+  let redressMinor: number | null = null;
+  if (redress) {
+    if (!c.is_complaint || (outcome !== "upheld" && outcome !== "partly_upheld")) throw badRequest("Redress is recorded for upheld or partly upheld complaints");
+    assertCurrency(redress.currency);
+    redressMinor = toMinor(redress.amount, redress.currency);
+    if (redressMinor <= 0) throw badRequest("Enter the redress amount");
+  }
   const outcomeText = outcome ? { upheld: "We've upheld your complaint.", partly_upheld: "We've partly upheld your complaint.", not_upheld: "We haven't upheld your complaint.", withdrawn: "Your complaint is closed as withdrawn." }[outcome] : "";
   tx(ctx.db, () => {
     run(
       ctx.db,
-      "UPDATE support_cases SET status = 'resolved', resolution = ?, outcome = ?, resolved_at = ?, first_response_at = COALESCE(first_response_at, ?), updated_at = ? WHERE id = ?",
+      "UPDATE support_cases SET status = 'resolved', resolution = ?, outcome = ?, redress_minor = ?, redress_currency = ?, resolved_at = ?, first_response_at = COALESCE(first_response_at, ?), updated_at = ? WHERE id = ?",
       resolution.trim(),
       c.is_complaint ? outcome! : null,
+      redressMinor,
+      redressMinor !== null ? redress!.currency.toUpperCase() : null,
       nowIso(),
       nowIso(),
       nowIso(),
@@ -317,9 +334,22 @@ export async function resolveCase(ctx: Ctx, adminId: string, id: string, resolut
         : `We've marked ${c.reference} as resolved: ${resolution.trim()} Reply here within 30 days if you need more help.`,
     );
   });
-  audit(ctx, adminId, "support.case_resolved", { reference: c.reference, target: c.user_id, outcome: outcome ?? null }, ip);
+  audit(ctx, adminId, "support.case_resolved", { reference: c.reference, target: c.user_id, outcome: outcome ?? null, redress: redressMinor !== null }, ip);
   addAlert(ctx, c.user_id, "support", `${c.reference} has been ${c.is_complaint ? "answered" : "resolved"}. Open Help to read it.`);
   await emailCustomer(ctx, c.user_id, c.reference, `We've ${c.is_complaint ? "sent our final answer on your complaint" : "resolved your case"} ${c.reference}.`).catch(() => undefined);
+  return staffCaseDetail(ctx, id);
+}
+
+/** The customer took their complaint to the regulator or ombudsman (they tell us, or the body does). */
+export function recordReferral(ctx: Ctx, adminId: string, id: string, to: string, on: string, ip?: string) {
+  const c = loadCase(ctx, id);
+  if (!c.is_complaint) throw unprocessable("not_complaint", "Only formal complaints are referred to the regulator or ombudsman");
+  if (c.user_id === adminId) throw forbidden("Another admin must handle your own case");
+  if (Date.parse(on) > Date.now()) throw badRequest("The referral date can't be in the future");
+  if (Date.parse(on) < Date.parse(c.created_at.slice(0, 10))) throw badRequest("The referral date is before the complaint was made");
+  run(ctx.db, "UPDATE support_cases SET referred_at = ?, referred_to = ?, updated_at = ? WHERE id = ?", on, to.trim(), nowIso(), c.id);
+  addMessage(ctx, c.id, "staff", adminId, `Recorded: referred to ${to.trim()} on ${on}.`, true);
+  audit(ctx, adminId, "support.complaint_referred", { reference: c.reference, target: c.user_id }, ip);
   return staffCaseDetail(ctx, id);
 }
 
@@ -347,6 +377,20 @@ export function complaintsReport(ctx: Ctx, from: string, to: string) {
   const count = (f: (r: CaseRow) => boolean) => rows.filter(f).length;
   const byCategory: Record<string, number> = {};
   for (const r of rows) byCategory[r.category] = (byCategory[r.category] ?? 0) + 1;
+  const onTime = (r: CaseRow) => r.status === "resolved" && !!r.resolved_at && (!r.due_at || r.resolved_at <= r.due_at);
+  const upheld = (r: CaseRow) => r.outcome === "upheld" || r.outcome === "partly_upheld";
+  const categories = Object.keys(byCategory).map((category) => {
+    const rs = rows.filter((r) => r.category === category);
+    return { category, label: CATEGORY_LABEL[category as Category] ?? category, received: rs.length, resolved: rs.filter((r) => r.status === "resolved").length, upheld: rs.filter(upheld).length, withinDeadline: rs.filter(onTime).length };
+  });
+  const months = [...new Set(rows.map((r) => r.created_at.slice(0, 7)))].sort().map((month) => {
+    const rs = rows.filter((r) => r.created_at.startsWith(month));
+    return { month, received: rs.length, resolved: rs.filter((r) => r.status === "resolved").length, withinDeadline: rs.filter(onTime).length, upheld: rs.filter(upheld).length };
+  });
+  const redress: Record<string, string> = {};
+  const redressMinor: Record<string, number> = {};
+  for (const r of rows) if (r.redress_minor !== null && r.redress_currency) redressMinor[r.redress_currency] = (redressMinor[r.redress_currency] ?? 0) + r.redress_minor;
+  for (const [cur, minor] of Object.entries(redressMinor)) redress[cur] = fromMinor(minor, cur);
   return {
     from,
     to,
@@ -357,7 +401,13 @@ export function complaintsReport(ctx: Ctx, from: string, to: string) {
     resolvedLate: count((r) => r.status === "resolved" && !!r.due_at && !!r.resolved_at && r.resolved_at > r.due_at),
     outcomes: Object.fromEntries(OUTCOMES.map((o) => [o, count((r) => r.outcome === o)])),
     medianDaysToResolve: median,
+    withinDeadline: count(onTime),
+    withinDeadlinePct: resolved.length ? Math.round((count(onTime) / resolved.length) * 100) : null,
+    referred: count((r) => !!r.referred_at),
+    redress,
     byCategory,
+    categories,
+    months,
     log: rows.map((r) => ({
       reference: r.reference,
       received: r.created_at,
@@ -370,6 +420,9 @@ export function complaintsReport(ctx: Ctx, from: string, to: string) {
       resolved: r.resolved_at,
       daysToResolve: r.resolved_at ? days(r.created_at, r.resolved_at) : null,
       withinDeadline: r.resolved_at && r.due_at ? r.resolved_at <= r.due_at : null,
+      redress: r.redress_minor !== null && r.redress_currency ? `${fromMinor(r.redress_minor, r.redress_currency)} ${r.redress_currency}` : null,
+      referredTo: r.referred_to,
+      referredOn: r.referred_at,
     })),
   };
 }

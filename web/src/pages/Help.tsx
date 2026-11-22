@@ -19,6 +19,8 @@ export interface SupportCase {
   outcome: string | null;
   dueAt: string | null;
   overdue: boolean;
+  redress?: { amount: string; currency: string } | null;
+  referral?: { to: string | null; on: string } | null;
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;

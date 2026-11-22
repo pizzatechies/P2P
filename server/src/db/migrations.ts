@@ -933,4 +933,11 @@ export const migrations: Migration[] = [
   `
   ALTER TABLE users ADD COLUMN kyc_refresh_notice TEXT;
   `,
+  // 28: Complaints: redress paid or offered, and referrals to the regulator or ombudsman.
+  `
+  ALTER TABLE support_cases ADD COLUMN redress_minor INTEGER;
+  ALTER TABLE support_cases ADD COLUMN redress_currency TEXT;
+  ALTER TABLE support_cases ADD COLUMN referred_at TEXT;
+  ALTER TABLE support_cases ADD COLUMN referred_to TEXT;
+  `,
 ];

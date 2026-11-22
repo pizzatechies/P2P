@@ -21,6 +21,12 @@ interface Report {
   outcomes: Record<string, number>;
   medianDaysToResolve: number | null;
   byCategory: Record<string, number>;
+  withinDeadline: number;
+  withinDeadlinePct: number | null;
+  referred: number;
+  redress: Record<string, string>;
+  categories: { category: string; label: string; received: number; resolved: number; upheld: number; withinDeadline: number }[];
+  months: { month: string; received: number; resolved: number; withinDeadline: number; upheld: number }[];
 }
 
 const FILTERS = [
@@ -91,6 +97,9 @@ function StaffThread({ id, onChange }: { id: string; onChange: () => void }) {
   const [resolving, setResolving] = useState(false);
   const [resolution, setResolution] = useState("");
   const [outcome, setOutcome] = useState("");
+  const [redress, setRedress] = useState({ amount: "", currency: "USD" });
+  const [referring, setReferring] = useState(false);
+  const [referral, setReferral] = useState({ to: "", on: new Date().toISOString().slice(0, 10) });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const d = data.data;
@@ -119,7 +128,12 @@ function StaffThread({ id, onChange }: { id: string; onChange: () => void }) {
   }
   async function resolve(e: FormEvent) {
     e.preventDefault();
-    if (await run("resolve", { resolution, outcome: c.complaint ? outcome : undefined }, c.complaint ? "Final answer sent" : "Resolved")) setResolving(false);
+    const withRedress = c.complaint && (outcome === "upheld" || outcome === "partly_upheld") && redress.amount.trim();
+    if (await run("resolve", { resolution, outcome: c.complaint ? outcome : undefined, redress: withRedress ? { amount: redress.amount.trim(), currency: redress.currency.trim().toUpperCase() } : undefined }, c.complaint ? "Final answer sent" : "Resolved")) setResolving(false);
+  }
+  async function refer(e: FormEvent) {
+    e.preventDefault();
+    if (await run("referral", referral, "Referral recorded")) setReferring(false);
   }
 
   return (
@@ -141,8 +155,25 @@ function StaffThread({ id, onChange }: { id: string; onChange: () => void }) {
       </div>
       {c.status === "resolved" && c.resolution && (
         <div className="banner" style={{ background: "var(--good-soft)" }}>
-          <span className="small"><strong>Resolved{c.outcome ? ` (${c.outcome.replace("_", " ")})` : ""}:</strong> {c.resolution}</span>
+          <span className="small">
+            <strong>Resolved{c.outcome ? ` (${c.outcome.replace("_", " ")})` : ""}:</strong> {c.resolution}
+            {c.redress && <> · redress {c.redress.amount} {c.redress.currency}</>}
+          </span>
         </div>
+      )}
+      {c.complaint && (
+        c.referral ? (
+          <div className="small warn-text">Referred to {c.referral.to} on {c.referral.on}.</div>
+        ) : referring ? (
+          <form className="row wrap" style={{ gap: 8, alignItems: "flex-end" }} onSubmit={refer}>
+            <Field label="Referred to"><input className="input" required minLength={2} maxLength={120} placeholder="e.g. the central bank's consumer protection unit" value={referral.to} onChange={(e) => setReferral({ ...referral, to: e.target.value })} /></Field>
+            <Field label="On"><input className="input" type="date" required value={referral.on} onChange={(e) => setReferral({ ...referral, on: e.target.value })} /></Field>
+            <button className="btn secondary sm" style={{ marginBottom: 4 }} disabled={busy}>Record</button>
+            <button type="button" className="btn ghost sm" style={{ marginBottom: 4 }} onClick={() => setReferring(false)}>Cancel</button>
+          </form>
+        ) : (
+          <button type="button" className="link-btn small" style={{ alignSelf: "flex-start" }} onClick={() => setReferring(true)}>The customer took this to the regulator or ombudsman</button>
+        )
       )}
       <div className="thread">
         {d.messages.map((m) => (
@@ -175,6 +206,14 @@ function StaffThread({ id, onChange }: { id: string; onChange: () => void }) {
                 {OUTCOMES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </Field>
+          )}
+          {c.complaint && (outcome === "upheld" || outcome === "partly_upheld") && (
+            <div className="row wrap" style={{ gap: 8 }}>
+              <Field label="Redress paid or offered (optional)" hint="A refund or compensation, for the complaints report">
+                <input className="input num" inputMode="decimal" placeholder="0.00" value={redress.amount} onChange={(e) => setRedress({ ...redress, amount: e.target.value.replace(/[^\d.]/g, "") })} />
+              </Field>
+              <Field label="Currency"><input className="input" maxLength={3} style={{ width: 90 }} value={redress.currency} onChange={(e) => setRedress({ ...redress, currency: e.target.value.toUpperCase() })} /></Field>
+            </div>
           )}
           <Field label={c.complaint ? "Our final answer (shown to the customer, with where they can refer it)" : "Resolution (shown to the customer)"}>
             <textarea className="input" rows={4} required minLength={5} maxLength={3000} value={resolution} onChange={(e) => setResolution(e.target.value)} />
@@ -219,8 +258,28 @@ function ComplaintsReport() {
             Upheld {r.outcomes.upheld} · partly upheld {r.outcomes.partly_upheld} · not upheld {r.outcomes.not_upheld} · withdrawn {r.outcomes.withdrawn}
           </div>
           <div className={`small ${r.overdueOpen || r.resolvedLate ? "bad" : "muted"}`}>
-            {r.overdueOpen} open past the deadline · {r.resolvedLate} answered late
+            {r.overdueOpen} open past the deadline · {r.resolvedLate} answered late{r.withinDeadlinePct !== null ? ` · ${r.withinDeadlinePct}% answered on time` : ""}
           </div>
+          <div className="small muted">
+            {r.referred} referred to the regulator or ombudsman
+            {Object.keys(r.redress).length > 0 && <> · redress {Object.entries(r.redress).map(([cur, amt]) => `${amt} ${cur}`).join(", ")}</>}
+          </div>
+          {r.months.length > 0 && (
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>Month</th><th className="r">Received</th><th className="r">Answered</th><th className="r">On time</th><th className="r">Upheld</th></tr></thead>
+                <tbody>{r.months.map((m) => <tr key={m.month}><td>{m.month}</td><td className="r num">{m.received}</td><td className="r num">{m.resolved}</td><td className="r num">{m.withinDeadline}</td><td className="r num">{m.upheld}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+          {r.categories.length > 0 && (
+            <div className="table-wrap">
+              <table className="table">
+                <thead><tr><th>About</th><th className="r">Received</th><th className="r">Answered</th><th className="r">On time</th><th className="r">Upheld</th></tr></thead>
+                <tbody>{r.categories.map((x) => <tr key={x.category}><td>{x.label}</td><td className="r num">{x.received}</td><td className="r num">{x.resolved}</td><td className="r num">{x.withinDeadline}</td><td className="r num">{x.upheld}</td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
           <button className="btn secondary" onClick={() => downloadFile(`/api/admin/support/report?from=${from}&to=${to}&format=csv`, `aurex-complaints-${from}-to-${to}.csv`)}>
             Download the complaints log (CSV)
           </button>

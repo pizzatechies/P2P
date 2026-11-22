@@ -4,7 +4,7 @@ import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "
 import { readPersonDocument } from "../services/kybPeople.js";
 import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
 import { pepConfigured, pepDue, rescreenPeps } from "../services/pep.js";
-import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
+import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, recordReferral, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
 import { toCsv } from "../lib/csv.js";
 import { comp as compPro } from "../services/pro.js";
 import { createInvite, inviteFromWaitlist, listInvites, listWaitlist, revokeInvite, signupStatus } from "../services/beta.js";
@@ -195,8 +195,20 @@ export function adminRoutes(ctx: Ctx) {
   });
 
   r.post("/support/cases/:id/resolve", async (req, res) => {
-    const body = parse(z.object({ resolution: z.string().trim().min(5).max(3000), outcome: z.enum(OUTCOMES).optional() }), req.body);
-    res.json(await resolveCase(ctx, req.user!.id, String(req.params.id), body.resolution, body.outcome, req.ip));
+    const body = parse(
+      z.object({
+        resolution: z.string().trim().min(5).max(3000),
+        outcome: z.enum(OUTCOMES).optional(),
+        redress: z.object({ amount: z.string().trim().regex(/^\d+(\.\d{1,8})?$/, "Use a plain number like 25.50"), currency: z.string().trim().length(3) }).optional(),
+      }),
+      req.body,
+    );
+    res.json(await resolveCase(ctx, req.user!.id, String(req.params.id), body.resolution, body.outcome, req.ip, body.redress));
+  });
+
+  r.post("/support/cases/:id/referral", (req, res) => {
+    const body = parse(z.object({ to: z.string().trim().min(2).max(120), on: day }), req.body);
+    res.json(recordReferral(ctx, req.user!.id, String(req.params.id), body.to, body.on, req.ip));
   });
 
   /** Complaints statistics and log for a period: ?from=2026-10-01&to=2026-12-31[&format=csv]. */
@@ -210,8 +222,8 @@ export function adminRoutes(ctx: Ctx) {
       res.setHeader("Cache-Control", "private, no-store");
       res.send(
         toCsv([
-          ["Reference", "Received", "Customer", "Category", "Subject", "Status", "Outcome", "Due", "Resolved", "Days to resolve", "Within deadline"],
-          ...report.log.map((l) => [l.reference, l.received, l.customer, l.category, l.subject, l.status, l.outcome ?? "", l.due ?? "", l.resolved ?? "", l.daysToResolve ?? "", l.withinDeadline === null ? "" : l.withinDeadline ? "yes" : "no"]),
+          ["Reference", "Received", "Customer", "Category", "Subject", "Status", "Outcome", "Due", "Resolved", "Days to resolve", "Within deadline", "Redress", "Referred to", "Referred on"],
+          ...report.log.map((l) => [l.reference, l.received, l.customer, l.category, l.subject, l.status, l.outcome ?? "", l.due ?? "", l.resolved ?? "", l.daysToResolve ?? "", l.withinDeadline === null ? "" : l.withinDeadline ? "yes" : "no", l.redress ?? "", l.referredTo ?? "", l.referredOn ?? ""]),
         ]),
       );
       return;
