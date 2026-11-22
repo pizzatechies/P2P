@@ -61,6 +61,12 @@ const EnvSchema = z.object({
   TIER0_DAILY_USD: z.coerce.number().positive().default(500),
   TIER1_TX_USD: z.coerce.number().positive().default(2_000),
   TIER1_DAILY_USD: z.coerce.number().positive().default(5_000),
+  /** Verified customers update their identity details this often (years; 0 = never), or when their ID expires. */
+  KYC_REFRESH_YEARS: z.coerce.number().int().min(0).max(10).default(3),
+  /** For confirmed politically exposed persons and customers with an escalated compliance case. */
+  KYC_REFRESH_HIGH_RISK_YEARS: z.coerce.number().int().min(1).max(10).default(1),
+  /** Days after the due date before sending and withdrawing pause. */
+  KYC_REFRESH_GRACE_DAYS: z.coerce.number().int().min(0).max(365).default(30),
   /** Approve identity submissions automatically (development and demos only). */
   KYC_AUTO_APPROVE: bool.default(false),
   /** Hold withdrawals for an admin's approval when they're large or the customer has an open monitoring alert. */

@@ -24,7 +24,9 @@ interface Verification {
   enhanced: LevelInfo;
   autoApprove: boolean;
   liveness?: { required: boolean; capturedAt: string | null };
+  refresh: IdentityRefresh;
 }
+export interface IdentityRefresh { state: "ok" | "soon" | "due" | "restricted" | "in_review"; reason: "id_expired" | "periodic" | null; dueAt: string | null; restrictAt: string | null; highRisk: boolean }
 interface AccountData {
   accountNumber: string | null;
   accountNumberFormatted: string | null;
@@ -154,6 +156,8 @@ function statusPill(info: LevelInfo, verified: boolean) {
 
 function VerificationCard({ v, onChange }: { v: Verification; onChange: () => void }) {
   const steps: { level: 0 | 1 | 2; info?: LevelInfo }[] = [{ level: 0 }, { level: 1, info: v.identity }, { level: 2, info: v.enhanced }];
+  const r = v.refresh;
+  const refreshing = r.state === "soon" || r.state === "due" || r.state === "restricted";
   const next = v.currentLevel === 0 ? v.identity : v.currentLevel === 1 ? v.enhanced : null;
   return (
     <div className="card" id="verification">
@@ -178,19 +182,39 @@ function VerificationCard({ v, onChange }: { v: Verification; onChange: () => vo
           );
         })}
       </div>
-      {next ? <LevelForm info={next} onChange={onChange} autoApprove={v.autoApprove} liveness={next.level === 1 ? v.liveness : undefined} /> : <p className="good small">You're fully verified. Thank you.</p>}
+      {refreshing ? (
+        <>
+          <div className="banner" style={r.state === "restricted" ? { borderColor: "var(--bad)" } : undefined}>
+            <span className="small">
+              <strong>{r.reason === "id_expired" ? (r.state === "soon" ? `Your ID expires on ${r.dueAt!.slice(0, 10)}.` : "Your ID has expired.") : "It's time to update your identity details."}</strong>{" "}
+              {r.state === "restricted"
+                ? "Sending and withdrawing are paused until you do. Receiving money still works."
+                : `We ask everyone every few years, and whenever an ID expires. Please update them${r.state === "due" ? ` by ${r.restrictAt!.slice(0, 10)}, or sending and withdrawing will pause` : ""}: check your details and add fresh photos.`}
+            </span>
+          </div>
+          <LevelForm info={v.identity} onChange={onChange} autoApprove={v.autoApprove} liveness={v.liveness} refresh />
+        </>
+      ) : r.state === "in_review" ? (
+        <p className="small muted">Thanks for updating your identity details. We're reviewing them, usually within one business day.</p>
+      ) : next ? (
+        <LevelForm info={next} onChange={onChange} autoApprove={v.autoApprove} liveness={next.level === 1 ? v.liveness : undefined} />
+      ) : (
+        <p className="good small">You're fully verified. Thank you.</p>
+      )}
     </div>
   );
 }
 
-function LevelForm({ info, onChange, autoApprove, liveness }: { info: LevelInfo; onChange: () => void; autoApprove: boolean; liveness?: Verification["liveness"] }) {
+function LevelForm({ info, onChange, autoApprove, liveness, refresh = false }: { info: LevelInfo; onChange: () => void; autoApprove: boolean; liveness?: Verification["liveness"]; refresh?: boolean }) {
   const toast = useToast();
   const status = info.submission?.status;
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const locked = status === "submitted";
-  const showForm = !locked && (editing || !info.data || status === "rejected" || status === "draft");
+  // Refreshing: the last approved details, to check and save as a new submission.
+  const stale = refresh && status === "approved";
+  const showForm = !locked && (editing || stale || !info.data || status === "rejected" || status === "draft");
 
   async function submit() {
     setBusy(true);
@@ -208,7 +232,7 @@ function LevelForm({ info, onChange, autoApprove, liveness }: { info: LevelInfo;
 
   return (
     <div className="stack">
-      <h3 style={{ fontSize: 16, margin: 0 }}>{info.level === 1 ? "Step 2: Verify your identity" : "Step 3: Enhanced verification"}</h3>
+      <h3 style={{ fontSize: 16, margin: 0 }}>{refresh ? "Update your identity details" : info.level === 1 ? "Step 2: Verify your identity" : "Step 3: Enhanced verification"}</h3>
       {status === "submitted" && (
         <div className="banner">Submitted {info.submission?.submittedAt ? timeAgo(info.submission.submittedAt) : ""}. We're reviewing your details, usually within one business day.</div>
       )}
@@ -246,7 +270,7 @@ function LevelForm({ info, onChange, autoApprove, liveness }: { info: LevelInfo;
         </div>
       )}
       <ErrorText error={error} />
-      {info.data && !locked && (
+      {info.data && !locked && !stale && (
         <button className="btn" disabled={busy || info.documents.some((d) => !d.uploaded) || Boolean(liveness?.required && !liveness.capturedAt)} onClick={submit}>
           {busy ? "Submitting…" : "Submit for review"}
         </button>

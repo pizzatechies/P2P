@@ -11,6 +11,7 @@ import { useInstall } from "../pwa";
 import { VerifyEmailDialog } from "../components/verifyEmail";
 import { useAuth, useLoad } from "../state";
 import type { Activity, Balance, Bar, ConnectionsOverview, PaymentRequest, Provider, Quote, TradingAccount, TradingSettings } from "../types";
+import type { IdentityRefresh } from "./Account";
 
 type Dialog = null | "send" | "request" | "deposit" | "convert";
 
@@ -53,6 +54,8 @@ export function DashboardPage() {
   const activity = useLoad(() => api.get<{ items: Activity[] }>("/api/payments/activity?limit=6").then((r) => r.items));
   const requests = useLoad(() => api.get<{ incoming: PaymentRequest[] }>("/api/payments/requests").then((r) => r.incoming.filter((x) => x.status === "pending")));
   const trading = useLoad(() => api.get<{ account: TradingAccount; settings: TradingSettings }>("/api/trading/account"));
+  // Verified customers: is it time to update their identity details?
+  const refresh = useLoad(() => (user && user.kycLevel >= 1 && user.role !== "admin" ? api.get<{ refresh: IdentityRefresh }>("/api/account/verification").then((v) => v.refresh) : Promise.resolve(null)), [user?.kycLevel]);
   const watch = useLoad(async () => {
     const wl = await api.get<{ items: { symbol: string; quote: Quote | null }[] }>("/api/trading/watchlist");
     const items = wl.items.filter((i) => i.quote).slice(0, 5);
@@ -117,6 +120,17 @@ export function DashboardPage() {
           <Icon.Shield size={16} />
           <span className="grow"><strong>Verify your identity</strong> to raise your sending and withdrawal limits. It takes about 5 minutes.</span>
           <span className="small">Verify</span>
+        </Link>
+      )}
+
+      {refresh.data && (refresh.data.state === "soon" || refresh.data.state === "due" || refresh.data.state === "restricted") && (
+        <Link to="/app/account#verification" className="banner" style={{ color: "var(--text)", ...(refresh.data.state === "restricted" ? { borderColor: "var(--bad)" } : {}) }}>
+          <Icon.Shield size={16} />
+          <span className="grow">
+            <strong>{refresh.data.reason === "id_expired" ? (refresh.data.state === "soon" ? "Your ID expires soon." : "Your ID has expired.") : "Time to update your identity details."}</strong>{" "}
+            {refresh.data.state === "restricted" ? "Sending and withdrawing are paused until you do." : "It takes about 5 minutes."}
+          </span>
+          <span className="small">Update</span>
         </Link>
       )}
 

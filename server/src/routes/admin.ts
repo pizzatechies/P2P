@@ -1,4 +1,5 @@
 import express, { Router } from "express";
+import { refreshQueue } from "../services/kycRefresh.js";
 import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "../services/business.js";
 import { readPersonDocument } from "../services/kybPeople.js";
 import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
@@ -586,6 +587,15 @@ export function adminRoutes(ctx: Ctx) {
   r.post("/approvals/:id/cancel", (req, res) => {
     cancelRequest(ctx, req.user!.id, String(req.params.id), req.ip);
     res.json({ ok: true });
+  });
+
+  // ---- Keeping identity details current ----
+  r.get("/kyc/refresh", (_req, res) => {
+    const c = ctx.config;
+    res.json({
+      settings: { years: c.KYC_REFRESH_YEARS, highRiskYears: c.KYC_REFRESH_HIGH_RISK_YEARS, graceDays: c.KYC_REFRESH_GRACE_DAYS },
+      customers: refreshQueue(ctx).slice(0, 200),
+    });
   });
 
   // ---- Identity verification queue ----

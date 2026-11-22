@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { assertIdentityCurrent } from "./kycRefresh.js";
 import { isMerchant } from "./business.js";
 import { assertNotUnderSanctionsReview, screenForCustomer, underSanctionsReview } from "./sanctions.js";
 import { all, nowIso, one, run, tx } from "../db/index.js";
@@ -173,6 +174,7 @@ export async function sendMoney(
   assertActive(recipient, "recipient");
   assertNotUnderSanctionsReview(ctx, sender.id, "you");
   assertNotUnderSanctionsReview(ctx, recipient.id, "recipient");
+  assertIdentityCurrent(ctx, sender.id);
 
   const journal = await oneAtATime(sender.id, async () => {
     // A retry of a payment that was just recorded (while this one waited) is the same payment.
@@ -298,6 +300,7 @@ export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
   assertActive(requester, "recipient");
   assertNotUnderSanctionsReview(ctx, payer.id, "you");
   assertNotUnderSanctionsReview(ctx, requester.id, "recipient");
+  assertIdentityCurrent(ctx, payer.id);
   const journalId = await oneAtATime(userId, async () => {
     await checkLimits(ctx, userId, req.currency, req.amount);
     return tx(ctx.db, () => {
@@ -642,6 +645,7 @@ export async function withdraw(
   const user = getUserRow(ctx, input.userId);
   assertActive(user, "sender");
   assertNotUnderSanctionsReview(ctx, user.id, "you");
+  assertIdentityCurrent(ctx, user.id);
   const fee = bps(input.amountMinor, ctx.config.WITHDRAWAL_FEE_BPS);
   const id = newId("ext");
 

@@ -929,4 +929,8 @@ export const migrations: Migration[] = [
   ALTER TABLE compliance_alerts ADD COLUMN decided_by TEXT;
   ALTER TABLE compliance_alerts ADD COLUMN decided_at TEXT;
   `,
+  // 27: The last identity-refresh reminder a customer was sent (stage and due date), so each goes once.
+  `
+  ALTER TABLE users ADD COLUMN kyc_refresh_notice TEXT;
+  `,
 ];

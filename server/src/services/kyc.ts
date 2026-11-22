@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { refreshOpen, refreshStatus } from "./kycRefresh.js";
 import { pepBlocksAutoApproval, screenPep } from "./pep.js";
 import { recordSmileResult, smileConfigured, startEnhancedKyc, type IdentityDetails, type SmileWebhook, isSelfieResult, recordSelfieResult, startSelfieCompare, startBiometricKyc } from "./smileid.js";
 import { screenForCustomer, underSanctionsReview } from "./sanctions.js";
@@ -163,7 +164,8 @@ const submissionView = (row: SubmissionRow | undefined) =>
 /** Everything the Account page shows about verification. */
 export function verificationOverview(ctx: Ctx, userId: string) {
   const user = getUserRow(ctx, userId);
-  const docs = latestDocs(ctx, userId);
+  const refresh = refreshStatus(ctx, userId);
+  const docs = freshDocs(ctx, userId, refresh);
   const l1 = latest(ctx, userId, 1);
   const l2 = latest(ctx, userId, 2);
   const l1Data = decryptData<Level1Data>(ctx, l1);
@@ -188,7 +190,20 @@ export function verificationOverview(ctx: Ctx, userId: string) {
     enhanced: level(2, l2, decryptData<Level2Data>(ctx, l2)),
     autoApprove: ctx.config.KYC_AUTO_APPROVE,
     liveness: livenessRequired(ctx) ? { required: true, capturedAt: liveCapture(ctx, userId)?.created_at ?? null } : { required: false, capturedAt: null },
+    refresh,
   };
+}
+
+/**
+ * The documents that count: the latest of each kind, and when a verified customer is refreshing their
+ * details, only photos taken since their last approval (an old ID photo doesn't prove a new ID).
+ */
+function freshDocs(ctx: Ctx, userId: string, refresh = refreshStatus(ctx, userId)) {
+  const docs = latestDocs(ctx, userId);
+  if (!refreshOpen(refresh) && refresh.state !== "in_review") return docs;
+  const since = refresh.lastVerifiedAt ?? "";
+  for (const [k, d] of docs) if (d.created_at <= since) docs.delete(k);
+  return docs;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +254,8 @@ export function saveLiveCapture(ctx: Ctx, userId: string, selfie: Buffer, frames
 export function saveDetails(ctx: Ctx, userId: string, level: 1 | 2, raw: unknown) {
   const user = getUserRow(ctx, userId);
   if (level === 2 && user.kyc_level < 1) throw unprocessable("identity_first", "Verify your identity (level 1) before applying for enhanced verification");
-  if (user.kyc_level >= level) throw unprocessable("already_verified", "You're already verified at this level");
+  // A verified customer can send new identity details when they're due for a refresh.
+  if (user.kyc_level >= level && !(level === 1 && refreshOpen(refreshStatus(ctx, userId)))) throw unprocessable("already_verified", "You're already verified at this level");
   const parsed = level === 1 ? Level1Schema.safeParse(raw) : Level2Schema.safeParse(raw);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -311,7 +327,7 @@ export async function submitLevel(ctx: Ctx, userId: string, level: 1 | 2, ip?: s
   const sub = latest(ctx, userId, level);
   if (!sub || sub.status !== "draft" || !sub.data_enc) throw unprocessable("details_missing", "Fill in and save your details first");
   const data = decryptData<Level1Data>(ctx, sub);
-  const docs = latestDocs(ctx, userId);
+  const docs = level === 1 ? freshDocs(ctx, userId) : latestDocs(ctx, userId);
   const liveNeeded = level === 1 && livenessRequired(ctx);
   // With live selfies on, the selfie comes from the camera, not an upload.
   const missing = requiredDocs(level, level === 1 ? data : null).filter((k) => !docs.has(k) && !(liveNeeded && k === "selfie"));
@@ -373,6 +389,7 @@ function applyReview(ctx: Ctx, reviewerId: string | null, submissionId: string, 
   if (sub.status !== "submitted") throw unprocessable("not_pending", `This submission is ${sub.status}`);
   if (reviewerId && reviewerId === sub.user_id) throw forbidden("You can't review your own verification");
   if (decision === "reject" && !note?.trim()) throw badRequest("Say why, so the customer can fix it");
+  const refreshing = getUserRow(ctx, sub.user_id).kyc_level >= sub.level;
   tx(ctx.db, () => {
     run(
       ctx.db,
@@ -392,7 +409,9 @@ function applyReview(ctx: Ctx, reviewerId: string | null, submissionId: string, 
     sub.user_id,
     "account",
     decision === "approve"
-      ? `Your ${sub.level === 1 ? "identity" : "enhanced"} verification was approved. Your limits have gone up.`
+      ? refreshing
+        ? "Your updated identity details were approved. Thank you for keeping them current."
+        : `Your ${sub.level === 1 ? "identity" : "enhanced"} verification was approved. Your limits have gone up.`
       : `Your ${sub.level === 1 ? "identity" : "enhanced"} verification needs another look: ${note?.trim()}`,
     ip,
   );

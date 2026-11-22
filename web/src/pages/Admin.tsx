@@ -265,6 +265,7 @@ export function AdminPage() {
       {!overview.error && <SanctionsCard />}
       {!overview.error && <PepCard />}
       {!overview.error && <KycQueue />}
+      {!overview.error && <IdentityRefreshCard />}
       {!overview.error && <ApprovalQueue />}
       {!overview.error && <BusinessQueue />}
       {!overview.error && <UpgradeQueue />}
@@ -478,6 +479,39 @@ export function KycSubmissionCard({ s, onReviewed }: { s: KycSubmission; onRevie
 }
 
 /** Identity submissions waiting for review. */
+interface RefreshRow { id: string; handle: string; name: string; status: { state: string; reason: string | null; dueAt: string | null; restrictAt: string | null; highRisk: boolean } }
+const REFRESH_LABEL: Record<string, string> = { restricted: "Paused: overdue", due: "Due (grace period)", in_review: "Sent, being reviewed", soon: "Due within 30 days" };
+
+/** Verified customers whose identity details are due for an update (ID expiry or the refresh cycle). */
+function IdentityRefreshCard() {
+  const data = useLoad(() => api.get<{ settings: { years: number; highRiskYears: number; graceDays: number }; customers: RefreshRow[] }>("/api/admin/kyc/refresh"));
+  const d = data.data;
+  if (!d || d.settings.years === 0 || d.customers.length === 0) return null;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Identity details due for an update</h2><span className="faint small">{d.customers.length}</span></div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Customers update their details every {d.settings.years} years ({d.settings.highRiskYears} for confirmed PEPs and escalated cases) or when their ID expires. They're reminded by email and in the app; {d.settings.graceDays} days after the due date, sending and withdrawing pause until they do.
+      </p>
+      <div className="table-wrap">
+        <table className="table">
+          <thead><tr><th>Customer</th><th>Why</th><th>Due</th><th>Status</th></tr></thead>
+          <tbody>
+            {d.customers.slice(0, 50).map((c) => (
+              <tr key={c.id}>
+                <td><Link to={`/app/admin/users/${c.id}`}>@{c.handle}</Link>{c.status.highRisk && <span className="pill warn" style={{ marginLeft: 6 }}>higher risk</span>}</td>
+                <td className="small">{c.status.reason === "id_expired" ? "ID expiry" : "Regular update"}</td>
+                <td className="small nowrap">{c.status.dueAt?.slice(0, 10)}</td>
+                <td className={`small ${c.status.state === "restricted" ? "bad" : c.status.state === "due" ? "warn-text" : "faint"}`}>{REFRESH_LABEL[c.status.state] ?? c.status.state}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function KycQueue() {
   const list = useLoad(() => api.get<{ submissions: KycSubmission[] }>("/api/admin/kyc").then((r) => r.submissions));
   return (

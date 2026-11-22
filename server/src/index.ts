@@ -7,6 +7,7 @@ import { startIntegrityChecks } from "./services/integrity.js";
 import { startSanctionsJob } from "./services/sanctions.js";
 import { startRenewals } from "./services/pro.js";
 import { startPepRescreenJob } from "./services/pep.js";
+import { startKycRefreshJob } from "./services/kycRefresh.js";
 import { notifyAdmins } from "./services/monitoring.js";
 import { startAutopilotScheduler } from "./services/trading/autopilot.js";
 import { startPortfolioSnapshots } from "./services/trading/index.js";
@@ -22,6 +23,7 @@ const stopIntegrity = startIntegrityChecks(ctx, (message) => notifyAdmins(ctx, m
 const stopSanctions = startSanctionsJob(ctx);
 const stopRenewals = startRenewals(ctx);
 const stopPepRescreen = startPepRescreenJob(ctx);
+const stopKycRefresh = startKycRefreshJob(ctx);
 
 const server = app.listen(config.PORT, config.HOST, () => {
   console.log(`[aurex] API listening on http://${config.HOST === "0.0.0.0" ? "localhost" : config.HOST}:${config.PORT} (${config.NODE_ENV})`);
@@ -41,6 +43,7 @@ function shutdown(signal: string) {
   stopSanctions();
   stopRenewals();
   stopPepRescreen();
+  stopKycRefresh();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 10_000).unref();
 }

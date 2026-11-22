@@ -72,6 +72,18 @@ export function assertEmailVerified(ctx: Ctx, user: { email_verified_at: string 
 }
 
 /** Security alerts by email (verified addresses only), best effort. */
+/** A plain account notice by email (verified addresses only), with an optional button. Returns whether it went out. */
+export async function emailNotice(ctx: Ctx, userId: string, subject: string, paragraphs: string[], button?: { label: string; url: string }) {
+  const user = one<Who>(ctx.db, "SELECT id, email, email_verified_at FROM users WHERE id = ?", userId);
+  if (!user?.email_verified_at || ctx.config.emailDelivery === "none") return false;
+  return sendEmail(ctx.config, {
+    to: user.email,
+    subject,
+    text: `${paragraphs.join("\n\n")}${button ? `\n\n${button.url}` : ""}`,
+    html: simpleHtml(subject, paragraphs, undefined, button),
+  });
+}
+
 export async function emailAlert(ctx: Ctx, userId: string, message: string) {
   const user = one<Who>(ctx.db, "SELECT id, email, email_verified_at FROM users WHERE id = ?", userId);
   if (!user?.email_verified_at || ctx.config.emailDelivery === "none") return;
