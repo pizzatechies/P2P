@@ -1,5 +1,5 @@
 import express, { Router } from "express";
-import { applyForBusiness, assertCategory, BUSINESS_TYPES, businessOverview, DOC_KINDS as BUSINESS_DOC_KINDS, readBusinessDocument, uploadBusinessDocument, type BusinessDocKind } from "../services/business.js";
+import { applyForBusiness, assertCategory, BUSINESS_TYPES, businessOverview, DOC_KINDS as BUSINESS_DOC_KINDS, readBusinessDocument, resendBusinessPersonLink, uploadBusinessDocument, type BusinessDocKind } from "../services/business.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { badRequest } from "../lib/errors.js";
@@ -107,7 +107,7 @@ export function accountRoutes(ctx: Ctx) {
     res.json(businessOverview(ctx, req.user!.id));
   });
 
-  r.put("/business", (req, res) => {
+  r.put("/business", async (req, res) => {
     const body = parse(
       z.object({
         businessName: z.string().trim().min(2).max(100),
@@ -123,6 +123,8 @@ export function accountRoutes(ctx: Ctx) {
               ownershipPct: z.number().min(0).max(100).nullable().default(null),
               dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use dates like 1980-04-23"),
               nationality: z.string().trim().length(2),
+              email: z.string().trim().max(200).pipe(z.email("Check the email address")).optional().or(z.literal("").transform(() => undefined)),
+              isApplicant: z.boolean().optional(),
             }),
           )
           .max(20)
@@ -131,7 +133,12 @@ export function accountRoutes(ctx: Ctx) {
       }),
       req.body,
     );
-    res.json(applyForBusiness(ctx, req.user!.id, { ...body, website: body.website || undefined }, req.ip));
+    res.json(await applyForBusiness(ctx, req.user!.id, { ...body, website: body.website || undefined }, req.ip));
+  });
+
+  /** A new identity-check link for a director or owner (shown to the applicant, and emailed). */
+  r.post("/business/people/:key/link", async (req, res) => {
+    res.json(await resendBusinessPersonLink(ctx, req.user!.id, parse(z.string().regex(/^[a-f0-9]{32}$/), req.params.key), req.ip));
   });
 
   /** A business document (registration certificate, ownership record) as the raw request body. */

@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { businessPeople } from "../services/business.js";
+import { applyPersonResult } from "../services/kybPeople.js";
 import { applySmileResult } from "../services/kyc.js";
 import { verifySmileSignature, type SmileWebhook } from "../services/smileid.js";
 import type { Ctx } from "../context.js";
@@ -47,7 +49,9 @@ export function webhookRoutes(ctx: Ctx) {
       res.status(400).json({ error: { code: "bad_request", message: "Expected JSON" } });
       return;
     }
-    applySmileResult(ctx, payload);
+    // A company director's or owner's check, or a customer's own.
+    if (payload.partner_params?.aurex_kind === "person") applyPersonResult(ctx, payload, businessPeople(ctx));
+    else applySmileResult(ctx, payload);
     res.json({ received: true });
   });
 

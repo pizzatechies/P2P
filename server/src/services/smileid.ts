@@ -169,42 +169,53 @@ export async function startBiometricKyc(
   return { started: true, jobId: r.job_id ?? "" };
 }
 
-export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: string, d: IdentityDetails, email: string): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
+/** Sends an Enhanced KYC request (the ID number checked with the issuing authority). */
+async function postEnhancedKyc(
+  ctx: Ctx,
+  smileUserId: string,
+  d: IdentityDetails,
+  email: string,
+  partnerParams: Record<string, string>,
+): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
   if (!smileConfigured(ctx)) return { started: false, reason: "not configured" };
-  const id = await resolveId(ctx, userId, d);
+  const id = await resolveId(ctx, smileUserId, d);
   if (!id.ok) return { started: false, reason: id.reason };
-  const { country, type, idNumber } = id;
-  const tokens = d.legalName.trim().split(/\s+/);
-  const lastName = tokens.length > 1 ? tokens.pop()! : tokens[0];
-  const phone = d.phone.replace(/[\s()-]/g, "");
   const form = new FormData();
-  form.append("country", country);
-  form.append("id_type", type.type);
-  form.append("id_number", idNumber);
-  form.append("user_id", userId);
+  form.append("country", id.country);
+  form.append("id_type", id.type.type);
+  form.append("id_number", id.idNumber);
+  form.append("user_id", smileUserId);
   form.append("callback_url", new URL("/api/webhooks/smileid", ctx.config.APP_URL).toString());
   // Objects are sent as JSON-encoded parts, the default for multipart in Smile ID's OpenAPI spec.
-  form.append("user_details", JSON.stringify({ given_names: tokens.join(" ") || lastName, last_name: lastName, email, ...(/^\+[1-9]\d{6,14}$/.test(phone) ? { phone_number: phone } : {}) }));
-  form.append(
-    "consent",
-    JSON.stringify({ granted: true, granted_at: nowIso(), notice_language: "EN", notice_privacy_policy_url: ctx.config.SMILEID_PRIVACY_URL ?? new URL("/privacy", ctx.config.APP_URL).toString() }),
-  );
+  form.append("user_details", userDetails(d, email));
+  form.append("consent", consent(ctx));
   // Smile ID echoes partner_params in its callback. Its signature covers only the timestamp, not the
   // body, so aurex_check (a keyed hash only Aurex can make) ties the result to the check we started.
-  form.append("partner_params", JSON.stringify({ aurex_submission: submissionId, aurex_user: userId, aurex_check: callbackCheck(ctx, submissionId) }));
+  form.append("partner_params", JSON.stringify(partnerParams));
   const r = await call<{ job_id?: string; status?: string }>(ctx, "/v3/enhanced_kyc", {
     method: "POST",
-    headers: { "SmileID-Partner-ID": ctx.config.SMILEID_PARTNER_ID!, "SmileID-Token": await token(ctx, userId) },
+    headers: { "SmileID-Partner-ID": ctx.config.SMILEID_PARTNER_ID!, "SmileID-Token": await token(ctx, smileUserId) },
     form,
   });
+  return { started: true, jobId: r.job_id ?? "" };
+}
+
+/** The government check for a company director or owner (their private-link check), bound to that check. */
+export function startPersonGovernmentCheck(ctx: Ctx, checkId: string, d: IdentityDetails, email: string) {
+  return postEnhancedKyc(ctx, checkId, d, email, { aurex_kind: "person", aurex_person_check: checkId, aurex_check: callbackCheck(ctx, `person:${checkId}`) });
+}
+
+export async function startEnhancedKyc(ctx: Ctx, userId: string, submissionId: string, d: IdentityDetails, email: string): Promise<{ started: true; jobId: string } | { started: false; reason: string }> {
+  const out = await postEnhancedKyc(ctx, userId, d, email, { aurex_submission: submissionId, aurex_user: userId, aurex_check: callbackCheck(ctx, submissionId) });
+  if (!out.started) return out;
   run(
     ctx.db,
     "UPDATE kyc_submissions SET provider = 'smileid', provider_job_id = ?, provider_status = 'pending', provider_result = NULL, updated_at = ? WHERE id = ?",
-    r.job_id ?? null,
+    out.jobId || null,
     nowIso(),
     submissionId,
   );
-  return { started: true, jobId: r.job_id ?? "" };
+  return out;
 }
 
 /**

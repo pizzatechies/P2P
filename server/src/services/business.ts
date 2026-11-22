@@ -7,7 +7,8 @@ import { badRequest, forbidden, HttpError, notFound, unprocessable } from "../li
 import { newId } from "../lib/ids.js";
 import { fromMinor } from "../lib/money.js";
 import { sniffDocument } from "./kyc.js";
-import { screenForCustomer } from "./sanctions.js";
+import { outstandingPersonChecks, personCheckStatus, personChecksForReview, personChecksOn, personKey, resendPersonInvite, syncPersonChecks, type PeopleLookup } from "./kybPeople.js";
+import { nameScore, nameTokens, screenForCustomer } from "./sanctions.js";
 import { addAlert } from "./security.js";
 import { audit, getUserRow } from "./users.js";
 
@@ -19,7 +20,8 @@ import { audit, getUserRow } from "./users.js";
  *
  * A registered company also lists its directors and everyone owning 25% or more (each screened
  * against sanctions lists) and uploads its registration certificate and a record of who owns it.
- * Those details and documents are encrypted at rest.
+ * Those details and documents are encrypted at rest. Everyone listed other than the applicant
+ * confirms their own identity through a private link (kybPeople.ts) before the company is approved.
  */
 
 export const CATEGORIES = ["retail", "food", "services", "transport", "education", "health", "online", "agriculture", "other"] as const;
@@ -39,6 +41,10 @@ export interface BusinessPerson {
   ownershipPct: number | null;
   dateOfBirth: string;
   nationality: string;
+  /** Where their identity-check link goes (everyone but the applicant). */
+  email?: string;
+  /** The applicant themselves: their own verified identity covers them. */
+  isApplicant?: boolean;
 }
 
 interface ProfileRow {
@@ -88,7 +94,7 @@ const view = (ctx: Ctx, p: ProfileRow) => ({
   registrationNumber: p.registration_number,
   country: p.country,
   website: p.website,
-  people: people(ctx, p),
+  people: people(ctx, p).map((x) => ({ ...x, key: personKey(x) })),
   status: p.status,
   reviewNote: p.review_note,
   reviewedAt: p.reviewed_at,
@@ -96,6 +102,23 @@ const view = (ctx: Ctx, p: ProfileRow) => ({
 });
 
 const profile = (ctx: Ctx, userId: string) => one<ProfileRow>(ctx.db, "SELECT * FROM business_profiles WHERE user_id = ?", userId);
+
+/** A company's name and people, for the identity-check links (which only know the account). */
+export const businessPeople = (ctx: Ctx): PeopleLookup => (userId) => {
+  const p = profile(ctx, userId);
+  return p && p.status !== "approved" ? { businessName: p.business_name, people: people(ctx, p) } : null;
+};
+
+/** The legal name on the applicant's approved identity check, if there is one. */
+function verifiedLegalName(ctx: Ctx, userId: string) {
+  const s = one<{ data_enc: string }>(ctx.db, "SELECT data_enc FROM kyc_submissions WHERE user_id = ? AND level = 1 AND status = 'approved' AND data_enc IS NOT NULL ORDER BY created_at DESC LIMIT 1", userId);
+  if (!s) return null;
+  try {
+    return (JSON.parse(decryptSecret(s.data_enc, ctx.config.masterKey)) as { legalName?: string }).legalName ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /** True for an approved business account (payments to it carry the merchant fee). */
 export function isMerchant(ctx: Ctx, userId: string) {
@@ -124,6 +147,22 @@ function assertEditable(ctx: Ctx, userId: string) {
   if (existing?.status === "pending") throw unprocessable("under_review", "Your application is being reviewed");
 }
 
+/** Who gets an identity-check link: one person may be the applicant; everyone else needs their own email. */
+function checkPersonContacts(ctx: Ctx, userId: string, list: BusinessPerson[]) {
+  if (!personChecksOn(ctx)) return;
+  const me = list.filter((p) => p.isApplicant);
+  if (me.length > 1) throw badRequest("Only one person can be you");
+  const user = getUserRow(ctx, userId);
+  if (me.length) {
+    const legal = verifiedLegalName(ctx, userId);
+    if (legal && nameScore(nameTokens(me[0].name), nameTokens(legal)) < 0.85) throw badRequest(`"${me[0].name}" isn't the name on your verified identity (${legal}). Use that name, or untick "This is me".`);
+  }
+  for (const p of list.filter((x) => !x.isApplicant)) {
+    if (!p.email) throw badRequest(`Add ${p.name}'s email address: we'll send them a link to confirm their identity`);
+    if (p.email.trim().toLowerCase() === user.email.toLowerCase()) throw badRequest(`Use ${p.name}'s own email address, not yours`);
+  }
+}
+
 /** Checks a company's people: at least one director, owners' shares add up, no duplicates. */
 function checkPeople(list: BusinessPerson[]) {
   if (list.length === 0) throw badRequest("List the company's directors and everyone who owns 25% or more");
@@ -139,7 +178,7 @@ function checkPeople(list: BusinessPerson[]) {
   if (new Set(names).size !== names.length) throw badRequest("Each person should be listed once (use 'director and owner' for both roles)");
 }
 
-export function applyForBusiness(ctx: Ctx, userId: string, input: BusinessInput, ip?: string) {
+export async function applyForBusiness(ctx: Ctx, userId: string, input: BusinessInput, ip?: string) {
   const user = getUserRow(ctx, userId);
   if (user.kyc_level < 1) throw unprocessable("identity_first", "Verify your own identity first (Account → Identity verification): a business account is linked to you.");
   assertEditable(ctx, userId);
@@ -148,6 +187,7 @@ export function applyForBusiness(ctx: Ctx, userId: string, input: BusinessInput,
   if (company) {
     if (!input.registrationNumber?.trim()) throw badRequest("Enter the company's registration number");
     checkPeople(list);
+    checkPersonContacts(ctx, userId, list);
     const have = new Set(docs(ctx, userId).map((d) => d.kind));
     const missing = REQUIRED_DOCS.company.filter((k) => !have.has(k));
     if (missing.length) throw unprocessable("documents_missing", `Upload: ${missing.map((k) => DOC_LABEL[k]).join(", ")}`);
@@ -179,8 +219,19 @@ export function applyForBusiness(ctx: Ctx, userId: string, input: BusinessInput,
     screenForCustomer(ctx, userId, p.name, "business_person", Number(p.dateOfBirth.slice(0, 4)) || null);
     void screenPep(ctx, userId, { name: p.name, birthDate: p.dateOfBirth, nationality: p.nationality }, "business_person");
   }
-  audit(ctx, userId, "business.applied", { category: input.category, country: input.country, type: input.businessType, people: list.length }, ip);
-  return businessOverview(ctx, userId);
+  // Everyone else listed gets a link to confirm their identity (and people no longer listed lose theirs).
+  const invites = await syncPersonChecks(ctx, userId, input.businessName.trim(), list);
+  audit(ctx, userId, "business.applied", { category: input.category, country: input.country, type: input.businessType, people: list.length, invites: invites.length }, ip);
+  return { ...businessOverview(ctx, userId), invites };
+}
+
+/** A new identity-check link for someone on the application. */
+export async function resendBusinessPersonLink(ctx: Ctx, userId: string, key: string, ip?: string) {
+  const p = profile(ctx, userId);
+  if (!p || p.status === "approved") throw unprocessable("not_pending", "There's no application waiting for identity checks");
+  const person = people(ctx, p).find((x) => !x.isApplicant && personKey(x) === key);
+  if (!person) throw notFound("That person isn't on your application");
+  return resendPersonInvite(ctx, userId, key, p.business_name, person, ip);
 }
 
 /** A business document (registration certificate, ownership record), checked by content and encrypted. */
@@ -222,6 +273,10 @@ export function reviewBusiness(ctx: Ctx, adminId: string, userId: string, decisi
   if (p.status !== "pending") throw unprocessable("not_pending", `This application is ${p.status}`);
   if (adminId === userId) throw forbidden("You can't review your own business account");
   if (decision === "reject" && !note?.trim()) throw badRequest("Say why, so the customer can fix it");
+  if (decision === "approve" && p.business_type === "company") {
+    const waiting = outstandingPersonChecks(ctx, userId, people(ctx, p));
+    if (waiting.length) throw unprocessable("person_checks_pending", `Waiting for identity checks from: ${waiting.join(", ")}`);
+  }
   run(
     ctx.db,
     "UPDATE business_profiles SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE user_id = ?",
@@ -252,6 +307,8 @@ export function listBusinessApplications(ctx: Ctx, status: "pending" | "all" = "
   ).map((r) => ({
     ...view(ctx, r),
     documents: docs(ctx, r.user_id).map(docView),
+    personChecks: personChecksForReview(ctx, r.user_id),
+    personChecksRequired: personChecksOn(ctx),
     user: { id: r.user_id, handle: r.handle, email: r.email, name: r.display_name, kycLevel: r.kyc_level },
   }));
 }
@@ -264,6 +321,8 @@ export function businessOverview(ctx: Ctx, userId: string) {
     categories: CATEGORIES,
     requiredDocuments: Object.fromEntries(BUSINESS_TYPES.map((t) => [t, REQUIRED_DOCS[t].map((k) => ({ kind: k, label: DOC_LABEL[k] }))])),
     profile: p ? view(ctx, p) : null,
+    personChecks: p ? personCheckStatus(ctx, userId) : {},
+    personChecksRequired: personChecksOn(ctx),
     documents: docs(ctx, userId).map(docView),
     received: p?.status === "approved" ? receivedSummary(ctx, userId) : null,
   };

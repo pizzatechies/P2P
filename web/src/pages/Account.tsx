@@ -632,7 +632,9 @@ function CloseDialog({ handle, onClose }: { handle: string; onClose: () => void 
   );
 }
 
-interface BusinessPerson { name: string; role: "director" | "owner" | "director_owner"; ownershipPct: number | null; dateOfBirth: string; nationality: string }
+interface BusinessPerson { name: string; role: "director" | "owner" | "director_owner"; ownershipPct: number | null; dateOfBirth: string; nationality: string; email?: string; isApplicant?: boolean; key?: string }
+interface PersonInvite { key: string; name: string; email: string; link: string; emailed: boolean }
+interface PersonCheck { status: "waiting" | "expired" | "done"; invitedAt: string | null; expiresAt: string | null; submittedAt: string | null }
 interface BusinessDoc { id: string; kind: string; label: string; size: number; uploadedAt: string }
 interface BusinessOverview {
   feeBps: number;
@@ -651,6 +653,9 @@ interface BusinessOverview {
   } | null;
   documents: BusinessDoc[];
   received: Record<"day" | "week" | "month", { currency: string; received: string; fees: string; payments: number }[]> | null;
+  personChecks: Record<string, PersonCheck>;
+  personChecksRequired: boolean;
+  invites?: PersonInvite[];
 }
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -658,7 +663,57 @@ const CATEGORY_LABEL: Record<string, string> = {
   health: "Health", online: "Online business", agriculture: "Farming and agriculture", other: "Other",
 };
 const ROLE_LABEL: Record<BusinessPerson["role"], string> = { director: "Director", owner: "Owner (25% or more)", director_owner: "Director and owner" };
-const emptyPerson = (): BusinessPerson => ({ name: "", role: "director", ownershipPct: null, dateOfBirth: "", nationality: "KE" });
+const emptyPerson = (): BusinessPerson => ({ name: "", role: "director", ownershipPct: null, dateOfBirth: "", nationality: "KE", email: "", isApplicant: false });
+
+/** Who still has to confirm their identity, with their links (fresh ones can be made at any time). */
+function PersonChecks({ people, checks, invites, onInvite }: { people: BusinessPerson[]; checks: Record<string, PersonCheck>; invites: PersonInvite[]; onInvite: (i: PersonInvite) => void }) {
+  const toast = useToast();
+  const others = people.filter((x) => !x.isApplicant && x.key);
+  if (others.length === 0) return null;
+  async function newLink(key: string) {
+    try {
+      const i = await api.post<PersonInvite>(`/api/account/business/people/${key}/link`);
+      onInvite(i);
+      toast(i.emailed ? `New link sent to ${i.email}` : "New link ready to copy");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  async function copy(link: string) {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast("Link copied");
+    } catch {
+      prompt("Copy this link", link);
+    }
+  }
+  return (
+    <div className="stack-sm" style={{ marginTop: 12 }}>
+      <strong className="small">Identity checks for your directors and owners</strong>
+      <p className="faint xs" style={{ margin: 0 }}>Each person confirms their own identity through a private link (we email it to them). We can approve the company once everyone has. You can also send them the link yourself; it works for 14 days.</p>
+      {others.map((x) => {
+        const c = checks[x.key!];
+        const inv = invites.find((i) => i.key === x.key);
+        return (
+          <div key={x.key} className="row between wrap" style={{ gap: 8 }}>
+            <div className="small">
+              <strong>{x.name}</strong>{" "}
+              <span className={c?.status === "done" ? "good" : c?.status === "expired" ? "bad" : "faint"}>
+                {c?.status === "done" ? "· done" : c?.status === "expired" ? "· link expired" : inv?.emailed ? `· link emailed to ${inv.email}` : "· waiting"}
+              </span>
+            </div>
+            {c?.status !== "done" && (
+              <div className="row" style={{ gap: 6 }}>
+                {inv && <button type="button" className="btn ghost sm" onClick={() => copy(inv.link)}>Copy link</button>}
+                <button type="button" className="btn ghost sm" onClick={() => newLink(x.key!)}>{inv ? "New link" : "Get a link"}</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /** Turn the account into a business account: payments show the business name; a small fee applies. */
 function BusinessCard() {
@@ -670,6 +725,7 @@ function BusinessCard() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [invites, setInvites] = useState<PersonInvite[]>([]);
   const d = data.data;
   if (!d) return null;
   const p = d.profile;
@@ -681,9 +737,14 @@ function BusinessCard() {
     setBusy(true);
     setError(null);
     try {
-      data.setData(await api.put<BusinessOverview>("/api/account/business", { ...f, people: company ? people.map((x) => ({ ...x, ownershipPct: x.role === "director" ? null : x.ownershipPct })) : undefined }));
+      const r = await api.put<BusinessOverview>("/api/account/business", {
+        ...f,
+        people: company ? people.map(({ key: _key, ...x }) => ({ ...x, ownershipPct: x.role === "director" ? null : x.ownershipPct, email: x.isApplicant ? undefined : x.email })) : undefined,
+      });
+      data.setData(r);
+      setInvites(r.invites ?? []);
       setOpen(false);
-      toast("Application sent. We'll let you know.");
+      toast(r.invites?.length ? "Application sent. We've emailed each director and owner a link to confirm their identity." : "Application sent. We'll let you know.");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -742,7 +803,12 @@ function BusinessCard() {
           </div>
         </>
       ) : p?.status === "pending" ? (
-        <p className="small muted" style={{ margin: 0 }}>We're reviewing <strong>{p.businessName}</strong>, usually within one business day.</p>
+        <>
+          <p className="small muted" style={{ margin: 0 }}>We're reviewing <strong>{p.businessName}</strong>, usually within one business day.</p>
+          {p.businessType === "company" && d.personChecksRequired && (
+            <PersonChecks people={p.people} checks={d.personChecks} invites={invites} onInvite={(i) => setInvites([...invites.filter((x) => x.key !== i.key), i])} />
+          )}
+        </>
       ) : (
         <>
           {p?.status === "rejected" && <div className="banner" style={{ borderColor: "var(--bad)" }}><span className="small"><strong>Please fix and resend:</strong> {p.reviewNote}</span></div>}
@@ -776,7 +842,7 @@ function BusinessCard() {
                 <>
                   <div>
                     <h3 style={{ fontSize: 15, margin: "6px 0 4px" }}>Directors and owners</h3>
-                    <p className="small muted" style={{ margin: 0 }}>Everyone who directs the company, and everyone who owns 25% or more of it. Include yourself.</p>
+                    <p className="small muted" style={{ margin: 0 }}>Everyone who directs the company, and everyone who owns 25% or more of it. Include yourself.{d.personChecksRequired ? " We'll email everyone else a private link to confirm their identity." : ""}</p>
                   </div>
                   {people.map((x, i) => (
                     <div key={i} className="person-row">
@@ -792,7 +858,16 @@ function BusinessCard() {
                         )}
                         <Field label="Date of birth"><input className="input" type="date" required value={x.dateOfBirth} onChange={(e) => setPerson(i, { dateOfBirth: e.target.value })} /></Field>
                         <CountrySelect label="Nationality" value={x.nationality} onChange={(v) => setPerson(i, { nationality: v })} />
+                        {d.personChecksRequired && !x.isApplicant && (
+                          <Field label="Their email" hint="For their identity-check link"><input className="input" type="email" required maxLength={200} value={x.email ?? ""} onChange={(e) => setPerson(i, { email: e.target.value })} /></Field>
+                        )}
                       </div>
+                      {d.personChecksRequired && (
+                        <label className="row small" style={{ gap: 6 }}>
+                          <input type="checkbox" checked={Boolean(x.isApplicant)} disabled={!x.isApplicant && people.some((y) => y.isApplicant)} onChange={(e) => setPerson(i, { isApplicant: e.target.checked })} />
+                          This is me (my own verified identity covers it)
+                        </label>
+                      )}
                       {people.length > 1 && <button type="button" className="link-btn small" onClick={() => setPeople(people.filter((_, j) => j !== i))}>Remove</button>}
                     </div>
                   ))}

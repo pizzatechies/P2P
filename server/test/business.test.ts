@@ -87,7 +87,7 @@ describe("business accounts", () => {
     env.ctx.db.prepare("UPDATE users SET kyc_level = 1 WHERE id = ?").run(o.user.id);
     const O = api(o.agent);
     const company = { businessName: "Savanna Logistics Ltd", businessType: "company", category: "transport", registrationNumber: "PVT-2026-7781", country: "KE", website: "" };
-    const founder = { name: "Achieng Odhiambo", role: "director_owner", ownershipPct: 60, dateOfBirth: "1985-03-02", nationality: "KE" };
+    const founder = { name: "Achieng Odhiambo", role: "director_owner", ownershipPct: 60, dateOfBirth: "1985-03-02", nationality: "KE", isApplicant: true };
 
     expect((await O.put("/api/account/business", { ...company, registrationNumber: "" })).body.error.message).toMatch(/registration number/);
     expect((await O.put("/api/account/business", { ...company, people: [] })).body.error.message).toMatch(/directors/);
@@ -140,8 +140,8 @@ describe("business accounts", () => {
       registrationNumber: "C-1",
       country: "KE",
       people: [
-        { name: "Mary Wanjiru", role: "director", ownershipPct: null, dateOfBirth: "1990-01-01", nationality: "KE" },
-        { name: "John Testperson Mwangi", role: "owner", ownershipPct: 40, dateOfBirth: "1970-06-06", nationality: "KE" },
+        { name: "Mary Wanjiru", role: "director", ownershipPct: null, dateOfBirth: "1990-01-01", nationality: "KE", email: "mary@example.com" },
+        { name: "John Testperson Mwangi", role: "owner", ownershipPct: 40, dateOfBirth: "1970-06-06", nationality: "KE", email: "john@example.com" },
       ],
     });
     const alert = env.ctx.db.prepare("SELECT summary FROM compliance_alerts WHERE user_id = ? AND rule = 'sanctions_match'").get(o.user.id) as { summary: string };

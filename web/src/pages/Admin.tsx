@@ -843,10 +843,21 @@ function SelfieCheck({ check }: { check: NonNullable<KycSubmission["selfieCheck"
   );
 }
 
+interface PersonReview {
+  status: "invited" | "submitted";
+  invitedAt: string | null;
+  submittedAt: string | null;
+  linkExpired: boolean;
+  details: { idType: string; idNumber: string; idCountry: string; idExpiry: string; dateOfBirth: string; nationality: string } | null;
+  documents: { id: string; kind: string; label: string }[];
+  government: { status?: string; reason?: string | null; message?: string | null; nameMatch?: number | null; dobMatch?: boolean | null; recordName?: string | null } | null;
+}
 interface BusinessApplication {
   businessName: string;
   businessType: "sole_trader" | "company";
-  people: { name: string; role: string; ownershipPct: number | null; dateOfBirth: string; nationality: string }[];
+  people: { key: string; name: string; role: string; ownershipPct: number | null; dateOfBirth: string; nationality: string; isApplicant?: boolean }[];
+  personChecks: Record<string, PersonReview>;
+  personChecksRequired: boolean;
   documents: { id: string; kind: string; label: string; size: number }[];
   category: string;
   registrationNumber: string | null;
@@ -855,6 +866,29 @@ interface BusinessApplication {
   status: string;
   createdAt: string;
   user: { id: string; handle: string; email: string; name: string; kycLevel: number };
+}
+
+/** One director's or owner's identity check: what they sent, the photos, and the government record. */
+function PersonCheckLine({ person, check, applicantLevel }: { person: { dateOfBirth: string; isApplicant?: boolean }; check: PersonReview | undefined; applicantLevel: number }) {
+  if (person.isApplicant) return <div className={applicantLevel >= 1 ? "good" : "warn-text"}>The applicant: covered by their own identity check (level {applicantLevel})</div>;
+  if (!check) return <div className="bad">No identity check (applied before checks started): send it back so they can add an email</div>;
+  if (check.status === "invited") return <div className="warn-text">Waiting for them to confirm their identity{check.linkExpired ? " (their link expired)" : check.invitedAt ? ` · link sent ${timeAgo(check.invitedAt)}` : ""}</div>;
+  const d = check.details;
+  const g = check.government;
+  return (
+    <div>
+      <span className="good">Identity sent {check.submittedAt ? timeAgo(check.submittedAt) : ""}</span>
+      {d && <span className="faint"> · {d.idType.replace("_", " ")} {d.idNumber} ({d.idCountry}, expires {d.idExpiry}){d.dateOfBirth !== person.dateOfBirth ? <span className="bad"> · born {d.dateOfBirth} on their ID, not {person.dateOfBirth}</span> : null}</span>}
+      {check.documents.map((doc) => (
+        <a key={doc.id} href={`/api/admin/businesses/person-documents/${doc.id}`} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8 }}>{doc.label}</a>
+      ))}
+      {g && (
+        <div className={g.status === "clear" && (g.nameMatch ?? 0) >= 0.85 && g.dobMatch !== false ? "good" : g.status === "pending" || g.status === "skipped" ? "faint" : "bad"}>
+          Government record: {g.status === "pending" ? "checking…" : g.status === "skipped" ? `not checked (${g.reason})` : g.status === "clear" ? `ID valid${g.recordName ? ` for ${g.recordName}` : ""}${g.nameMatch != null ? ` · name ${Math.round(g.nameMatch * 100)}% match` : ""}${g.dobMatch === false ? " · different birth date" : g.dobMatch ? " · birth date matches" : ""}` : `${g.status}${g.reason ? ` (${String(g.reason).replace(/_/g, " ")})` : ""}`}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Business account applications waiting for review (know-your-business). */
@@ -876,7 +910,7 @@ function BusinessQueue() {
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div className="card-head"><h2>Business accounts to review</h2><span className="faint small">{list.data.applications.length} waiting</span></div>
-      <p className="muted small" style={{ marginTop: 0 }}>Check the business exists (registration number, website, what they sell) and that the owner is who they say. For companies, check the documents name the same directors and owners. Business names and the people listed are screened against sanctions lists automatically.</p>
+      <p className="muted small" style={{ marginTop: 0 }}>Check the business exists (registration number, website, what they sell) and that the owner is who they say. For companies, check the documents name the same directors and owners, and that each person's ID photo, selfie and details agree. A company can't be approved until everyone has sent their identity check. Business names and the people listed are screened against sanctions lists automatically.</p>
       <div className="stack">
         {list.data.applications.map((a) => (
           <div key={a.user.id} className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
@@ -892,8 +926,9 @@ function BusinessQueue() {
               {a.people.length > 0 && (
                 <div className="xs" style={{ marginTop: 4 }}>
                   {a.people.map((p) => (
-                    <div key={p.name}>
+                    <div key={p.key} style={{ marginBottom: 4 }}>
                       {p.name} · {p.role === "director_owner" ? "director and owner" : p.role}{p.ownershipPct ? ` (${p.ownershipPct}%)` : ""} · born {p.dateOfBirth} · {p.nationality}
+                      {a.personChecksRequired && <PersonCheckLine person={p} check={a.personChecks[p.key]} applicantLevel={a.user.kycLevel} />}
                     </div>
                   ))}
                 </div>

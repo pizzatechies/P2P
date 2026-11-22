@@ -875,4 +875,38 @@ export const migrations: Migration[] = [
     created_at    TEXT NOT NULL
   );
   `,
+  // 25: Identity checks for a company's directors and owners (each through a private link).
+  `
+  CREATE TABLE business_person_checks (
+    id               TEXT PRIMARY KEY,
+    business_user_id TEXT NOT NULL REFERENCES users(id),
+    person_key       TEXT NOT NULL,
+    email_enc        TEXT,
+    token_hash       TEXT,
+    token_expires_at TEXT,
+    status           TEXT NOT NULL CHECK (status IN ('invited','submitted')),
+    data_enc         TEXT,
+    provider         TEXT,
+    provider_job_id  TEXT,
+    provider_status  TEXT,
+    provider_result  TEXT,
+    invited_at       TEXT,
+    submitted_at     TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    UNIQUE (business_user_id, person_key)
+  );
+  CREATE UNIQUE INDEX business_person_checks_token ON business_person_checks(token_hash) WHERE token_hash IS NOT NULL;
+  CREATE TABLE business_person_documents (
+    id         TEXT PRIMARY KEY,
+    check_id   TEXT NOT NULL REFERENCES business_person_checks(id),
+    kind       TEXT NOT NULL CHECK (kind IN ('id_front','id_back','selfie')),
+    mime       TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    sha256     TEXT NOT NULL,
+    data_enc   TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX business_person_documents_check ON business_person_documents(check_id);
+  `,
 ];

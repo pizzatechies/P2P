@@ -211,6 +211,8 @@ const EnvSchema = z.object({
   MAX_USERS: z.coerce.number().int().min(0).default(0),
   /** Screen customers and payout recipients against sanctions lists (downloaded daily). */
   SANCTIONS_SCREENING: bool.default(true),
+  /** Companies' directors and owners (other than the applicant) confirm their identity through a private link before approval. */
+  KYB_PERSON_CHECKS: bool.default(true),
   /** Which official lists to download: un, ofac, eu, uk. Your own uploaded list is always used. */
   SANCTIONS_LISTS: z
     .string()

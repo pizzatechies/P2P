@@ -1,5 +1,6 @@
 import express, { Router } from "express";
 import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "../services/business.js";
+import { readPersonDocument } from "../services/kybPeople.js";
 import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
 import { pepConfigured, pepDue, rescreenPeps } from "../services/pep.js";
 import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
@@ -221,6 +222,14 @@ export function adminRoutes(ctx: Ctx) {
   r.get("/businesses", (req, res) => {
     const { status } = parse(z.object({ status: z.enum(["pending", "all"]).optional() }), req.query);
     res.json({ applications: listBusinessApplications(ctx, status ?? "pending"), feeBps: ctx.config.MERCHANT_FEE_BPS });
+  });
+
+  /** A director's or owner's ID photo or selfie, decrypted for review. Every view is audited. */
+  r.get("/businesses/person-documents/:id", (req, res) => {
+    const doc = readPersonDocument(ctx, String(req.params.id));
+    audit(ctx, req.user!.id, "admin.business_person_document_viewed", { documentId: req.params.id, target: doc.userId, checkId: doc.checkId, kind: doc.kind }, req.ip);
+    res.set(documentHeaders(doc));
+    res.send(doc.bytes);
   });
 
   /** A business's document, decrypted for review. Every view is audited. */

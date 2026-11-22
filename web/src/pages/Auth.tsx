@@ -15,7 +15,7 @@ function useNext(fallback: string) {
   return next && next.startsWith("/") && !next.startsWith("//") ? next : fallback;
 }
 
-function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+export function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <div className="auth-wrap">
       <div className="auth-card">

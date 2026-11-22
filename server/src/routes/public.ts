@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { businessName } from "../services/business.js";
+import express from "express";
+import { businessName, businessPeople } from "../services/business.js";
+import { PERSON_DOC_KINDS, personInviteView, savePersonDetails, submitPersonCheck, uploadPersonDocument, type PersonDocKind } from "../services/kybPeople.js";
 import { verifyCaptcha } from "../services/captcha.js";
 import { joinWaitlist, signupStatus } from "../services/beta.js";
 import { parse } from "../lib/validate.js";
@@ -22,6 +24,43 @@ export function publicRoutes(ctx: Ctx) {
     const body = parse(z.object({ email: z.string().max(200), name: z.string().max(80).optional(), country: z.string().max(2).optional() }), req.body);
     await verifyCaptcha(ctx, req.body?.captchaToken, req.ip);
     res.status(201).json(joinWaitlist(ctx, body.email, body.name, body.country));
+  });
+
+  // ---- A company director's or owner's identity check, through their private link ----
+  const personLimiter = rateLimit({ name: "kyb-person", windowMs: 15 * 60_000, max: ctx.config.isTest ? 10_000 : 60 });
+  const iso2 = z.string().trim().length(2).transform((v) => v.toUpperCase());
+  const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use dates like 1980-04-23");
+  r.get("/kyb-person/:token", personLimiter, (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(personInviteView(ctx, String(req.params.token), businessPeople(ctx)));
+  });
+  r.put("/kyb-person/:token/details", personLimiter, (req, res) => {
+    const body = parse(
+      z.object({
+        dateOfBirth: isoDate,
+        nationality: iso2,
+        idType: z.enum(["passport", "national_id", "drivers_license"]),
+        idNumber: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9 -]+$/, "Letters, numbers, spaces and dashes only"),
+        idCountry: iso2,
+        idExpiry: isoDate,
+        phone: z.string().trim().regex(/^\+?[0-9][0-9 ()-]{6,19}$/, "Use an international number, e.g. +254 712 345 678").or(z.literal("")).default(""),
+        consent: z.boolean(),
+      }),
+      req.body,
+    );
+    res.json(savePersonDetails(ctx, String(req.params.token), businessPeople(ctx), body));
+  });
+  r.post(
+    "/kyb-person/:token/documents/:kind",
+    personLimiter,
+    express.raw({ type: ["image/jpeg", "image/png", "image/webp", "application/octet-stream"], limit: "5mb" }),
+    (req, res) => {
+      const kind = parse(z.enum(PERSON_DOC_KINDS), req.params.kind) as PersonDocKind;
+      res.status(201).json(uploadPersonDocument(ctx, String(req.params.token), businessPeople(ctx), kind, req.body as Buffer));
+    },
+  );
+  r.post("/kyb-person/:token/submit", personLimiter, async (req, res) => {
+    res.json(await submitPersonCheck(ctx, String(req.params.token), businessPeople(ctx), req.ip));
   });
 
   /** Company and contact details for the legal pages; anything not set stays a visible placeholder. */
