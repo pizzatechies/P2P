@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { Ctx } from "../context.js";
+import { all } from "../db/index.js";
 import { CURRENCIES } from "../lib/money.js";
 import { getRates } from "../services/fx.js";
 import { describeRails } from "../services/rails/index.js";
@@ -30,6 +31,15 @@ export function metaRoutes(ctx: Ctx) {
             ]
           : null,
         payoutReviewUsd: ctx.config.PAYOUT_REVIEW ? ctx.config.PAYOUT_REVIEW_USD : null,
+        // Where a country's regulator sets its own limits for a level (applied by the verified address).
+        byCountry: ctx.config.KYC_LIMITS
+          ? all<{ country: string; level: number; tx_usd: number; daily_usd: number }>(ctx.db, "SELECT country, level, tx_usd, daily_usd FROM country_limits ORDER BY country, level").map((c) => ({
+              country: c.country,
+              level: c.level,
+              txUsd: Math.min(c.tx_usd, ctx.config.MAX_TX_USD),
+              dailyUsd: Math.min(c.daily_usd, ctx.config.DAILY_LIMIT_USD),
+            }))
+          : [],
       },
       fx: { source: rates.source, asOf: rates.asOf },
       captcha: captchaEnabled(ctx) ? { provider: "turnstile", siteKey: ctx.config.TURNSTILE_SITE_KEY } : null,

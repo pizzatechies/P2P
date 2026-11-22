@@ -14,14 +14,17 @@ import { audit, getUserRow } from "./users.js";
  * whenever there's another admin who could approve, so a one-person team isn't locked out.
  */
 
-export type Kind = "limits" | "kyc_level";
+export type Kind = "limits" | "kyc_level" | "country_limits";
 export interface LimitsChange { txUsd: number | null; dailyUsd: number | null }
 export interface LevelChange { level: 0 | 1 | 2; note: string }
+/** A level's limits in one country; null amounts remove the country's own limits (back to the defaults). */
+export interface CountryLimitsChange { country: string; level: 0 | 1 | 2; txUsd: number | null; dailyUsd: number | null; note: string }
+type Payload = LimitsChange | LevelChange | CountryLimitsChange;
 
 interface RequestRow {
   id: string;
   kind: Kind;
-  target_user_id: string;
+  target_user_id: string | null;
   payload: string;
   reason: string | null;
   requested_by: string;
@@ -49,7 +52,11 @@ export function secondPersonRequired(ctx: Ctx, requesterId: string) {
   return otherApprovers(ctx, requesterId) > 0;
 }
 
-function describe(kind: Kind, payload: LimitsChange | LevelChange) {
+function describe(kind: Kind, payload: Payload) {
+  if (kind === "country_limits") {
+    const p = payload as CountryLimitsChange;
+    return p.txUsd === null ? `level ${p.level} limits in ${p.country} back to the defaults` : `level ${p.level} limits in ${p.country} to $${p.txUsd.toLocaleString("en-US")} per payment and $${p.dailyUsd!.toLocaleString("en-US")} a day`;
+  }
   if (kind === "limits") {
     const p = payload as LimitsChange;
     return p.txUsd === null && p.dailyUsd === null
@@ -66,8 +73,28 @@ function applyLimits(ctx: Ctx, actorId: string, target: string, p: LimitsChange,
   addAlert(ctx, target, "account", `Your limits were changed by our team: $${l.txUsd.toLocaleString("en-US")} per payment and $${l.dailyUsd.toLocaleString("en-US")} a day.`);
 }
 
-function apply(ctx: Ctx, actorId: string, kind: Kind, target: string, payload: LimitsChange | LevelChange, ip?: string, approval?: { requestedBy: string }) {
-  if (kind === "limits") applyLimits(ctx, actorId, target, payload as LimitsChange, ip, approval);
+function applyCountryLimits(ctx: Ctx, actorId: string, p: CountryLimitsChange, ip?: string, approval?: { requestedBy: string }) {
+  if (p.txUsd === null) run(ctx.db, "DELETE FROM country_limits WHERE country = ? AND level = ?", p.country, p.level);
+  else
+    run(
+      ctx.db,
+      `INSERT INTO country_limits (country, level, tx_usd, daily_usd, note, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (country, level) DO UPDATE SET tx_usd = excluded.tx_usd, daily_usd = excluded.daily_usd, note = excluded.note, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+      p.country,
+      p.level,
+      p.txUsd,
+      p.dailyUsd,
+      p.note,
+      actorId,
+      nowIso(),
+    );
+  audit(ctx, actorId, "admin.country_limits_set", { ...p, ...(approval ? { requestedBy: approval.requestedBy, approvedBy: actorId } : {}) }, ip);
+}
+
+function apply(ctx: Ctx, actorId: string, kind: Kind, target: string | null, payload: Payload, ip?: string, approval?: { requestedBy: string }) {
+  if (kind === "country_limits") applyCountryLimits(ctx, actorId, payload as CountryLimitsChange, ip, approval);
+  else if (!target) throw notFound("No customer for this request");
+  else if (kind === "limits") applyLimits(ctx, actorId, target, payload as LimitsChange, ip, approval);
   else {
     const p = payload as LevelChange;
     setLevel(ctx, actorId, target, p.level, approval ? `${p.note} (asked by another admin, approved by this one)` : p.note, ip);
@@ -104,15 +131,43 @@ export function requestChange(ctx: Ctx, requesterId: string, kind: Kind, targetI
   return { applied: false as const, request: view(ctx, one<RequestRow>(ctx.db, "SELECT * FROM admin_requests WHERE id = ?", id)!) };
 }
 
+/** Changes a level's limits in one country now, or files it for another admin. */
+export function requestCountryLimits(ctx: Ctx, requesterId: string, payload: CountryLimitsChange, ip?: string) {
+  if (!secondPersonRequired(ctx, requesterId)) {
+    applyCountryLimits(ctx, requesterId, payload, ip);
+    return { applied: true as const, request: null };
+  }
+  const id = newId("apr");
+  tx(ctx.db, () => {
+    for (const r of all<RequestRow>(ctx.db, "SELECT * FROM admin_requests WHERE kind = 'country_limits' AND status = 'pending'")) {
+      const p = JSON.parse(r.payload) as CountryLimitsChange;
+      if (p.country === payload.country && p.level === payload.level) run(ctx.db, "UPDATE admin_requests SET status = 'cancelled', decided_at = ? WHERE id = ?", nowIso(), r.id);
+    }
+    run(
+      ctx.db,
+      "INSERT INTO admin_requests (id, kind, target_user_id, payload, reason, requested_by, status, created_at) VALUES (?, 'country_limits', NULL, ?, ?, ?, 'pending', ?)",
+      id,
+      JSON.stringify(payload),
+      payload.note,
+      requesterId,
+      nowIso(),
+    );
+  });
+  audit(ctx, requesterId, "admin.change_requested", { id, kind: "country_limits", ...payload }, ip);
+  const who = getUserRow(ctx, requesterId);
+  notifyAdmins(ctx, `@${who.handle} asks to set ${describe("country_limits", payload)}. Another admin must approve it (Admin → Waiting for approval).`, requesterId);
+  return { applied: false as const, request: view(ctx, one<RequestRow>(ctx.db, "SELECT * FROM admin_requests WHERE id = ?", id)!) };
+}
+
 function view(ctx: Ctx, r: RequestRow) {
   const handle = (id: string | null) => (id ? (one<{ handle: string }>(ctx.db, "SELECT handle FROM users WHERE id = ?", id)?.handle ?? null) : null);
-  const payload = JSON.parse(r.payload) as LimitsChange | LevelChange;
+  const payload = JSON.parse(r.payload) as Payload;
   return {
     id: r.id,
     kind: r.kind,
     summary: describe(r.kind, payload),
     payload,
-    target: { id: r.target_user_id, handle: handle(r.target_user_id) },
+    target: r.target_user_id ? { id: r.target_user_id, handle: handle(r.target_user_id) } : null,
     requestedBy: { id: r.requested_by, handle: handle(r.requested_by) },
     status: r.status,
     decidedBy: r.decided_by ? { id: r.decided_by, handle: handle(r.decided_by) } : null,
@@ -141,11 +196,11 @@ export function decideRequest(ctx: Ctx, approverId: string, id: string, decision
   tx(ctx.db, () => {
     const changed = run(ctx.db, "UPDATE admin_requests SET status = ?, decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ? AND status = 'pending'", decision === "approve" ? "approved" : "rejected", approverId, nowIso(), note?.trim() || null, id);
     if (Number(changed.changes) !== 1) throw unprocessable("not_pending", "This request was just decided by someone else");
-    if (decision === "approve") apply(ctx, approverId, r.kind, r.target_user_id, JSON.parse(r.payload) as LimitsChange | LevelChange, ip, { requestedBy: r.requested_by });
+    if (decision === "approve") apply(ctx, approverId, r.kind, r.target_user_id, JSON.parse(r.payload) as Payload, ip, { requestedBy: r.requested_by });
   });
   audit(ctx, approverId, decision === "approve" ? "admin.change_approved" : "admin.change_rejected", { id, kind: r.kind, target: r.target_user_id, requestedBy: r.requested_by }, ip);
   const approver = getUserRow(ctx, approverId);
-  const summary = describe(r.kind, JSON.parse(r.payload) as LimitsChange | LevelChange);
+  const summary = describe(r.kind, JSON.parse(r.payload) as Payload);
   addAlert(ctx, r.requested_by, "account", decision === "approve" ? `@${approver.handle} approved your request (${summary}); it's now in effect.` : `@${approver.handle} turned down your request (${summary}): ${note?.trim()}`);
   return view(ctx, one<RequestRow>(ctx.db, "SELECT * FROM admin_requests WHERE id = ?", id)!);
 }

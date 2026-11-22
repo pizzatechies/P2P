@@ -114,18 +114,44 @@ interface DocRow {
 // ---------------------------------------------------------------------------
 // Limits
 // ---------------------------------------------------------------------------
-export function levelLimits(ctx: Ctx, level: number) {
+/** A level's limits: the country's own, where one is set for it, within the overall caps. */
+export function levelLimits(ctx: Ctx, level: number, country?: string | null) {
+  if (country) {
+    const own = one<{ tx_usd: number; daily_usd: number }>(ctx.db, "SELECT tx_usd, daily_usd FROM country_limits WHERE country = ? AND level = ?", country, Math.min(Math.max(level, 0), 2));
+    if (own) return { txUsd: Math.min(own.tx_usd, ctx.config.MAX_TX_USD), dailyUsd: Math.min(own.daily_usd, ctx.config.DAILY_LIMIT_USD) };
+  }
   if (level >= 2) return { txUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD };
   if (level === 1) return { txUsd: Math.min(ctx.config.TIER1_TX_USD, ctx.config.MAX_TX_USD), dailyUsd: Math.min(ctx.config.TIER1_DAILY_USD, ctx.config.DAILY_LIMIT_USD) };
   return { txUsd: Math.min(ctx.config.TIER0_TX_USD, ctx.config.MAX_TX_USD), dailyUsd: Math.min(ctx.config.TIER0_DAILY_USD, ctx.config.DAILY_LIMIT_USD) };
 }
 
-/** The limits that apply to a user: their level's, unless an admin set an override. Staff accounts aren't tiered. */
-export function limitsFor(ctx: Ctx, user: Pick<UserRow, "kyc_level" | "role" | "limit_tx_usd" | "limit_daily_usd">) {
+/**
+ * The country a customer's limits follow: the one in their verified address (set when their identity
+ * is approved; worked out once for customers verified before limits by country).
+ */
+export function residenceCountry(ctx: Ctx, user: Pick<UserRow, "id" | "kyc_level">): string | null {
+  const row = one<{ residence_country: string | null }>(ctx.db, "SELECT residence_country FROM users WHERE id = ?", user.id);
+  if (row?.residence_country) return row.residence_country;
+  if (user.kyc_level < 1) return null;
+  const sub = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE user_id = ? AND level = 1 AND status = 'approved' ORDER BY reviewed_at DESC, rowid DESC LIMIT 1", user.id);
+  let country: string | null = null;
+  try {
+    country = decryptData<Level1Data>(ctx, sub)?.address?.country ?? null;
+  } catch {
+    return null;
+  }
+  if (country) run(ctx.db, "UPDATE users SET residence_country = ? WHERE id = ?", country, user.id);
+  return country;
+}
+
+/** The limits that apply to a user: their level's (in their country), unless an admin set an override. Staff accounts aren't tiered. */
+export function limitsFor(ctx: Ctx, user: Pick<UserRow, "id" | "kyc_level" | "role" | "limit_tx_usd" | "limit_daily_usd">) {
   const tiered = ctx.config.KYC_LIMITS && user.role !== "admin";
-  const base = tiered ? levelLimits(ctx, user.kyc_level) : { txUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD };
+  const country = tiered ? residenceCountry(ctx, user) : null;
+  const base = tiered ? levelLimits(ctx, user.kyc_level, country) : { txUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD };
   return {
     level: user.kyc_level,
+    country,
     tiered,
     txUsd: user.limit_tx_usd ?? base.txUsd,
     dailyUsd: user.limit_daily_usd ?? base.dailyUsd,
@@ -166,6 +192,7 @@ export function verificationOverview(ctx: Ctx, userId: string) {
   const user = getUserRow(ctx, userId);
   const refresh = refreshStatus(ctx, userId);
   const docs = freshDocs(ctx, userId, refresh);
+  const country = residenceCountry(ctx, user);
   const l1 = latest(ctx, userId, 1);
   const l2 = latest(ctx, userId, 2);
   const l1Data = decryptData<Level1Data>(ctx, l1);
@@ -179,12 +206,12 @@ export function verificationOverview(ctx: Ctx, userId: string) {
         const d = docs.get(kind);
         return { kind, label: DOC_LABEL[kind], uploaded: Boolean(d), uploadedAt: d?.created_at ?? null, id: d?.id ?? null };
       }),
-      limits: levelLimits(ctx, lvl),
+      limits: levelLimits(ctx, lvl, country),
     };
   };
   return {
     currentLevel: user.kyc_level,
-    levels: LEVELS.map((l) => ({ ...l, limits: levelLimits(ctx, l.level) })),
+    levels: LEVELS.map((l) => ({ ...l, limits: levelLimits(ctx, l.level, country) })),
     limits: limitsFor(ctx, user),
     identity: level(1, l1, l1Data),
     enhanced: level(2, l2, decryptData<Level2Data>(ctx, l2)),
@@ -402,6 +429,10 @@ function applyReview(ctx: Ctx, reviewerId: string | null, submissionId: string, 
       sub.id,
     );
     if (decision === "approve") run(ctx.db, "UPDATE users SET kyc_level = MAX(kyc_level, ?) WHERE id = ?", sub.level, sub.user_id);
+    if (decision === "approve" && sub.level === 1) {
+      const country = decryptData<Level1Data>(ctx, sub)?.address?.country;
+      if (country) run(ctx.db, "UPDATE users SET residence_country = ? WHERE id = ?", country, sub.user_id);
+    }
   });
   audit(ctx, reviewerId, `kyc.${decision === "approve" ? "approved" : "rejected"}`, { userId: sub.user_id, level: sub.level, submissionId: sub.id }, ip);
   addAlert(

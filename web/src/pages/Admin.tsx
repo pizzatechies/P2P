@@ -266,6 +266,7 @@ export function AdminPage() {
       {!overview.error && <PepCard />}
       {!overview.error && <KycQueue />}
       {!overview.error && <IdentityRefreshCard />}
+      {!overview.error && <CountryLimitsCard />}
       {!overview.error && <ApprovalQueue />}
       {!overview.error && <BusinessQueue />}
       {!overview.error && <UpgradeQueue />}
@@ -479,6 +480,93 @@ export function KycSubmissionCard({ s, onReviewed }: { s: KycSubmission; onRevie
 }
 
 /** Identity submissions waiting for review. */
+interface CountryLimitsData {
+  tiered: boolean;
+  caps: { txUsd: number; dailyUsd: number };
+  defaults: { level: number; txUsd: number; dailyUsd: number }[];
+  countries: { country: string; level: number; txUsd: number; dailyUsd: number; note: string | null; updatedAt: string; updatedBy: string | null }[];
+  customers: Record<string, number>;
+}
+const usdShort = (n: number) => `$${n.toLocaleString("en-US")}`;
+
+/** Each verification level's limits by country, where a regulator sets its own (two-person approval). */
+function CountryLimitsCard() {
+  const toast = useToast();
+  const data = useLoad(() => api.get<CountryLimitsData>("/api/admin/country-limits"));
+  const [f, setF] = useState({ country: "", level: "1", txUsd: "", dailyUsd: "", note: "" });
+  const [error, setError] = useState<string | null>(null);
+  const d = data.data;
+  if (!d || !d.tiered) return null;
+  async function save(body: object, done: string) {
+    setError(null);
+    try {
+      const r = await api.put<{ applied: boolean }>("/api/admin/country-limits", body);
+      toast(r.applied ? done : "Sent to another admin for approval (Waiting for approval)");
+      data.reload();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    }
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (await save({ country: f.country, level: Number(f.level), txUsd: Number(f.txUsd), dailyUsd: Number(f.dailyUsd), note: f.note }, "Limits set")) setF({ ...f, txUsd: "", dailyUsd: "", note: "" });
+  }
+  async function backToDefaults(country: string, level: number) {
+    const note = prompt(`Why go back to the default level ${level} limits in ${countryName(country)}? (kept in the audit log)`);
+    if (!note || note.trim().length < 3) return;
+    await save({ country, level, txUsd: null, dailyUsd: null, note }, "Back to the defaults");
+  }
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-head"><h2>Limits by country</h2></div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Where a regulator sets its own limits for a verification level (for example tiered KYC), set them here. They apply to customers by the country in their verified address; customers who haven't verified, and other countries, keep the defaults ({d.defaults.map((l) => `level ${l.level}: ${usdShort(l.txUsd)} / ${usdShort(l.dailyUsd)} a day`).join(" · ")}). Nothing goes above the overall caps of {usdShort(d.caps.txUsd)} per payment and {usdShort(d.caps.dailyUsd)} a day. Changes need a second admin when two-person approval is on.
+      </p>
+      {d.countries.length > 0 && (
+        <div className="table-wrap" style={{ marginBottom: 12 }}>
+          <table className="table">
+            <thead><tr><th>Country</th><th>Level</th><th className="r">Per payment</th><th className="r">Per day</th><th className="hide-sm">Why</th><th /></tr></thead>
+            <tbody>
+              {d.countries.map((c) => (
+                <tr key={c.country + c.level}>
+                  <td>{countryName(c.country)} <span className="faint xs">· {d.customers[c.country] ?? 0} customers</span></td>
+                  <td>{c.level}</td>
+                  <td className="r num">{usdShort(c.txUsd)}</td>
+                  <td className="r num">{usdShort(c.dailyUsd)}</td>
+                  <td className="hide-sm faint xs">{c.note}{c.updatedBy ? ` · @${c.updatedBy}` : ""}</td>
+                  <td className="r"><button className="link-btn small" onClick={() => backToDefaults(c.country, c.level)}>Use defaults</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <form className="row wrap" style={{ gap: 8, alignItems: "flex-end" }} onSubmit={submit}>
+        <Field label="Country">
+          <select className="input" required value={f.country} onChange={(e) => setF({ ...f, country: e.target.value })}>
+            <option value="">Choose…</option>
+            {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Level">
+          <select className="input" value={f.level} onChange={(e) => setF({ ...f, level: e.target.value })}>
+            <option value="0">0 (email)</option>
+            <option value="1">1 (identity)</option>
+            <option value="2">2 (enhanced)</option>
+          </select>
+        </Field>
+        <Field label="Per payment (USD)"><input className="input num" required inputMode="decimal" style={{ width: 120 }} value={f.txUsd} onChange={(e) => setF({ ...f, txUsd: e.target.value.replace(/[^\d.]/g, "") })} /></Field>
+        <Field label="Per day (USD)"><input className="input num" required inputMode="decimal" style={{ width: 120 }} value={f.dailyUsd} onChange={(e) => setF({ ...f, dailyUsd: e.target.value.replace(/[^\d.]/g, "") })} /></Field>
+        <Field label="Which rule"><input className="input" required minLength={3} maxLength={300} placeholder="e.g. CBN tiered KYC, tier 2" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Field>
+        <button className="btn sm" style={{ marginBottom: 4 }}>Set limits</button>
+      </form>
+      <ErrorText error={error} />
+    </div>
+  );
+}
+
 interface RefreshRow { id: string; handle: string; name: string; status: { state: string; reason: string | null; dueAt: string | null; restrictAt: string | null; highRisk: boolean } }
 const REFRESH_LABEL: Record<string, string> = { restricted: "Paused: overdue", due: "Due (grace period)", in_review: "Sent, being reviewed", soon: "Due within 30 days" };
 
@@ -1109,10 +1197,10 @@ function BusinessQueue() {
 
 interface ApprovalRequest {
   id: string;
-  kind: "limits" | "kyc_level";
+  kind: "limits" | "kyc_level" | "country_limits";
   summary: string;
   payload: { note?: string };
-  target: { id: string; handle: string | null };
+  target: { id: string; handle: string | null } | null;
   requestedBy: { id: string; handle: string | null };
   createdAt: string;
 }
@@ -1143,7 +1231,7 @@ function ApprovalQueue() {
           <div key={r.id} className="row between wrap" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
             <div>
               <div className="small">
-                Set <Link to={`/app/admin/users/${r.target.id}`}>@{r.target.handle}</Link>'s {r.summary}
+                {r.target ? <>Set <Link to={`/app/admin/users/${r.target.id}`}>@{r.target.handle}</Link>'s {r.summary}</> : <>Set {r.summary}</>}
               </div>
               <div className="faint xs">
                 Asked by @{r.requestedBy.handle} {timeAgo(r.createdAt)}{r.payload.note ? ` · "${r.payload.note}"` : ""}

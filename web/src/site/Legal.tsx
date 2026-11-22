@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { Markdown } from "../components/Markdown";
+import { COUNTRIES } from "../countries";
 import { useAuth } from "../state";
 import complaintsMd from "../../../docs/go-live/legal/complaints-policy.md?raw";
 import privacyMd from "../../../docs/go-live/legal/privacy-policy.md?raw";
@@ -123,6 +124,7 @@ export function LegalPage({ doc }: { doc: keyof typeof LEGAL_PAGES }) {
 const pct = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 const usd = (n: number) => `US$${n.toLocaleString("en-US")}`;
 const LEVEL_NAMES = ["Level 0 (email confirmed)", "Level 1 (identity verified)", "Level 2 (address and source of funds)"];
+const COUNTRY_NAMES: Record<string, string> = Object.fromEntries(COUNTRIES.map((c) => [c.code, c.name]));
 
 /** The fee schedule, built from the server's live settings so it can't disagree with what's charged. */
 export function FeesPage() {
@@ -177,6 +179,26 @@ export function FeesPage() {
                 </tbody>
               </table>
             </div>
+            {limits?.byCountry && limits.byCountry.length > 0 && (
+              <>
+                <p>Where a country's regulator sets its own limits, they apply to customers whose verified address is in that country:</p>
+                <div className="md-table">
+                  <table>
+                    <thead><tr><th>Country</th><th>Account</th><th>Per payment</th><th>Per 24 hours</th></tr></thead>
+                    <tbody>
+                      {limits.byCountry.map((c) => (
+                        <tr key={c.country + c.level}>
+                          <td>{COUNTRY_NAMES[c.country] ?? c.country}</td>
+                          <td>{LEVEL_NAMES[c.level]}</td>
+                          <td>{usd(c.txUsd)}</td>
+                          <td>{usd(c.dailyUsd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
             {limits?.payoutReviewUsd ? <p>Withdrawals of {usd(limits.payoutReviewUsd)} or more may wait for a review by our team before they're sent.</p> : null}
             <h2>Changes</h2>
             <p>We'll give you at least 30 days' notice before raising a fee. A change applies only to payments made after it takes effect.</p>

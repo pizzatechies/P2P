@@ -2,7 +2,7 @@ import express, { Router } from "express";
 import { refreshQueue } from "../services/kycRefresh.js";
 import { listBusinessApplications, readBusinessDocument, reviewBusiness } from "../services/business.js";
 import { readPersonDocument } from "../services/kybPeople.js";
-import { cancelRequest, decideRequest, listRequests, requestChange } from "../services/approvals.js";
+import { cancelRequest, decideRequest, listRequests, requestChange, requestCountryLimits } from "../services/approvals.js";
 import { pepConfigured, pepDue, rescreenPeps } from "../services/pep.js";
 import { assignCase, complaintsReport, listCases, OUTCOMES, openSupportCount, recordReferral, resolveCase, staffCaseDetail, staffReply } from "../services/support.js";
 import { toCsv } from "../lib/csv.js";
@@ -12,13 +12,13 @@ import { listStatus, refreshSanctionsLists, screenName, setOwnList } from "../se
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { all, one, run } from "../db/index.js";
-import { HttpError, notFound } from "../lib/errors.js";
+import { badRequest, HttpError, notFound } from "../lib/errors.js";
 import { fromMinor } from "../lib/money.js";
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireRecentAuth } from "../middleware/auth.js";
 import { listApplications, reviewApplication } from "../services/upgrade.js";
 import { reopenAccount } from "../services/account.js";
-import { documentHeaders, limitsFor, listSubmissions, readDocument, reviewSubmission, setLevel } from "../services/kyc.js";
+import { documentHeaders, levelLimits, limitsFor, listSubmissions, readDocument, reviewSubmission, setLevel } from "../services/kyc.js";
 import { getUserRow } from "../services/users.js";
 import { verifyLedger } from "../services/ledger.js";
 import { recentIntegrity, verifyIntegrity } from "../services/integrity.js";
@@ -555,6 +555,38 @@ export function adminRoutes(ctx: Ctx) {
       req.body,
     );
     const result = requestChange(ctx, req.user!.id, "limits", String(req.params.id), body, req.ip);
+    res.status(result.applied ? 200 : 202).json({ ok: true, ...result });
+  });
+
+  /** Each level's limits by country (where a regulator sets its own), and the defaults they replace. */
+  r.get("/country-limits", (_req, res) => {
+    res.json({
+      tiered: ctx.config.KYC_LIMITS,
+      caps: { txUsd: ctx.config.MAX_TX_USD, dailyUsd: ctx.config.DAILY_LIMIT_USD },
+      defaults: [0, 1, 2].map((level) => ({ level, ...levelLimits(ctx, level) })),
+      countries: all<{ country: string; level: number; tx_usd: number; daily_usd: number; note: string | null; updated_at: string; handle: string | null }>(
+        ctx.db,
+        "SELECT c.*, u.handle FROM country_limits c LEFT JOIN users u ON u.id = c.updated_by ORDER BY c.country, c.level",
+      ).map((c) => ({ country: c.country, level: c.level, txUsd: c.tx_usd, dailyUsd: c.daily_usd, note: c.note, updatedAt: c.updated_at, updatedBy: c.handle })),
+      customers: Object.fromEntries(all<{ country: string; n: number }>(ctx.db, "SELECT residence_country AS country, COUNT(*) AS n FROM users WHERE residence_country IS NOT NULL AND closed_at IS NULL GROUP BY residence_country").map((r) => [r.country, r.n])),
+    });
+  });
+
+  /** Set (or, with null amounts, remove) a level's limits in a country. Needs a second admin when two-person approval is on. */
+  r.put("/country-limits", requireRecentAuth(ctx), (req, res) => {
+    const body = parse(
+      z.object({
+        country: z.string().trim().length(2).transform((v) => v.toUpperCase()),
+        level: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+        txUsd: z.number().positive().max(10_000_000).nullable(),
+        dailyUsd: z.number().positive().max(100_000_000).nullable(),
+        note: z.string().trim().min(3, "Say which rule this follows (e.g. the regulator's tiered-KYC guideline)").max(300),
+      }),
+      req.body,
+    );
+    if ((body.txUsd === null) !== (body.dailyUsd === null)) throw badRequest("Give both limits, or neither to go back to the defaults");
+    if (body.txUsd !== null && body.dailyUsd! < body.txUsd) throw badRequest("The daily limit can't be lower than the per-payment limit");
+    const result = requestCountryLimits(ctx, req.user!.id, body, req.ip);
     res.status(result.applied ? 200 : 202).json({ ok: true, ...result });
   });
 

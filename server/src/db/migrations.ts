@@ -940,4 +940,38 @@ export const migrations: Migration[] = [
   ALTER TABLE support_cases ADD COLUMN referred_at TEXT;
   ALTER TABLE support_cases ADD COLUMN referred_to TEXT;
   `,
+  // 29: Limits by country (each verification level's limits, where a regulator sets its own), changed
+  //     through two-person approval like a customer's limits: admin requests can now be country-wide
+  //     (no customer). The customer's country is the one in their verified address.
+  `
+  CREATE TABLE admin_requests_new (
+    id             TEXT PRIMARY KEY,
+    kind           TEXT NOT NULL CHECK (kind IN ('limits','kyc_level','country_limits')),
+    target_user_id TEXT REFERENCES users(id),
+    payload        TEXT NOT NULL,
+    reason         TEXT,
+    requested_by   TEXT NOT NULL REFERENCES users(id),
+    status         TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','cancelled')),
+    decided_by     TEXT,
+    decided_at     TEXT,
+    decision_note  TEXT,
+    created_at     TEXT NOT NULL
+  );
+  INSERT INTO admin_requests_new (id, kind, target_user_id, payload, reason, requested_by, status, decided_by, decided_at, decision_note, created_at)
+    SELECT id, kind, target_user_id, payload, reason, requested_by, status, decided_by, decided_at, decision_note, created_at FROM admin_requests;
+  DROP TABLE admin_requests;
+  ALTER TABLE admin_requests_new RENAME TO admin_requests;
+  CREATE INDEX admin_requests_status ON admin_requests(status, created_at);
+  CREATE TABLE country_limits (
+    country    TEXT NOT NULL,
+    level      INTEGER NOT NULL CHECK (level IN (0, 1, 2)),
+    tx_usd     REAL NOT NULL CHECK (tx_usd > 0),
+    daily_usd  REAL NOT NULL CHECK (daily_usd > 0),
+    note       TEXT,
+    updated_by TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (country, level)
+  );
+  ALTER TABLE users ADD COLUMN residence_country TEXT;
+  `,
 ];
