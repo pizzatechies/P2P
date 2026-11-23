@@ -240,7 +240,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 /* charts */
 .chart { position: relative; background: var(--viz-surface); border-radius: var(--radius-sm); }
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.chart .grid-line { stroke: var(--viz-grid); stroke-width: 1; }
+.chart .grid-line { stroke: var(--viz-grid); stroke-width: 1; shape-rendering: crispEdges; }
 .chart .axis-text { fill: var(--text-3); font-size: 11px; font-family: var(--font); }
 .chart-tip {
   position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
@@ -675,8 +675,26 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .person-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
 
 /* ---- The iOS and Android apps ---- */
-html.native body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-html.native { -webkit-tap-highlight-color: transparent; }
+/* The apps draw under the status bar and home indicator (viewport-fit=cover). Content starts below
+   the status bar; a solid strip always covers it, so nothing scrolls under the clock or the notch;
+   the bars that stick to the top stop just below it; and anything pinned to the bottom stays clear
+   of the home indicator (iPhone) and the navigation bar (Android). */
+html.native { -webkit-tap-highlight-color: transparent; --inset-top: env(safe-area-inset-top, 0px); --inset-bottom: env(safe-area-inset-bottom, 0px); }
+html.native body { padding: 0 env(safe-area-inset-right, 0px) var(--inset-bottom) env(safe-area-inset-left, 0px); }
+html.native #root { padding-top: var(--inset-top); }
+html.native body::before {
+  content: ""; position: fixed; z-index: 45; top: 0; left: 0; right: 0; height: var(--inset-top);
+  background: var(--surface); pointer-events: none;
+}
+html.native .sidebar { top: var(--inset-top); height: calc(100vh - var(--inset-top)); }
+html.native .site-header { top: var(--inset-top); }
+html.native .toasts { bottom: calc(20px + var(--inset-bottom)); }
+html.native .modal-backdrop { padding-top: calc(16px + var(--inset-top)); padding-bottom: calc(16px + var(--inset-bottom)); }
+html.native .auth-wrap { min-height: calc(100vh - var(--inset-top) - var(--inset-bottom)); }
+@media (max-width: 860px) {
+  html.native .sidebar { height: auto; }
+  html.native .chat-main { height: calc(100vh - 140px - var(--inset-top) - var(--inset-bottom)); }
+}
 .native-viewer {
   position: fixed; inset: 0; z-index: 1000; background: rgba(10, 9, 6, 0.92);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;

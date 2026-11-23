@@ -2,17 +2,33 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { num } from "../format";
 import type { Bar } from "../types";
 
-function niceTicks(min: number, max: number, count = 5): number[] {
-  if (min === max) return [min];
-  const span = max - min;
-  const step0 = span / count;
-  const mag = 10 ** Math.floor(Math.log10(step0));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0) ?? 10 * mag;
-  const start = Math.ceil(min / step) * step;
-  const out: number[] = [];
-  for (let v = start; v <= max + 1e-9; v += step) out.push(Math.round(v * 1e6) / 1e6);
-  return out;
+/**
+ * A y-axis that starts and ends on a gridline, in round steps, with about one gridline per
+ * `spacing` pixels of plot height (so phones get fewer, desktops more, never crowded). Very small
+ * or flat ranges are widened to `minSpan` first, so a flat line sits on a sensible scale instead
+ * of a pile of gridlines all labelled the same.
+ */
+function niceScale(lo: number, hi: number, plotHeight: number, { minSpan = 1, spacing = 44 } = {}) {
+  let min = lo;
+  let max = hi;
+  if (!(max - min >= minSpan)) {
+    const mid = (min + max) / 2;
+    min = mid - minSpan / 2;
+    max = mid + minSpan / 2;
+  }
+  const count = Math.max(2, Math.min(6, Math.floor(plotHeight / spacing)));
+  const raw = (max - min) / count;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw * 0.999) ?? 10 * mag;
+  const first = Math.floor(min / step + 1e-9);
+  const last = Math.ceil(max / step - 1e-9);
+  const ticks: number[] = [];
+  for (let k = first; k <= last; k++) ticks.push(Number((k * step).toFixed(10)));
+  return { min: ticks[0], max: ticks[ticks.length - 1], ticks, step };
 }
+
+/** Gridlines on whole pixels (plus a half for 1-pixel lines), so they stay sharp on every screen. */
+const crisp = (v: number) => Math.round(v) + 0.5;
 
 function smaSeries(values: number[], period: number): (number | null)[] {
   let sum = 0;
@@ -62,12 +78,10 @@ export function PriceChart({ bars, height: heightProp = 280, title }: { bars: Ba
     const vals = rows.flatMap((r) => [r.close, r.sma20, r.sma50]).filter((v): v is number => v !== null);
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
-    const padY = (hi - lo) * 0.08 || hi * 0.02;
-    const ticks = niceTicks(lo - padY, hi + padY, 4);
-    const yMin = Math.min(lo - padY, ticks[0]);
-    const yMax = Math.max(hi + padY, ticks[ticks.length - 1]);
     const iw = width - pad.left - pad.right;
     const ih = height - pad.top - pad.bottom;
+    const padY = (hi - lo) * 0.04;
+    const { ticks, min: yMin, max: yMax } = niceScale(lo - padY, hi + padY, ih, { minSpan: Math.max(Math.abs(hi) * 0.02, 0.01) });
     const x = (i: number) => pad.left + (rows.length <= 1 ? iw / 2 : (i / (rows.length - 1)) * iw);
     const y = (v: number) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * ih;
     const path = (key: "close" | "sma20" | "sma50") => {
@@ -132,7 +146,7 @@ export function PriceChart({ bars, height: heightProp = 280, title }: { bars: Ba
         >
           {ticks.map((t) => (
             <g key={t}>
-              <line className="grid-line" x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} />
+              <line className="grid-line" x1={pad.left} x2={width - pad.right} y1={crisp(y(t))} y2={crisp(y(t))} />
               <text className="axis-text" x={width - pad.right + 8} y={y(t) + 4}>
                 {t >= 1000 ? t.toLocaleString(undefined, { maximumFractionDigits: 0 }) : t.toLocaleString(undefined, { maximumFractionDigits: 2 })}
               </text>
@@ -242,8 +256,13 @@ export function Sparkline({ values, width = 72, height = 24, label }: { values: 
 }
 
 const fmtMoney = (v: number) => v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 });
-const fmtAxisMoney = (v: number) =>
-  Math.abs(v) >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M` : Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(Math.abs(v) >= 10_000 ? 0 : 1)}k` : `$${Math.round(v)}`;
+const fmtAxisMoney = (v: number, step = 1) => {
+  const sign = v < 0 ? "-" : "";
+  const a = Math.abs(v);
+  if (a >= 1_000_000) return `${sign}$${(a / 1_000_000).toFixed(step >= 1_000_000 ? 0 : 1)}M`;
+  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(step >= 1000 ? 0 : 1)}k`;
+  return `${sign}$${a.toFixed(step >= 1 ? 0 : step >= 0.1 ? 1 : 2)}`;
+};
 const fmtDay = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 function useWidth(dep: unknown) {
@@ -274,12 +293,10 @@ export function EquityChart({ points, title, height: heightProp = 220 }: { point
     const vals = points.map((p) => p.equity);
     const lo = Math.min(...vals);
     const hi = Math.max(...vals);
-    const padY = (hi - lo) * 0.1 || Math.max(hi * 0.02, 1);
-    const ticks = niceTicks(lo - padY, hi + padY, 4);
-    const yMin = Math.min(lo - padY, ticks[0]);
-    const yMax = Math.max(hi + padY, ticks[ticks.length - 1]);
     const iw = width - pad.left - pad.right;
     const ih = height - pad.top - pad.bottom;
+    const padY = (hi - lo) * 0.06;
+    const { ticks, min: yMin, max: yMax, step } = niceScale(lo - padY, hi + padY, ih, { minSpan: Math.max(Math.abs(hi) * 0.02, 10) });
     const x = (i: number) => pad.left + (points.length <= 1 ? iw / 2 : (i / (points.length - 1)) * iw);
     const y = (v: number) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * ih;
     const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.equity).toFixed(1)}`).join("");
@@ -291,11 +308,11 @@ export function EquityChart({ points, title, height: heightProp = 220 }: { point
         labels.push({ i, label: new Date(p.day + "T00:00:00Z").toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }) });
       }
     });
-    return { ticks, x, y, line, area, ih, labels };
+    return { ticks, step, x, y, line, area, ih, labels };
   }, [points, width, height]);
 
   if (points.length < 2) return <div className="empty">The chart fills in as your portfolio is valued each day.</div>;
-  const { ticks, x, y, line, area, ih, labels } = model;
+  const { ticks, step, x, y, line, area, ih, labels } = model;
   const last = points[points.length - 1];
   const h = hover !== null ? points[hover] : null;
   const tipLeftPct = hover !== null ? (x(hover) / width) * 100 : 0;
@@ -311,8 +328,8 @@ export function EquityChart({ points, title, height: heightProp = 220 }: { point
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}: ${fmtMoney(points[0].equity)} on ${fmtDay(points[0].day)}, ${fmtMoney(last.equity)} on ${fmtDay(last.day)}`}>
           {ticks.map((t) => (
             <g key={t}>
-              <line className="grid-line" x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} />
-              <text className="axis-text" x={width - pad.right + 8} y={y(t) + 4}>{fmtAxisMoney(t)}</text>
+              <line className="grid-line" x1={pad.left} x2={width - pad.right} y1={crisp(y(t))} y2={crisp(y(t))} />
+              <text className="axis-text" x={width - pad.right + 8} y={y(t) + 4}>{fmtAxisMoney(t, step)}</text>
             </g>
           ))}
           {labels.map((l) => (
@@ -365,12 +382,10 @@ export function PnlBars({ bars, title, height: heightProp = 200 }: { bars: { lab
   const vals = bars.map((b) => b.value);
   const lo = Math.min(0, ...vals);
   const hi = Math.max(0, ...vals);
-  const span = hi - lo || 1;
-  const ticks = niceTicks(lo - span * 0.05, hi + span * 0.05, 4);
-  const yMin = Math.min(lo, ticks[0]);
-  const yMax = Math.max(hi, ticks[ticks.length - 1], yMin + 1);
   const iw = width - pad.left - pad.right;
   const ih = height - pad.top - pad.bottom;
+  // Nothing realised yet: a $0 line on a $0 to $10 scale, not a stack of identical labels.
+  const { ticks, min: yMin, max: yMax, step } = niceScale(lo, hi === lo ? lo + 10 : hi, ih, { minSpan: 10 });
   const y = (v: number) => pad.top + (1 - (v - yMin) / (yMax - yMin)) * ih;
   const slot = iw / Math.max(1, bars.length);
   const bw = Math.max(4, Math.min(28, slot - 2)); // 2px surface gap between bars
@@ -384,11 +399,11 @@ export function PnlBars({ bars, title, height: heightProp = 200 }: { bars: { lab
         <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${title}: ${fmtMoney(total)} in total`}>
           {ticks.map((t) => (
             <g key={t}>
-              <line className="grid-line" x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} />
-              <text className="axis-text" x={width - pad.right + 8} y={y(t) + 4}>{fmtAxisMoney(t)}</text>
+              <line className="grid-line" x1={pad.left} x2={width - pad.right} y1={crisp(y(t))} y2={crisp(y(t))} />
+              <text className="axis-text" x={width - pad.right + 8} y={y(t) + 4}>{fmtAxisMoney(t, step)}</text>
             </g>
           ))}
-          <line x1={pad.left} x2={width - pad.right} y1={zero} y2={zero} stroke="var(--text-3)" strokeWidth={1} />
+          <line x1={pad.left} x2={width - pad.right} y1={crisp(zero)} y2={crisp(zero)} stroke="var(--text-3)" strokeWidth={1} shapeRendering="crispEdges" />
           {bars.map((b, i) => {
             const cx = pad.left + slot * (i + 0.5);
             const top = Math.min(y(b.value), zero);
