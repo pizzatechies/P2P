@@ -11,7 +11,7 @@ import type { Ctx } from "./context.js";
 import { openDb, type DB } from "./db/index.js";
 import { HttpError } from "./lib/errors.js";
 import { rateLimit } from "./lib/rateLimit.js";
-import { csrfGuard, loadSession, originGuard } from "./middleware/auth.js";
+import { appCors, csrfGuard, loadSession, originGuard } from "./middleware/auth.js";
 import { accountRoutes } from "./routes/account.js";
 import { adminRoutes } from "./routes/admin.js";
 import { aiRoutes } from "./routes/ai.js";
@@ -153,7 +153,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   const OWN_BODY_PARSER = new Set(["/api/account/verification/liveness", "/api/admin/sanctions/own-list"]);
   app.use(express.json({ limit: "256kb", strict: true, type: (req) => !OWN_BODY_PARSER.has(String(req.url).split("?")[0]) && /^application\/json\b/i.test(String(req.headers["content-type"] ?? "")) }));
   app.use("/api", rateLimit({ name: "api", windowMs: 60_000, max: config.isTest ? 100_000 : 600 }));
-  app.use("/api", originGuard(ctx), loadSession(ctx), csrfGuard);
+  app.use("/api", appCors(ctx), originGuard(ctx), loadSession(ctx), csrfGuard);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
   app.use("/api", metaRoutes(ctx));

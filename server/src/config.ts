@@ -22,6 +22,11 @@ const EnvSchema = z.object({
   MASTER_KEY: optionalString,
   /** Absolute session lifetime. */
   SESSION_TTL_HOURS: z.coerce.number().positive().default(72),
+  /**
+   * Where the iOS and Android apps run (Capacitor's own origins). Requests from them may call the API
+   * across origins and sign in with a token instead of a cookie. Empty switches the apps off.
+   */
+  APP_ORIGINS: z.string().default("capacitor://localhost,https://localhost"),
   /** Sign out after this many minutes without activity (0 = never). */
   SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).default(120),
   /** Admins are signed out sooner when idle (0 = same as everyone). */
@@ -365,6 +370,8 @@ export interface Config extends Env {
   /** Keys that MASTER_KEY replaced; only used to re-encrypt old secrets at startup. */
   previousMasterKeys: Buffer[];
   allowedOrigins: Set<string>;
+  /** APP_ORIGINS, parsed: the mobile apps' origins. */
+  appOrigins: Set<string>;
   breachCheck: boolean;
   /** True when ADMIN_EMAILS accounts become admin without entering ADMIN_SETUP_CODE (development only). */
   adminAutoPromote: boolean;
@@ -475,6 +482,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     ),
     previousMasterKeys: list(env.MASTER_KEY_PREVIOUS).map((k) => createHash("sha256").update(k).digest()),
     allowedOrigins: new Set([new URL(env.APP_URL).origin, ...list(env.ALLOWED_ORIGINS).map((o) => new URL(o).origin)]),
+    // Kept as written: "capacitor://localhost" has no standard origin, so URL() can't normalise it.
+    appOrigins: new Set(list(env.APP_ORIGINS).map((o) => o.replace(/\/+$/, "").toLowerCase())),
     breachCheck: env.PASSWORD_BREACH_CHECK ?? env.NODE_ENV !== "test",
     adminAutoPromote: !env.ADMIN_SETUP_CODE && !isProd,
     mpesaCallbackIps: new Set(list(env.MPESA_CALLBACK_IPS)),

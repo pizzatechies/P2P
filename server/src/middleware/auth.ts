@@ -9,6 +9,40 @@ import { toAuthUser, userForSessionToken } from "../services/users.js";
 export const SESSION_COOKIE = "aurex_session";
 export const CSRF_HEADER = "x-aurex-csrf";
 
+/** True when the request comes from the iOS or Android app (its web view sets Origin; pages can't fake it). */
+export const fromApp = (ctx: Ctx, req: Request) => {
+  const origin = req.headers.origin?.toLowerCase();
+  return Boolean(origin && ctx.config.appOrigins.has(origin));
+};
+
+/**
+ * Lets the mobile apps call the API from their own origins. Credentials are never allowed across
+ * origins: the apps send their session token in an Authorization header, and cookies (and so the
+ * website's sessions) can't be used from there.
+ */
+export function appCors(ctx: Ctx) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!fromApp(ctx, req)) return next();
+    res.setHeader("Access-Control-Allow-Origin", req.headers.origin!);
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
+    res.append("Vary", "Origin");
+    if (req.method === "OPTIONS") {
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE");
+      res.setHeader("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Aurex-CSRF");
+      res.setHeader("Access-Control-Max-Age", "600");
+      res.status(204).end();
+      return;
+    }
+    next();
+  };
+}
+
+/** The session token from "Authorization: Bearer ..." (the apps), if any. */
+const bearerToken = (req: Request) => {
+  const m = /^Bearer\s+([A-Za-z0-9_-]{20,100})$/.exec(req.headers.authorization ?? "");
+  return m ? m[1] : undefined;
+};
+
 /**
  * In production the cookie uses the __Host- prefix: browsers then only accept it over HTTPS, for
  * this exact host, on path "/", so a sibling subdomain can't set or overwrite it.
@@ -46,10 +80,10 @@ export function clearSessionCookie(ctx: Ctx, res: Response) {
   res.clearCookie(sessionCookieName(ctx), { httpOnly: true, secure: ctx.config.isProd, sameSite: "lax", path: "/" });
 }
 
-/** Resolves the session cookie (if any) into req.user. Never rejects; use requireAuth for that. */
+/** Resolves the session (the app's bearer token, else the cookie) into req.user. Never rejects; use requireAuth for that. */
 export function loadSession(ctx: Ctx) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    const token = parseCookies(req.headers.cookie)[sessionCookieName(ctx)];
+    const token = bearerToken(req) ?? parseCookies(req.headers.cookie)[sessionCookieName(ctx)];
     if (token) {
       const found = userForSessionToken(ctx, token);
       if (found) {
@@ -106,6 +140,8 @@ const PRIVATE_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|10\.\d+\.\d+\.\d+|1
 export function originGuard(ctx: Ctx) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+    // The apps are another origin by design; they authenticate with a token, never a cookie.
+    if (fromApp(ctx, req)) return next();
     if (req.headers["sec-fetch-site"] === "cross-site") return next(new HttpError(403, "csrf", "Cross-site request refused"));
     const origin = req.headers.origin;
     if (origin && origin !== "null" && !ctx.config.allowedOrigins.has(origin)) {

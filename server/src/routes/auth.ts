@@ -6,7 +6,7 @@ import { rateLimit } from "../lib/rateLimit.js";
 import { parse } from "../lib/validate.js";
 import { HttpError } from "../lib/errors.js";
 import { verifyPassword } from "../lib/crypto.js";
-import { clearSessionCookie, requireAuth, setSessionCookie } from "../middleware/auth.js";
+import { clearSessionCookie, fromApp, requireAuth, setSessionCookie } from "../middleware/auth.js";
 import {
   addAlert,
   assertNotLocked,
@@ -60,9 +60,10 @@ export function authRoutes(ctx: Ctx) {
     const session = createSession(ctx, user.id, { ip: req.ip, userAgent: ua });
     audit(ctx, user.id, "auth.register", { ua }, req.ip);
     screenForCustomer(ctx, user.id, user.display_name, "display_name");
-    setSessionCookie(ctx, res, session.token, session.expiresAt);
+    const app = fromApp(ctx, req);
+    if (!app) setSessionCookie(ctx, res, session.token, session.expiresAt);
     const emailVerification = ctx.config.emailDelivery === "none" ? null : await sendVerificationCode(ctx, user).catch(() => null);
-    res.status(201).json({ user: toAuthUser(user), emailVerification });
+    res.status(201).json({ user: toAuthUser(user), emailVerification, ...(app ? { token: session.token, expiresAt: session.expiresAt.toISOString() } : {}) });
   });
 
   r.post("/login", limiter, async (req, res) => {
@@ -75,7 +76,14 @@ export function authRoutes(ctx: Ctx) {
       if (isNewDevice(ctx, user.id, ua, session.sessionId)) {
         addAlert(ctx, user.id, "new_device", `New sign-in from ${describeDevice(ua)}${req.ip ? ` (IP ${req.ip})` : ""}. If this wasn't you, change your password and sign out other devices.`, req.ip);
       }
-      audit(ctx, user.id, "auth.login", { ua }, req.ip);
+      // The apps keep the token in the phone's secure storage; browsers get an HttpOnly cookie
+      // and never see it.
+      const app = fromApp(ctx, req);
+      audit(ctx, user.id, "auth.login", { ua, app }, req.ip);
+      if (app) {
+        res.json({ user: toAuthUser(user), token: session.token, expiresAt: session.expiresAt.toISOString() });
+        return;
+      }
       setSessionCookie(ctx, res, session.token, session.expiresAt);
       res.json({ user: toAuthUser(user) });
     } catch (err) {
