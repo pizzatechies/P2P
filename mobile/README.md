@@ -49,6 +49,7 @@ To point a build at a different server (a test server, say), set `AUREX_API_ORIG
 |---|---|---|
 | Android debug APK | nothing | `aurex-android-debug`: install it on any Android phone (allow "install unknown apps") |
 | iOS simulator app | nothing | `aurex-ios-simulator`: runs in Xcode's iPhone simulator on a Mac |
+| Unsigned iPhone app (`.ipa`) | nothing | `aurex-ios-unsigned-ipa`: install it on your own iPhone with Sideloadly (or a similar tool), which signs it with your Apple ID |
 | Android release bundle (for Google Play) | the signing secrets below | `aurex-android-release` (`.aab`) |
 
 ### Android signing (for Google Play)

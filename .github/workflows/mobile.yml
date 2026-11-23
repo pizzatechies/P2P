@@ -87,3 +87,20 @@ jobs:
           name: aurex-ios-simulator
           path: aurex-ios-simulator.zip
           retention-days: 14
+      # An unsigned build for real iPhones: a tool such as Sideloadly signs it with your own Apple ID
+      # when it installs it (with a free Apple ID the app works for 7 days, then install it again).
+      - name: Unsigned iPhone build (.ipa, to sign yourself, e.g. with Sideloadly)
+        working-directory: mobile/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          rm -rf Payload && mkdir Payload
+          cp -R build-device/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry "$GITHUB_WORKSPACE/Aurex-unsigned.ipa" Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurex-ios-unsigned-ipa
+          path: Aurex-unsigned.ipa
+          retention-days: 14
