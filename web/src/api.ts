@@ -1,3 +1,5 @@
+import { apiUrl, authHeaders, credentials, isNative, setAuthToken, shareFile } from "./native";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -20,19 +22,28 @@ export function setReauthHandler(handler: ReauthHandler | null) {
   reauthHandler = handler;
 }
 
+/** In the apps, the session token comes back from signing in and goes when signing out or closing the account. */
+async function trackSession(url: string, ok: boolean, data: { token?: string }) {
+  if (!isNative) return;
+  if (ok && (url === "/api/auth/login" || url === "/api/auth/register") && data.token) await setAuthToken(data.token);
+  else if (url === "/api/auth/logout" || (ok && url === "/api/account/close")) await setAuthToken(null);
+}
+
 async function request<T>(method: string, url: string, body?: unknown, retried = false): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method,
-    credentials: "same-origin",
+    credentials,
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(method !== "GET" ? { "X-Aurex-CSRF": "1" } : {}),
+      ...authHeaders(),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
   const data = text ? JSON.parse(text) : {};
+  await trackSession(url, res.ok, data);
   if (!res.ok) {
     const err = data?.error ?? {};
     if (res.status === 401 && err.code === "reauth_required" && reauthHandler && !retried) {
@@ -48,10 +59,10 @@ async function request<T>(method: string, url: string, body?: unknown, retried =
 
 /** Uploads a file as the raw request body (identity documents). */
 export async function upload<T>(url: string, file: Blob): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method: "POST",
-    credentials: "same-origin",
-    headers: { Accept: "application/json", "Content-Type": file.type || "application/octet-stream", "X-Aurex-CSRF": "1" },
+    credentials,
+    headers: { Accept: "application/json", "Content-Type": file.type || "application/octet-stream", "X-Aurex-CSRF": "1", ...authHeaders() },
     body: file,
   });
   const text = await res.text();
@@ -68,7 +79,7 @@ export async function upload<T>(url: string, file: Blob): Promise<T> {
  * recent sign-in, then saves the response under the server's filename.
  */
 export async function downloadFile(url: string, fallbackName: string, retried = false): Promise<void> {
-  const res = await fetch(url, { credentials: "same-origin", headers: { Accept: "text/csv, application/json" } });
+  const res = await fetch(apiUrl(url), { credentials, headers: { Accept: "text/csv, application/json", ...authHeaders() } });
   if (!res.ok) {
     const text = await res.text();
     let err: { code?: string; message?: string } = {};
@@ -86,6 +97,8 @@ export async function downloadFile(url: string, fallbackName: string, retried = 
     throw new ApiError(res.status, err.code ?? "error", err.message ?? `Download failed (${res.status})`);
   }
   const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
+  // Phones don't have a downloads folder for web pages: the share sheet saves or opens the file.
+  if (isNative) return shareFile(await res.blob(), name);
   const blobUrl = URL.createObjectURL(await res.blob());
   const link = document.createElement("a");
   link.href = blobUrl;
@@ -111,10 +124,10 @@ export async function streamSse(
   onEvent: (event: string, data: any) => void,
   signal?: AbortSignal,
 ) {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method: "POST",
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Aurex-CSRF": "1" },
+    credentials,
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Aurex-CSRF": "1", ...authHeaders() },
     body: JSON.stringify(body),
     signal,
   });

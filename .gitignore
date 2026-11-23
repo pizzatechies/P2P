@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-site/
 dist-site-prerender/
+dist-app/
 data/
 *.db
 *.db-journal

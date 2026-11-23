@@ -28,6 +28,8 @@ import { SecurityPage } from "./site/Security";
 import { FeesPage, LegalPage } from "./site/Legal";
 import { SiteLayout } from "./site/SiteLayout";
 import { setupPwa } from "./pwa";
+import { initNative, isNative } from "./native";
+import { AppLock } from "./components/AppLock";
 import { applyTheme, AuthProvider, ToastProvider, useAuth } from "./state";
 import { ReauthProvider } from "./components/reauth";
 import { LearnPage } from "./pages/Learn";
@@ -79,15 +81,18 @@ function PublicOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-createRoot(document.getElementById("root")!).render(
+// The apps restore their saved session before anything renders.
+void initNative().finally(() => createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <AppLock>
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
           <ReauthProvider>
           <Routes>
             <Route element={<SiteLayout />}>
-              <Route path="/" element={<HomePage />} />
+              {/* The apps open on the app itself, not the website's home page. */}
+              <Route path="/" element={isNative ? <Navigate to="/app" replace /> : <HomePage />} />
               <Route path="/features" element={<FeaturesPage />} />
               <Route path="/pricing" element={<PricingPage />} />
               <Route path="/security" element={<SecurityPage />} />
@@ -132,5 +137,6 @@ createRoot(document.getElementById("root")!).render(
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
+    </AppLock>
   </StrictMode>,
-);
+));

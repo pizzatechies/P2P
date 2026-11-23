@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isNative } from "./native";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -11,7 +12,8 @@ const notify = () => listeners.forEach((l) => l());
 
 /** Registers the service worker (production builds only) and captures the browser's install prompt. */
 export function setupPwa() {
-  if (typeof window === "undefined") return;
+  // The iOS and Android apps are already installed; no service worker or install prompt there.
+  if (typeof window === "undefined" || isNative) return;
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     deferred = e as BeforeInstallPromptEvent;
@@ -40,7 +42,7 @@ export function useInstall() {
     listeners.add(l);
     return () => void listeners.delete(l);
   }, []);
-  if (isStandalone()) return { kind: null, install: async () => undefined };
+  if (isNative || isStandalone()) return { kind: null, install: async () => undefined };
   if (deferred) {
     return {
       kind: "prompt" as const,

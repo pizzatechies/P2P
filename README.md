@@ -370,6 +370,15 @@ Requests that run on the server's own provider keys count against `AI_FREE_DAILY
 - `web/public/sw.js` + `manifest.webmanifest` make Aurex installable (Android/desktop install prompt, iOS "Add to Home Screen"). The service worker caches only the app shell and static assets, never API responses.
 - `/pay/@handle?amount=12&currency=USD&note=Dinner` is a public page anyone can open. Signed-in visitors pay in one tap. Others sign up or sign in and are returned straight to the payment. **Payments → Your pay link** builds these links with Copy, Share and WhatsApp buttons.
 
+### iOS and Android apps
+
+The Android and iOS apps are this web app in native shells, built with Capacitor. The native projects are in `mobile/`, and `npm run cap:sync -w web` builds the pages into them.
+- **Signing in:** the apps use a session token kept in the phone's secure storage, sent as a bearer header. The server hands it only to the apps' own origins (`APP_ORIGINS`).
+- **Phone features:** unlocking with Face ID, Touch ID or fingerprint; screens hidden from screenshots and the app switcher; the camera for identity checks; the share sheet for statements.
+- **Builds:** GitHub Actions (`mobile.yml`) builds an Android APK and an iOS simulator app on every push. It also builds a signed Play Store bundle once the signing secrets are set.
+
+See [mobile/README.md](mobile/README.md) for building, signing and store submission.
+
 ### Security
 
 No system can honestly promise to be unhackable. Aurex is built so that a single failure doesn't lose anyone's money: a stolen password, a stolen session, a leaked database file or a forged webhook each run into another layer.

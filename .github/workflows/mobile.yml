@@ -1,0 +1,89 @@
+name: Mobile apps
+
+# Builds the Android and iOS apps from the web app (Capacitor). Debug builds need nothing set up.
+# Signed builds for the stores start once the secrets in mobile/README.md are added.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, claude/gifted-ritchie-8xzdk9]
+    paths: ["web/**", "mobile/**", ".github/workflows/mobile.yml", "package-lock.json"]
+  workflow_dispatch:
+
+env:
+  # The Aurex server the apps talk to (set the repository variable AUREX_API_ORIGIN to change it).
+  AUREX_API_ORIGIN: ${{ vars.AUREX_API_ORIGIN || 'https://aurex.dpdns.org' }}
+  AUREX_VERSION_CODE: ${{ github.run_number }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build the app pages and copy them into the native projects
+        run: npm run cap:sync -w web
+      - name: Android SDK platform
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Debug build (installable on any phone, for testing)
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurex-android-debug
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+      - name: Signed release build (for Google Play), once the signing secrets are set
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aurex-release.jks"
+          ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/aurex-release.jks" ./gradlew --no-daemon bundleRelease
+          rm -f "$RUNNER_TEMP/aurex-release.jks"
+      - uses: actions/upload-artifact@v4
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        with:
+          name: aurex-android-release
+          path: mobile/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 30
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the app pages and copy them into the native projects
+        run: npm run cap:sync -w web
+      - name: Simulator build (no Apple account needed)
+        working-directory: mobile/ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+          cd build/Build/Products/Debug-iphonesimulator && zip -qr "$GITHUB_WORKSPACE/aurex-ios-simulator.zip" App.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurex-ios-simulator
+          path: aurex-ios-simulator.zip
+          retention-days: 14

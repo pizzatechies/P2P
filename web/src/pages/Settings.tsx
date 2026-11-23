@@ -7,6 +7,7 @@ import { CurrencySelect, ErrorText, Field } from "../components/ui";
 import { timeAgo } from "../format";
 import { useAuth, useLoad, useToast } from "../state";
 import type { Provider, TradingSettings, User } from "../types";
+import { biometricLockEnabled, biometryAvailable, isNative, setBiometricLock } from "../native";
 
 export function SettingsPage() {
   const { hash } = useLocation();
@@ -35,11 +36,42 @@ export function SettingsPage() {
           <PasswordCard />
         </div>
         <TwoFactorCard onChange={security.reload} />
+        {isNative && <AppUnlockCard />}
         <AIKeysCard />
         <TradingCard />
         <SecurityLog />
       </div>
     </>
+  );
+}
+
+/** In the apps: ask for Face ID / Touch ID / fingerprint (or the passcode) when opening Aurex. */
+function AppUnlockCard() {
+  const toast = useToast();
+  const [on, setOn] = useState(biometricLockEnabled());
+  const [bio, setBio] = useState<{ available: boolean; label: string } | null>(null);
+  useEffect(() => {
+    void biometryAvailable().then(setBio).catch(() => setBio({ available: false, label: "" }));
+  }, []);
+  async function toggle() {
+    const next = !on;
+    if (await setBiometricLock(next)) {
+      setOn(next);
+      toast(next ? `Aurex will ask for ${bio?.label ?? "biometrics"} when you open it` : "Unlocking with biometrics is off");
+    }
+  }
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Unlock with {bio?.label || "biometrics"}</h2>{on && <span className="pill good">On</span>}</div>
+      <p className="muted small" style={{ marginTop: 0 }}>
+        Ask for {bio?.label || "your face or fingerprint"} (or your phone's passcode) when you open Aurex and when you come back to it after a minute away. Your session stays in this phone's secure storage either way.
+      </p>
+      {bio && !bio.available ? (
+        <p className="small faint" style={{ margin: 0 }}>Set up a face, fingerprint or passcode in your phone's settings first.</p>
+      ) : (
+        <button className={`btn ${on ? "ghost" : ""} sm`} onClick={toggle}>{on ? "Turn off" : "Turn on"}</button>
+      )}
+    </div>
   );
 }
 

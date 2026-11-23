@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Aurex</string>
+    <string name="title_activity_main">Aurex</string>
+    <string name="package_name">com.pizzatechies.aurex</string>
+    <string name="custom_url_scheme">com.pizzatechies.aurex</string>
+</resources>
