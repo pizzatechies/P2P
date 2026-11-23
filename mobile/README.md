@@ -17,7 +17,8 @@ The apps are the Aurex web app inside native iOS and Android shells, built with 
   - **Screen privacy:** screenshots and screen recording are blocked on Android, and the screen is covered in the iOS app switcher.
   - **Camera:** for ID photos, selfies and Smile ID's live selfie.
   - **Files:** statements, exports and documents open in the share sheet (save to Files, open in a PDF viewer). Images open in a viewer.
-  - **Links:** links to other sites open in the phone's browser. `aurex://pay/@handle` links open the pay screen.
+  - **Links:** links to other sites open in the phone's browser. `aurex://pay/@handle` links open the pay screen, and `aurex://app/...` links (from notifications) open that screen.
+  - **Notifications:** through the free ntfy app, with no Firebase and no Apple push key (Settings → Notifications; see "Push notifications" in the main README). On Android, "Subscribe in ntfy" opens the ntfy app with the channel filled in. On iPhone, the customer copies the channel name and server into ntfy. Tapping a notification opens Aurex on the right screen.
   - **Backups:** the app keeps nothing worth restoring, and its session is tied to the phone, so Android backups are switched off.
 
 ## Build it yourself
@@ -83,4 +84,3 @@ Automating this in CI needs an App Store Connect API key and signing certificate
 - **Google Play's financial services policy** may ask for licence documents in some countries.
 - **Store listings need:** a privacy policy URL (`/privacy`), the data-safety form or privacy "nutrition label" answers, screenshots, and a support contact.
 - **Bot protection:** if Cloudflare Turnstile is switched on for sign-up, add `localhost` to the widget's hostnames. That's the app's own address.
-- **Not built yet:** push notifications need a Firebase project (Android) and an Apple push key (iOS). The server would also need to send them.

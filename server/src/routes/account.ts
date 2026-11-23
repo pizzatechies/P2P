@@ -5,7 +5,8 @@ import type { Ctx } from "../context.js";
 import { badRequest } from "../lib/errors.js";
 import { rateLimit } from "../lib/rateLimit.js";
 import { parse } from "../lib/validate.js";
-import { clearSessionCookie, requireAuth, requireRecentAuth } from "../middleware/auth.js";
+import { clearSessionCookie, fromApp, requireAuth, requireRecentAuth } from "../middleware/auth.js";
+import { disablePush, enablePush, pushStatus, rotatePushTopic, sendTestPush, setPushPrefs } from "../services/push.js";
 import { accountOverview, buildRangeStatement, buildStatement, closeAccount, closureBlockers, exportData, statementCsv, statementPeriods } from "../services/account.js";
 import { documentHeaders, readDocument, saveDetails, submitLevel, uploadDocument, verificationOverview, type DocKind, livenessRequired, saveLiveCapture } from "../services/kyc.js";
 import { audit } from "../services/users.js";
@@ -18,6 +19,43 @@ export function accountRoutes(ctx: Ctx) {
   r.use(requireAuth);
   const uploadLimiter = rateLimit({ name: "kyc-upload", windowMs: 60 * 60_000, max: ctx.config.isTest ? 1000 : 30, key: (req) => req.user!.id });
   const exportLimiter = rateLimit({ name: "data-export", windowMs: 60 * 60_000, max: ctx.config.isTest ? 1000 : 5, key: (req) => req.user!.id });
+
+  const pushLimiter = rateLimit({ name: "push-test", windowMs: 10 * 60_000, max: ctx.config.isTest ? 1000 : 5, key: (req) => req.user!.id });
+
+  // ---- Push notifications (ntfy) ----
+  r.get("/push", (req, res) => {
+    res.json(pushStatus(ctx, req.user!.id));
+  });
+
+  /** Turn notifications on. Taps open the Aurex app when this comes from the app, otherwise the website. */
+  r.post("/push/enable", (req, res) => {
+    const status = enablePush(ctx, req.user!.id, fromApp(ctx, req) ? "app" : "web");
+    audit(ctx, req.user!.id, "push.enabled", {}, req.ip);
+    res.json(status);
+  });
+
+  r.post("/push/disable", (req, res) => {
+    const status = disablePush(ctx, req.user!.id);
+    audit(ctx, req.user!.id, "push.disabled", {}, req.ip);
+    res.json(status);
+  });
+
+  /** A new private channel: phones subscribed to the old one stop getting notifications. */
+  r.post("/push/reset", pushLimiter, async (req, res) => {
+    await rotatePushTopic(ctx, req.user!.id);
+    audit(ctx, req.user!.id, "push.reset", {}, req.ip);
+    res.json(pushStatus(ctx, req.user!.id));
+  });
+
+  r.put("/push/prefs", (req, res) => {
+    const prefs = parse(z.object({ payments: z.boolean().optional(), account: z.boolean().optional() }).strict(), req.body);
+    res.json(setPushPrefs(ctx, req.user!.id, prefs));
+  });
+
+  r.post("/push/test", pushLimiter, async (req, res) => {
+    const sent = await sendTestPush(ctx, req.user!.id);
+    res.json({ sent });
+  });
 
   /** Account number, holder, limits (and how much is left today), balances and verification. */
   r.get("/", async (req, res) => {

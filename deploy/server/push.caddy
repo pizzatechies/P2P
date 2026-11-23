@@ -1,0 +1,18 @@
+# Push notifications (ntfy) at PUSH_DOMAIN. install.sh copies this file into sites/ when push is on.
+#
+# Phones only read from here: they subscribe to their own private channel. Aurex publishes over the
+# server's private network (http://ntfy:8080), so publishing and everything else is refused.
+{$PUSH_DOMAIN} {
+	encode zstd gzip
+
+	@subscribe {
+		method GET HEAD OPTIONS
+		path_regexp ^/([A-Za-z0-9_-]{1,64}(,[A-Za-z0-9_-]{1,64})*/(json|sse|raw|ws|auth)|v1/health)$
+	}
+	handle @subscribe {
+		reverse_proxy ntfy:8080
+	}
+	handle {
+		respond "Not available" 403
+	}
+}

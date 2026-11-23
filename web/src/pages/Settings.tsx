@@ -8,6 +8,7 @@ import { timeAgo } from "../format";
 import { useAuth, useLoad, useToast } from "../state";
 import type { Provider, TradingSettings, User } from "../types";
 import { biometricLockEnabled, biometryAvailable, isNative, setBiometricLock } from "../native";
+import { PushCard } from "../components/PushCard";
 
 export function SettingsPage() {
   const { hash } = useLocation();
@@ -37,6 +38,7 @@ export function SettingsPage() {
         </div>
         <TwoFactorCard onChange={security.reload} />
         {isNative && <AppUnlockCard />}
+        <PushCard />
         <AIKeysCard />
         <TradingCard />
         <SecurityLog />

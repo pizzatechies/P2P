@@ -52,6 +52,10 @@ We share only what each needs to do its job:
   - Your messages, and the market data needed for a signal, are sent to the provider you or we choose: [Anthropic, OpenAI, Google, Mistral, Groq, xAI, DeepSeek, OpenRouter, Together, Perplexity].
   - Don't share personal or sensitive details in AI chats.
 - **Email delivery:** [Resend].
+- **Phone notifications, if you turn them on:**
+  - They're sent from our own notification server to the ntfy app on your phone.
+  - On iPhone, the ntfy.sh service (and Apple's push service) is told only that a new message is waiting, with a message ID and a scrambled form of your private channel name. The notification text comes from our server.
+  - Notifications can show amounts and names on your lock screen. You can turn them off, or choose which kinds you get, under Settings → Notifications.
 - **Hosting:** [Amazon Web Services, region eu-north-1 (Stockholm, Sweden)].
 - **Authorities:** regulators, the Financial Intelligence Unit, tax authorities, courts and law enforcement, when the law requires it.
 - **Professional advisers and auditors**, under confidentiality.

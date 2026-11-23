@@ -5,6 +5,7 @@ import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 /** Every column holding an AES-256-GCM secret, with the columns that identify its row. */
 const ENCRYPTED: { table: string; column: string; keys: string[] }[] = [
   { table: "users", column: "totp_secret_enc", keys: ["id"] },
+  { table: "users", column: "push_topic_enc", keys: ["id"] },
   { table: "user_api_keys", column: "key_enc", keys: ["user_id", "provider"] },
   { table: "linked_connections", column: "secret_enc", keys: ["id"] },
   { table: "provider_customers", column: "secret_enc", keys: ["user_id", "provider"] },

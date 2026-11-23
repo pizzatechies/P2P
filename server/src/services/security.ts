@@ -4,6 +4,7 @@ import { all, nowIso, one, run, tx } from "../db/index.js";
 import { decryptSecret, generateRecoveryCodes, looksLikeRecoveryCode, matchTotp, recoveryCodeHash, safeEqual } from "../lib/crypto.js";
 import { HttpError } from "../lib/errors.js";
 import { emailAlert } from "./email.js";
+import { alertPush, notify } from "./push.js";
 import type { UserRow } from "./users.js";
 
 /** Alerts important enough to also email (to verified addresses). */
@@ -12,9 +13,10 @@ const EMAILED = new Set(["new_payee", "new_device", "account_locked", "password_
 // ---------------------------------------------------------------------------
 // Security alerts: shown in the app (dashboard banner, Settings → Security).
 // ---------------------------------------------------------------------------
-export function addAlert(ctx: Ctx, userId: string, kind: string, message: string, ip?: string | null) {
+export function addAlert(ctx: Ctx, userId: string, kind: string, message: string, ip?: string | null, opts: { push?: boolean } = {}) {
   run(ctx.db, "INSERT INTO security_alerts (user_id, kind, message, ip, created_at) VALUES (?, ?, ?, ?, ?)", userId, kind, message, ip ?? null, nowIso());
   if (EMAILED.has(kind)) void emailAlert(ctx, userId, message).catch(() => undefined);
+  if (opts.push !== false) void notify(ctx, userId, alertPush(kind, message));
 }
 
 export function listAlerts(ctx: Ctx, userId: string, limit = 20) {

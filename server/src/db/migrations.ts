@@ -985,4 +985,12 @@ export const migrations: Migration[] = [
   `
   ALTER TABLE users ADD COLUMN kyc_refresh_noticed_at TEXT;
   `,
+  // 32: Push notifications (ntfy): each customer's private channel (encrypted) and what they want to hear about.
+  `
+  ALTER TABLE users ADD COLUMN push_topic_enc TEXT;
+  ALTER TABLE users ADD COLUMN push_enabled_at TEXT;
+  ALTER TABLE users ADD COLUMN push_payments INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE users ADD COLUMN push_account INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE users ADD COLUMN push_opens_app INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

@@ -267,6 +267,17 @@ Resources:
       TTL: "300"
       ResourceRecords: [!Ref ElasticIp]
 
+  # Where phones subscribe to push notifications (the server's ntfy).
+  PushDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: MakeRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "push.${DomainName}"
+      Type: A
+      TTL: "300"
+      ResourceRecords: [!Ref ElasticIp]
+
   # Restarts the server on new hardware if AWS detects a host problem.
   RecoveryAlarm:
     Type: AWS::CloudWatch::Alarm

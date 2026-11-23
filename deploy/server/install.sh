@@ -9,6 +9,11 @@
 #   PAYMENT_RAILS  Default "sandbox" (test money). See .env.example for real providers.
 #   NODE_IMAGE     Base image for the build (default node:22-slim).
 #
+#   PUSH_NOTIFICATIONS  auto (default), on or off. Push notifications through a bundled ntfy server at
+#                  PUSH_DOMAIN (default push.<DOMAIN>). "auto" switches them on once PUSH_DOMAIN's DNS
+#                  points at this server (sslip.io addresses always do). Customers subscribe in the ntfy app.
+#   PUSH_DOMAIN    Where phones subscribe, e.g. push.aurex.example.com.
+#
 #   BACKUP_BUCKET  S3 bucket for continuous database backups. On EC2 the server's IAM role grants access;
 #                  elsewhere, put AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env.litestream.
 #   AWS_REGION     Region of the bucket and of Parameter Store (detected on EC2).
@@ -73,6 +78,26 @@ if [ -z "$DOMAIN" ]; then
   IP="$(echo "$IP" | tr -d '[:space:]')"
   [ -n "$IP" ] || { echo "Couldn't detect this server's public IP; set DOMAIN" >&2; exit 1; }
   DOMAIN="${IP//./-}.sslip.io"
+fi
+
+# Push notifications: the bundled ntfy server at PUSH_DOMAIN (or your own, if PUSH_NTFY_URL names one).
+PUSH_NOTIFICATIONS="$(setting PUSH_NOTIFICATIONS auto)"
+PUSH_DOMAIN="$(setting PUSH_DOMAIN "push.$DOMAIN")"
+PUSH_NTFY_URL="$(setting PUSH_NTFY_URL)"
+PUSH_NTFY_PUBLIC_URL="$(setting PUSH_NTFY_PUBLIC_URL)"
+BUNDLED_NTFY="http://ntfy:8080"
+PUSH_BUNDLED=""
+PUSH_NOTE=""
+resolve() { getent ahostsv4 "$1" 2>/dev/null | awk 'NR==1 {print $1}'; }
+if [ "$PUSH_NOTIFICATIONS" = "off" ]; then
+  PUSH_NTFY_URL="" PUSH_NTFY_PUBLIC_URL=""
+elif [ -z "$PUSH_NTFY_URL" ] || [ "$PUSH_NTFY_URL" = "$BUNDLED_NTFY" ]; then
+  PUSH_NTFY_URL="" PUSH_NTFY_PUBLIC_URL=""
+  if [ "$PUSH_NOTIFICATIONS" = "on" ] || { [ -n "$(resolve "$PUSH_DOMAIN")" ] && [ "$(resolve "$PUSH_DOMAIN")" = "$(resolve "$DOMAIN")" ]; }; then
+    PUSH_BUNDLED=1 PUSH_NTFY_URL="$BUNDLED_NTFY" PUSH_NTFY_PUBLIC_URL="https://$PUSH_DOMAIN"
+  else
+    PUSH_NOTE="add a DNS A record for $PUSH_DOMAIN pointing at this server (like $DOMAIN), then run this script again"
+  fi
 fi
 
 # ---- Secrets: kept in Parameter Store (if PARAM_PREFIX is set) so they survive a rebuilt server ------
@@ -157,7 +182,7 @@ done
 
 log "Writing $ENV_FILE"
 # Keep any extra settings you added by hand (provider keys etc.); rewrite only the managed ones.
-MANAGED='^(DOMAIN|ACME_EMAIL|APP_URL|ADMIN_EMAILS|ADMIN_SETUP_CODE|MASTER_KEY|PAYMENT_RAILS|BACKUP_BUCKET|AWS_REGION|PARAM_PREFIX|COMPOSE_PROFILES|NODE_IMAGE)='
+MANAGED='^(DOMAIN|ACME_EMAIL|APP_URL|ADMIN_EMAILS|ADMIN_SETUP_CODE|MASTER_KEY|PAYMENT_RAILS|BACKUP_BUCKET|AWS_REGION|PARAM_PREFIX|COMPOSE_PROFILES|NODE_IMAGE|PUSH_NOTIFICATIONS|PUSH_DOMAIN|PUSH_NTFY_URL|PUSH_NTFY_PUBLIC_URL)='
 DROP_RE="^($(IFS='|'; echo "${DROP[*]}"))="
 EXTRA="$( [ -f "$ENV_FILE" ] && grep -Ev "$MANAGED" "$ENV_FILE" | grep -Ev '^# (Managed|Add|From Parameter Store)' \
   | { if [ "${#DROP[@]}" -gt 0 ]; then grep -Ev "$DROP_RE"; else cat; fi; } || true)"
@@ -174,8 +199,12 @@ umask 077
   echo "BACKUP_BUCKET=$BACKUP_BUCKET"
   echo "AWS_REGION=$AWS_REGION"
   echo "PARAM_PREFIX=$PARAM_PREFIX"
-  echo "COMPOSE_PROFILES=$([ -n "$BACKUP_BUCKET" ] && echo backup)"
+  echo "COMPOSE_PROFILES=$(printf '%s\n' "${BACKUP_BUCKET:+backup}" "${PUSH_BUNDLED:+push}" | grep . | paste -sd, || true)"
   echo "NODE_IMAGE=${NODE_IMAGE:-node:22-slim}"
+  echo "PUSH_NOTIFICATIONS=$PUSH_NOTIFICATIONS"
+  echo "PUSH_DOMAIN=$PUSH_DOMAIN"
+  echo "PUSH_NTFY_URL=$PUSH_NTFY_URL"
+  echo "PUSH_NTFY_PUBLIC_URL=$PUSH_NTFY_PUBLIC_URL"
   echo "# Add provider keys below (see .env.example in the repository root), then re-run install.sh."
   [ -n "$EXTRA" ] && echo "$EXTRA"
   if [ "${#STORED[@]}" -gt 0 ] || [ "${#KEEP_LISTED[@]}" -gt 0 ]; then
@@ -228,10 +257,18 @@ METRIC
   MONITORING="${MONITORING:+$MONITORING, }disk"
 fi
 
+# Caddy serves the push site only while push is on.
+mkdir -p "$HERE/sites"
+if [ -n "$PUSH_BUNDLED" ]; then cp "$HERE/push.caddy" "$HERE/sites/push.caddy"; else rm -f "$HERE/sites/push.caddy"; fi
+
 log "Building and starting Aurex (the first build takes a few minutes)"
 PROFILES=()
-[ -n "$BACKUP_BUCKET" ] && PROFILES=(--profile backup)
+[ -n "$BACKUP_BUCKET" ] && PROFILES+=(--profile backup)
+[ -n "$PUSH_BUNDLED" ] && PROFILES+=(--profile push)
 "${COMPOSE[@]}" "${PROFILES[@]}" up -d --build --remove-orphans
+# Pick up a changed Caddyfile or push site without dropping connections.
+"${COMPOSE[@]}" exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 \
+  || "${COMPOSE[@]}" restart caddy >/dev/null
 
 log "Waiting for the app to become healthy"
 status=""
@@ -250,6 +287,7 @@ Aurex is running.
   Admin setup code: stored in $ENV_FILE$( [ -n "$PARAM_PREFIX" ] && echo " and in Parameter Store at $PARAM_PREFIX/ADMIN_SETUP_CODE")
   Backups:          $( [ -n "$BACKUP_BUCKET" ] && echo "streaming to s3://$BACKUP_BUCKET/aurex" || echo "OFF (set BACKUP_BUCKET to turn on)")
   Monitoring:       $( [ -n "$MONITORING" ] && echo "reporting $MONITORING to CloudWatch" || echo "not set up (needs the AWS stack)")
+  Push:             $( if [ -n "$PUSH_BUNDLED" ]; then echo "on, at https://$PUSH_DOMAIN"; elif [ -n "$PUSH_NTFY_URL" ]; then echo "on, through $PUSH_NTFY_URL"; elif [ -n "$PUSH_NOTE" ]; then echo "off: $PUSH_NOTE"; else echo "off"; fi)
 
 Next: sign up with $ADMIN_EMAIL, verify your email, turn on 2FA, then enter the setup code
 under Settings -> Admin access.

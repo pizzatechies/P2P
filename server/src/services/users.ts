@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { rotatePushTopic } from "./push.js";
 import { admitSignup, recordRedemption } from "./beta.js";
 import { appendAudit } from "./integrity.js";
 import type { Ctx } from "../context.js";
@@ -377,6 +378,7 @@ export async function changePassword(
   run(ctx.db, "UPDATE users SET password_hash = ?, password_changed_at = ? WHERE id = ?", await hashPassword(input.next), nowIso(), userId);
   destroyOtherSessions(ctx, userId, sessionId);
   addAlert(ctx, userId, "password_changed", "Your password was changed and every other device was signed out.", ip);
+  void rotatePushTopic(ctx, userId);
   startSecurityHold(ctx, userId, "Your password was changed.", ip);
 }
 

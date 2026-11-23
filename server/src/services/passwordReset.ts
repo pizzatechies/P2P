@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { rotatePushTopic } from "./push.js";
 import { nowIso, one, run, tx } from "../db/index.js";
 import { hashPassword, randomToken, sha256, verifyPassword } from "../lib/crypto.js";
 import { badRequest, HttpError } from "../lib/errors.js";
@@ -111,6 +112,7 @@ export async function resetPassword(ctx: Ctx, token: string, password: string, c
   recordSuccessfulAttempt(ctx, user.id);
   appendAudit(ctx, user.id, "auth.password_reset", {}, ip);
   addAlert(ctx, user.id, "password_changed", "Your password was reset with a link sent to your email, and every device was signed out.", ip);
+  void rotatePushTopic(ctx, user.id);
   startSecurityHold(ctx, user.id, "Your password was reset.", ip);
   return { ok: true };
 }

@@ -379,6 +379,23 @@ The Android and iOS apps are this web app in native shells, built with Capacitor
 
 See [mobile/README.md](mobile/README.md) for building, signing and store submission.
 
+### Push notifications (ntfy, no Firebase)
+
+Phone notifications go through [ntfy](https://ntfy.sh), an open-source push server that runs next to Aurex. There's no Firebase project and no Google or Apple keys to manage.
+- **For customers:** **Settings → Notifications → Turn on**. They then install the free ntfy app (Google Play, F-Droid or the App Store) and subscribe to their own private channel: one tap on Android, or the channel name and server copied in on iPhone. Works with the website and the Aurex app alike.
+- **What's sent:**
+  - Money received, payment requests, a request paid, money added, a withdrawal sent or returned. These can be switched off under "Money in and out".
+  - Security alerts and account messages (new device, password changed, support replies, verification). These can be switched off under "Security alerts and account messages".
+  - Tapping a notification opens the right screen: in the Aurex app when notifications were turned on there, otherwise on the website.
+- **Privacy:**
+  - Each channel name is 256 random bits, works like a password and is stored encrypted (`MASTER_KEY`).
+  - It changes when the customer signs out everywhere, changes or resets their password, or asks for a new one. The old channel gets one last message saying so.
+  - Closing the account switches notifications off.
+  - The public push address only lets phones read. Aurex publishes over the server's private network.
+  - iPhones are woken through ntfy.sh, which sees only a message ID and a hashed channel name. The text itself comes from your server.
+- **Setup:** `deploy/server/install.sh` runs ntfy at `push.<DOMAIN>` once that name's DNS points at the server (sslip.io addresses work straight away). Or point `PUSH_NTFY_URL` and `PUSH_NTFY_PUBLIC_URL` at any ntfy server.
+- **Reliability:** a notification that can't be sent never holds up a payment; the in-app alert and email still go out.
+
 ### Security
 
 No system can honestly promise to be unhackable. Aurex is built so that a single failure doesn't lose anyone's money: a stolen password, a stolen session, a leaked database file or a forged webhook each run into another layer.
@@ -581,6 +598,7 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` |
 | Wallet | `GET /payments/balances`, `GET /payments/activity`, `GET /payments/transfers`, `POST /payments/deposits`, `POST /payments/withdrawals` |
 | P2P | `POST /payments/send`, `GET/POST /payments/requests`, `POST /payments/requests/:id/{pay,decline,cancel}`, `GET /payments/users/search` |
+| Notifications | `GET /account/push`, `POST /account/push/{enable,disable,reset,test}`, `PUT /account/push/prefs` |
 | FX | `GET /payments/fx/quote`, `POST /payments/convert` |
 | AI | `GET /ai/providers`, `GET /ai/providers/:id/models`, `POST /ai/chat` (SSE), `POST /ai/compare` (SSE), `GET/DELETE /ai/conversations/:id` |
 | Trading | `GET /trading/account`, `GET /trading/quote/:symbol`, `GET /trading/bars/:symbol`, `GET/POST/DELETE /trading/watchlist`, `GET/POST /trading/orders`, `POST /trading/orders/:id/cancel`, `POST /trading/analyze`, `GET /trading/signals`, `POST /trading/signals/:id/execute`, `GET /trading/records/{trades,realized,performance,cash}` (`?format=csv` on trades and realized) |

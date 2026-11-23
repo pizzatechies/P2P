@@ -51,6 +51,15 @@ const EnvSchema = z.object({
   /** Resend API key. Without it, codes are only logged in development, and nothing is sent in production. */
   RESEND_API_KEY: optionalString,
   RESEND_BASE_URL: z.string().url().default("https://api.resend.com"),
+  /**
+   * Push notifications through a self-hosted ntfy server (no Firebase or Apple keys): the address
+   * Aurex publishes to, normally on the server's own network, e.g. http://ntfy:80. Empty = off.
+   */
+  PUSH_NTFY_URL: optionalString.refine((v) => !v || /^https?:\/\/[^/]/.test(v), "must be an http(s) address"),
+  /** Where phones subscribe, e.g. https://push.example.com (defaults to PUSH_NTFY_URL). */
+  PUSH_NTFY_PUBLIC_URL: optionalString.refine((v) => !v || /^https?:\/\/[^/]/.test(v), "must be an http(s) address"),
+  /** Access token, if your ntfy server requires one to publish. */
+  PUSH_NTFY_TOKEN: optionalString,
   /** Sender, e.g. "Aurex <no-reply@yourdomain.com>" (a domain verified with Resend). */
   EMAIL_FROM: optionalString,
   /** Require a verified email for withdrawals, being paid by email, admin access and real accounts. Defaults on when email can be delivered. */

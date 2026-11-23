@@ -116,7 +116,9 @@ export function appPathFor(url: string): string | null {
   }
   const path = u.protocol === "aurex:" ? `/${u.host}${u.pathname}`.replace(/\/+$/, "") : API_ORIGIN && u.origin === API_ORIGIN ? u.pathname : null;
   if (!path) return null;
-  return /^\/(pay\/@?[A-Za-z0-9_]{2,30}|app(\/[A-Za-z0-9/_-]*)?|verify-person(\/[A-Za-z0-9_-]+)?|reset-password)$/.test(path) ? `${path}${u.search}` : null;
+  if (!/^\/(pay\/@?[A-Za-z0-9_]{2,30}|app(\/[A-Za-z0-9/_-]*)?|verify-person(\/[A-Za-z0-9_-]+)?|reset-password)$/.test(path)) return null;
+  // Keep a section anchor (e.g. /app/settings#security, from a notification).
+  return `${path}${u.search}${/^#[A-Za-z0-9-]{1,40}$/.test(u.hash) ? u.hash : ""}`;
 }
 
 /** Fetches a file from the server with the session token, then shows it (images) or opens the share sheet. */

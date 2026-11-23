@@ -8,3 +8,6 @@
 	encode zstd gzip
 	reverse_proxy app:4000
 }
+
+# Optional sites, such as push notifications (push.caddy), copied here by install.sh when switched on.
+import sites/*.caddy

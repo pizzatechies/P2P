@@ -100,6 +100,7 @@ Accounts opened since July 2025 usually start on the **Free plan**. Aurex runs o
 7. Open the **Outputs** tab:
    - **AppUrl:** your Aurex address. Open it once the build is done.
    - **PublicIp:** the static IP. If you used your own domain without Route 53, create an **A record** for the domain pointing to this IP at your DNS provider now. HTTPS starts working a minute or so after the record is live.
+     For phone notifications, add a second A record, `push.<your domain>`, pointing to the same IP. Then run the update command (under "Update to the latest version") once. With Route 53 both records are created for you.
    - **ConnectToServer:** a terminal on the server in your browser.
    - **AdminSetupCode:** where the admin setup code is stored.
 8. **Become the admin:**

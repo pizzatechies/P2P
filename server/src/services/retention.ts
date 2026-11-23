@@ -86,7 +86,7 @@ export function purgeAccount(ctx: Ctx, userId: string, actorId: string | null, i
     const tag = randomBytes(4).toString("hex");
     run(
       ctx.db,
-      `UPDATE users SET email = ?, handle = ?, display_name = 'Deleted customer', password_hash = '!', totp_secret_enc = NULL, totp_enabled = 0, purged_at = ? WHERE id = ?`,
+      `UPDATE users SET email = ?, handle = ?, display_name = 'Deleted customer', password_hash = '!', totp_secret_enc = NULL, totp_enabled = 0, push_topic_enc = NULL, push_enabled_at = NULL, purged_at = ? WHERE id = ?`,
       `deleted-${userId}@deleted.invalid`,
       `deleted_${tag}`,
       nowIso(),

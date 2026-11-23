@@ -19,6 +19,7 @@ import type { PayoutDestination } from "./rails/types.js";
 import { limitsFor } from "./kyc.js";
 import { hasOpenSeriousAlert, monitor, notifyAdmins } from "./monitoring.js";
 import { addAlert } from "./security.js";
+import { notify } from "./push.js";
 import { findUserByIdentifier, getUserRow, publicProfile, type UserRow } from "./users.js";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,7 @@ export async function sendMoney(
   assertNotUnderSanctionsReview(ctx, recipient.id, "recipient");
   assertIdentityCurrent(ctx, sender.id);
 
+  let posted = false;
   const journal = await oneAtATime(sender.id, async () => {
     // A retry of a payment that was just recorded (while this one waited) is the same payment.
     if (input.idempotencyKey) {
@@ -189,10 +191,22 @@ export async function sendMoney(
         const existing = findJournalByIdempotencyKey(ctx, sender.id, input.idempotencyKey);
         if (existing) return existing;
       }
-      return postTransfer(ctx, sender, recipient, currency, input.amountMinor, input.memo?.trim() || null, input.idempotencyKey ?? null);
+      const j = postTransfer(ctx, sender, recipient, currency, input.amountMinor, input.memo?.trim() || null, input.idempotencyKey ?? null);
+      posted = true;
+      return j;
     });
   });
   await monitor(ctx, { kind: "transfer", userId: sender.id, recipientId: recipient.id, ref: journal.id, currency, amountMinor: input.amountMinor });
+  if (posted) {
+    const memo = input.memo?.trim();
+    void notify(ctx, recipient.id, {
+      category: "payments",
+      title: "Money received",
+      message: `@${sender.handle} sent you ${currency} ${fromMinor(input.amountMinor, currency)}${memo ? `: ${memo.slice(0, 120)}` : "."}`,
+      path: "/app/wallet",
+      tags: ["moneybag"],
+    });
+  }
   return transferView(ctx, journal);
 }
 
@@ -259,6 +273,15 @@ export function createRequest(
     now,
     now,
   );
+  const requester = getUserRow(ctx, input.requesterId);
+  const memo = input.memo?.trim();
+  void notify(ctx, payer.id, {
+    category: "payments",
+    title: "Payment request",
+    message: `@${requester.handle} asked you for ${currency} ${fromMinor(input.amountMinor, currency)}${memo ? `: ${memo.slice(0, 120)}` : "."}`,
+    path: "/app/payments",
+    tags: ["incoming_envelope"],
+  });
   return requestView(ctx, one<RequestRow>(ctx.db, "SELECT * FROM payment_requests WHERE id = ?", id)!);
 }
 
@@ -320,6 +343,13 @@ export async function payRequest(ctx: Ctx, userId: string, requestId: string) {
     });
   });
   await monitor(ctx, { kind: "transfer", userId: payer.id, recipientId: requester.id, ref: journalId, currency: req.currency, amountMinor: req.amount });
+  void notify(ctx, requester.id, {
+    category: "payments",
+    title: "Request paid",
+    message: `@${payer.handle} paid your request for ${req.currency} ${fromMinor(req.amount, req.currency)}.`,
+    path: "/app/wallet",
+    tags: ["moneybag"],
+  });
   return requestView(ctx, loadRequest(ctx, requestId));
 }
 
@@ -606,7 +636,16 @@ export function completeDeposit(ctx: Ctx, externalId: string) {
     return externalView(loadExternal(ctx, ext.id));
   });
   const c = credited as ExternalRow | null;
-  if (c) void monitor(ctx, { kind: "deposit", userId: c.user_id, ref: c.id, currency: c.currency, amountMinor: c.amount });
+  if (c) {
+    void monitor(ctx, { kind: "deposit", userId: c.user_id, ref: c.id, currency: c.currency, amountMinor: c.amount });
+    void notify(ctx, c.user_id, {
+      category: "payments",
+      title: "Money added",
+      message: `${c.currency} ${fromMinor(c.amount, c.currency)} from ${railName(ctx, c.rail)} is in your wallet.`,
+      path: "/app/wallet",
+      tags: ["moneybag"],
+    });
+  }
   return view;
 }
 
@@ -827,14 +866,19 @@ export function rejectPayout(ctx: Ctx, adminId: string, id: string, note: string
     id,
   );
   reverseWithdrawal(ctx, id, `Not approved: ${note.trim().slice(0, 200)}`);
-  addAlert(ctx, ext.user_id, "account", `Your withdrawal of ${ext.currency} ${fromMinor(ext.amount, ext.currency)} wasn't sent and the money is back in your wallet: ${note.trim().slice(0, 200)}`);
+  addAlert(ctx, ext.user_id, "account", `Your withdrawal of ${ext.currency} ${fromMinor(ext.amount, ext.currency)} wasn't sent and the money is back in your wallet: ${note.trim().slice(0, 200)}`, null, { push: false });
   return externalView(loadExternal(ctx, id));
 }
 
+/** The customer-facing name of a payment method, e.g. "M-Pesa". */
+function railName(ctx: Ctx, id: string) {
+  return getRails(ctx).get(id)?.name ?? id;
+}
+
 export function settleWithdrawal(ctx: Ctx, externalId: string) {
-  tx(ctx.db, () => {
+  const sent = tx(ctx.db, () => {
     const ext = loadExternal(ctx, externalId);
-    if (ext.direction !== "withdrawal" || ext.status !== "pending") return;
+    if (ext.direction !== "withdrawal" || ext.status !== "pending") return null;
     postJournal(ctx, {
       kind: "withdrawal_settle",
       initiatorId: ext.user_id,
@@ -845,13 +889,23 @@ export function settleWithdrawal(ctx: Ctx, externalId: string) {
       ],
     });
     run(ctx.db, "UPDATE external_transfers SET status = 'completed', updated_at = ? WHERE id = ?", nowIso(), ext.id);
+    return ext;
   });
+  if (sent) {
+    void notify(ctx, sent.user_id, {
+      category: "payments",
+      title: "Withdrawal sent",
+      message: `${sent.currency} ${fromMinor(sent.amount, sent.currency)} was sent to your ${railName(ctx, sent.rail)} account.`,
+      path: "/app/wallet",
+      tags: ["outbox_tray"],
+    });
+  }
 }
 
 export function reverseWithdrawal(ctx: Ctx, externalId: string, reason: string) {
-  tx(ctx.db, () => {
+  const returned = tx(ctx.db, () => {
     const ext = loadExternal(ctx, externalId);
-    if (ext.direction !== "withdrawal" || ext.status !== "pending") return;
+    if (ext.direction !== "withdrawal" || ext.status !== "pending") return null;
     postJournal(ctx, {
       kind: "withdrawal_reversal",
       initiatorId: ext.user_id,
@@ -870,7 +924,18 @@ export function reverseWithdrawal(ctx: Ctx, externalId: string, reason: string) 
       nowIso(),
       ext.id,
     );
+    return ext;
   });
+  if (returned) {
+    void notify(ctx, returned.user_id, {
+      category: "payments",
+      title: "Withdrawal returned",
+      message: `Your withdrawal of ${returned.currency} ${fromMinor(returned.amount, returned.currency)} wasn't sent. The money is back in your wallet.`,
+      path: "/app/wallet",
+      tags: ["leftwards_arrow_with_hook"],
+      priority: 4,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -280,7 +280,7 @@ export function closeAccount(ctx: Ctx, userId: string, confirmHandle: string, ip
     run(ctx.db, "DELETE FROM watchlist WHERE user_id = ?", userId);
     run(ctx.db, "UPDATE autopilot_settings SET enabled = 0 WHERE user_id = ?", userId);
     run(ctx.db, "DELETE FROM sessions WHERE user_id = ?", userId);
-    run(ctx.db, "UPDATE users SET status = 'frozen', closed_at = ? WHERE id = ?", now, userId);
+    run(ctx.db, "UPDATE users SET status = 'frozen', closed_at = ?, push_enabled_at = NULL, push_topic_enc = NULL WHERE id = ?", now, userId);
   });
   audit(ctx, userId, "account.closed", {}, ip);
 }

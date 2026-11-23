@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rotatePushTopic } from "../services/push.js";
 import { notifyAdmins } from "../services/monitoring.js";
 import { z } from "zod";
 import type { Ctx } from "../context.js";
@@ -103,6 +104,7 @@ export function settingsRoutes(ctx: Ctx) {
 
   r.post("/sessions/revoke-others", (req, res) => {
     destroyOtherSessions(ctx, req.user!.id, req.sessionId!);
+    void rotatePushTopic(ctx, req.user!.id);
     audit(ctx, req.user!.id, "security.sessions_revoked", {}, req.ip);
     res.json({ ok: true, sessions: listSessions(ctx, req.user!.id, req.sessionId) });
   });

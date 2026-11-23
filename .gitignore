@@ -14,3 +14,4 @@ data/
 coverage/
 .DS_Store
 *.log
+deploy/server/sites/
