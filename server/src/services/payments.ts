@@ -285,6 +285,41 @@ export function createRequest(
   return requestView(ctx, one<RequestRow>(ctx.db, "SELECT * FROM payment_requests WHERE id = ?", id)!);
 }
 
+/**
+ * Splits a bill: asks each person for an equal share, in one go. Each share is the total divided by
+ * the number of people, rounded down. With `includeMe`, the requester counts as one of the people
+ * and covers any leftover cents; without it, the first few people pay one cent more so the requests
+ * add up to the total. Everyone is checked before any request is created, so it's all or nothing.
+ */
+export function splitBill(
+  ctx: Ctx,
+  input: { requesterId: string; with: string[]; currency: string; totalMinor: number; memo?: string; includeMe: boolean },
+) {
+  const currency = assertCurrency(input.currency).code;
+  if (input.totalMinor <= 0) throw badRequest("Amount must be greater than zero");
+  const people: UserRow[] = [];
+  for (const who of input.with) {
+    const u = findUserByIdentifier(ctx, who);
+    if (!u) throw notFound(`No one found for ${who.trim().slice(0, 60)}`);
+    if (u.id === input.requesterId) throw badRequest("Leave yourself out of the list: tick \"Include me\" instead");
+    if (people.some((p) => p.id === u.id)) throw badRequest(`@${u.handle} is in the list twice`);
+    people.push(u);
+  }
+  if (people.length === 0) throw badRequest("Add at least one person to split with");
+  const shares = people.length + (input.includeMe ? 1 : 0);
+  const share = Math.floor(input.totalMinor / shares);
+  // Without the requester, the others cover the whole bill: the first few pay the odd cents.
+  const extra = input.includeMe ? 0 : input.totalMinor - share * shares;
+  if (share <= 0) throw badRequest("That amount is too small to split between this many people");
+  const pending = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM payment_requests WHERE requester_id = ? AND status = 'pending'", input.requesterId)!.n;
+  if (pending + people.length > 50) throw unprocessable("too_many_requests", "You have too many open requests. Cancel some first.");
+  const memo = input.memo?.trim() ? input.memo.trim() : "Split bill";
+  const requests = tx(ctx.db, () =>
+    people.map((p, i) => createRequest(ctx, { requesterId: input.requesterId, from: `@${p.handle}`, currency, amountMinor: share + (i < extra ? 1 : 0), memo })),
+  );
+  return { requests, people: shares, shareMinor: share, share: fromMinor(share, currency), currency };
+}
+
 export function listRequests(ctx: Ctx, userId: string) {
   const rows = all<RequestRow>(
     ctx.db,

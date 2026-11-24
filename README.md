@@ -597,7 +597,7 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me` |
 | Wallet | `GET /payments/balances`, `GET /payments/activity`, `GET /payments/transfers`, `POST /payments/deposits`, `POST /payments/withdrawals` |
-| P2P | `POST /payments/send`, `GET/POST /payments/requests`, `POST /payments/requests/:id/{pay,decline,cancel}`, `GET /payments/users/search` |
+| P2P | `POST /payments/send`, `GET/POST /payments/requests`, `POST /payments/requests/:id/{pay,decline,cancel}`, `POST /payments/requests/split` (equal shares from several people), `GET /payments/users/search` |
 | Notifications | `GET /account/push`, `POST /account/push/{enable,disable,reset,test}`, `PUT /account/push/prefs` |
 | FX | `GET /payments/fx/quote`, `POST /payments/convert` |
 | AI | `GET /ai/providers`, `GET /ai/providers/:id/models`, `POST /ai/chat` (SSE), `POST /ai/compare` (SSE), `GET/DELETE /ai/conversations/:id` |

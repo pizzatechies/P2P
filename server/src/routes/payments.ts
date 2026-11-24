@@ -16,6 +16,7 @@ import {
   closeRequest,
   convert,
   createRequest,
+  splitBill,
   deposit,
   getExternalForUser,
   listActivity,
@@ -42,6 +43,14 @@ const RequestBody = z.object({
   amount: amountField,
   currency: currencyField,
   memo: z.string().max(140).optional(),
+});
+
+const SplitBody = z.object({
+  with: z.array(z.string().trim().min(2).max(200)).min(1).max(20),
+  total: amountField,
+  currency: currencyField,
+  memo: z.string().max(140).optional(),
+  includeMe: z.boolean().default(true),
 });
 
 const ConvertBody = z.object({
@@ -188,6 +197,21 @@ export function paymentRoutes(ctx: Ctx) {
       memo: body.memo,
     });
     res.status(201).json({ request });
+  });
+
+  /** Split a bill: an equal-share request to each person, created together. */
+  r.post("/requests/split", moneyLimiter, (req, res) => {
+    const body = parse(SplitBody, req.body);
+    const result = splitBill(ctx, {
+      requesterId: req.user!.id,
+      with: body.with,
+      currency: body.currency,
+      totalMinor: toMinor(body.total, body.currency),
+      memo: body.memo,
+      includeMe: body.includeMe,
+    });
+    audit(ctx, req.user!.id, "payments.bill_split", { requests: result.requests.length }, req.ip);
+    res.status(201).json(result);
   });
 
   r.post("/requests/:id/pay", moneyLimiter, async (req, res) => {

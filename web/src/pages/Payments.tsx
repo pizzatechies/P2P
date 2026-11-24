@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { Icon } from "../components/icons";
-import { ActivityList, RequestDialog, SendDialog } from "../components/money";
+import { ActivityList, RequestDialog, SendDialog, SplitDialog } from "../components/money";
 import { PayLinkCard } from "../components/share";
 import { Empty, StatusPill } from "../components/ui";
 import { money, timeAgo } from "../format";
@@ -10,7 +10,7 @@ import type { Activity, PaymentRequest } from "../types";
 
 export function PaymentsPage() {
   const toast = useToast();
-  const [dialog, setDialog] = useState<null | "send" | "request">(null);
+  const [dialog, setDialog] = useState<null | "send" | "request" | "split">(null);
   const [sendTo, setSendTo] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const requests = useLoad(() => api.get<{ incoming: PaymentRequest[]; outgoing: PaymentRequest[] }>("/api/payments/requests"));
@@ -46,11 +46,12 @@ export function PaymentsPage() {
       <div className="page-head">
         <div>
           <h1>Payments</h1>
-          <p className="muted">Send to anyone by @handle or email, and settle up with requests.</p>
+          <p className="muted">Send to anyone by @handle or email, split bills, and settle up with requests.</p>
         </div>
         <div className="row">
           <button className="btn" onClick={() => { setSendTo(""); setDialog("send"); }}><Icon.Send size={16} /> Send money</button>
           <button className="btn secondary" onClick={() => setDialog("request")}>Request money</button>
+          <button className="btn secondary" onClick={() => setDialog("split")}>Split a bill</button>
         </div>
       </div>
 
@@ -124,6 +125,7 @@ export function PaymentsPage() {
 
       {dialog === "send" && <SendDialog initialTo={sendTo} onClose={() => setDialog(null)} onDone={refresh} />}
       {dialog === "request" && <RequestDialog onClose={() => setDialog(null)} onDone={refresh} />}
+      {dialog === "split" && <SplitDialog onClose={() => setDialog(null)} onDone={refresh} />}
     </>
   );
 }

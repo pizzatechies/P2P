@@ -8,7 +8,7 @@ import { RequirementsForm, type RequirementsValue } from "./requirements";
 import { AmountInput, Empty, ErrorText, Field, Modal, StatusPill } from "./ui";
 
 /** Recipient field with live user search by handle, name or email. */
-function RecipientInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function RecipientInput({ value, onChange, required = true, label = "Recipient", onPick }: { value: string; onChange: (v: string) => void; required?: boolean; label?: string; onPick?: (handle: string) => void }) {
   const [results, setResults] = useState<Profile[]>([]);
   const [open, setOpen] = useState(false);
   const timer = useRef<number>(undefined);
@@ -34,9 +34,15 @@ function RecipientInput({ value, onChange }: { value: string; onChange: (v: stri
           setOpen(true);
         }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (onPick && (e.key === "Enter" || e.key === ",") && value.trim().length >= 2) {
+            e.preventDefault();
+            onPick(value.trim());
+          }
+        }}
         autoComplete="off"
-        required
-        aria-label="Recipient"
+        required={required}
+        aria-label={label}
       />
       {open && results.length > 0 && (
         <div className="card" style={{ position: "absolute", top: 44, left: 0, right: 0, padding: 4, zIndex: 5 }}>
@@ -46,7 +52,8 @@ function RecipientInput({ value, onChange }: { value: string; onChange: (v: stri
               key={u.id}
               className="conv-item"
               onMouseDown={() => {
-                onChange(`@${u.handle}`);
+                if (onPick) onPick(`@${u.handle}`);
+                else onChange(`@${u.handle}`);
                 setOpen(false);
               }}
             >
@@ -169,6 +176,87 @@ export function RequestDialog({ onClose, onDone }: { onClose: () => void; onDone
         </Field>
         <ErrorText error={error} />
         <button className="btn block lg" disabled={busy || !amount || !from}>{busy ? "Sending request…" : "Request"}</button>
+      </form>
+    </Modal>
+  );
+}
+
+/** Split a bill: one equal-share request to each person, sent together. */
+export function SplitDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const [people, setPeople] = useState<string[]>([]);
+  const [typing, setTyping] = useState("");
+  const [total, setTotal] = useState("");
+  const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
+  const [includeMe, setIncludeMe] = useState(true);
+  const [memo, setMemo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function add(who: string) {
+    const w = who.trim();
+    if (w.length < 2) return;
+    const norm = (x: string) => x.replace(/^@/, "").toLowerCase();
+    if (!people.some((p) => norm(p) === norm(w))) setPeople([...people, w.startsWith("@") || w.includes("@") ? w : `@${w}`]);
+    setTyping("");
+  }
+  const everyone = [...people, ...(typing.trim().length >= 2 ? [typing.trim()] : [])];
+  const count = everyone.length + (includeMe ? 1 : 0);
+  const totalNum = Number(total);
+  const each = count > 0 && totalNum > 0 ? Math.floor((totalNum * 100) / count) / 100 : 0;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await api.post<{ requests: unknown[]; share: string }>("/api/payments/requests/split", { with: everyone, total, currency, includeMe, memo: memo || undefined });
+      toast(`Asked ${r.requests.length} ${r.requests.length === 1 ? "person" : "people"} for ${money(r.share, currency)} each`);
+      onDone();
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Split a bill" onClose={onClose}>
+      <form className="stack" onSubmit={submit}>
+        <Field label="Total">
+          <AmountInput amount={total} currency={currency} onAmount={setTotal} onCurrency={setCurrency} />
+        </Field>
+        <Field label="Split with" hint="Type a @handle or email, then press Enter (or pick from the list).">
+          <RecipientInput value={typing} onChange={setTyping} onPick={add} required={people.length === 0} label="Split with" />
+        </Field>
+        {people.length > 0 && (
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {people.map((p) => (
+              <span key={p} className="pill">
+                {p}{" "}
+                <button type="button" className="link-btn" aria-label={`Remove ${p}`} onClick={() => setPeople(people.filter((x) => x !== p))}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <label className="row small" style={{ gap: 8 }}>
+          <input type="checkbox" checked={includeMe} onChange={(e) => setIncludeMe(e.target.checked)} /> Include me (I've paid my share)
+        </label>
+        <Field label="Note (optional)">
+          <input className="input" maxLength={140} placeholder="Dinner on Friday" value={memo} onChange={(e) => setMemo(e.target.value)} />
+        </Field>
+        {each > 0 && everyone.length > 0 && (
+          <div className="banner small">
+            <span className="grow">
+              {count} {count === 1 ? "person" : "people"}: each pays <strong>{money(each.toFixed(2), currency)}</strong>
+              {includeMe ? ", including you" : ""}. Everyone gets a request they can pay in one tap.
+            </span>
+          </div>
+        )}
+        <ErrorText error={error} />
+        <button className="btn block lg" disabled={busy || !total || everyone.length === 0}>{busy ? "Sending requests…" : `Split ${everyone.length > 0 ? `${count} ways` : ""}`}</button>
       </form>
     </Modal>
   );
