@@ -19,7 +19,7 @@
     "build:site": "npm run build:site -w web"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^10.0.7"
   },
   "overrides": {
     "@stripe/terminal-js": {
