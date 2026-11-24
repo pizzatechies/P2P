@@ -12,11 +12,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.6.0",
+    "@anthropic-ai/sdk": "^1.12.0",
     "express": "^5.3.0",
     "helmet": "^8.3.0",
     "plaid": "^51.0.0",
-    "snaptrade-typescript-sdk": "^13.2.6",
+    "snaptrade-typescript-sdk": "^13.4.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -26,6 +26,6 @@
     "supertest": "^7.3.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   }
 }
