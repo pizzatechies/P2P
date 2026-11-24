@@ -24,6 +24,8 @@ import { publicRoutes } from "./routes/public.js";
 import { settingsRoutes } from "./routes/settings.js";
 import { tradingRoutes } from "./routes/trading.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { cardRoutes } from "./routes/cards.js";
+import { tapRoutes } from "./routes/tap.js";
 import { rekeySecrets } from "./services/rekey.js";
 import { assignMissingAccountNumbers } from "./services/users.js";
 import { backfillFills } from "./services/trading/records.js";
@@ -82,6 +84,9 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   // live selfies are on.
   const liveSelfie = Boolean(config.SMILEID_LIVENESS && config.SMILEID_PARTNER_ID && config.SMILEID_API_KEY);
   const SMILE_MODELS = "https://web-models.smileidentity.com";
+  // Aurex cards show the card number in Stripe's own secure fields (Stripe.js and its frames).
+  const cardFields = Boolean(config.CARD_ISSUING && config.STRIPE_PUBLISHABLE_KEY);
+  const STRIPE_JS = "https://js.stripe.com";
   if (config.TRUST_PROXY) app.set("trust proxy", 1);
 
   app.use(
@@ -90,10 +95,10 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
         useDefaults: true,
         directives: {
           "default-src": ["'self'"],
-          "script-src": ["'self'", ...(turnstile ? [TURNSTILE_ORIGIN] : []), ...(liveSelfie ? ["'wasm-unsafe-eval'", SMILE_MODELS] : [])],
+          "script-src": ["'self'", ...(turnstile ? [TURNSTILE_ORIGIN] : []), ...(liveSelfie ? ["'wasm-unsafe-eval'", SMILE_MODELS] : []), ...(cardFields ? [STRIPE_JS] : [])],
           "script-src-attr": ["'none'"],
           // (data: for the component's own animation, which it fetches from an inline data: URL.)
-          "connect-src": ["'self'", ...(liveSelfie ? [SMILE_MODELS, "https://cdn.jsdelivr.net", "https://unpkg.com", "data:"] : [])],
+          "connect-src": ["'self'", ...(liveSelfie ? [SMILE_MODELS, "https://cdn.jsdelivr.net", "https://unpkg.com", "data:"] : []), ...(cardFields ? ["https://api.stripe.com"] : [])],
           "img-src": ["'self'", "data:", ...(liveSelfie ? ["blob:"] : [])],
           "media-src": ["'self'"],
           "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
@@ -102,7 +107,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
           "base-uri": ["'self'"],
           "form-action": ["'self'"],
           "frame-ancestors": ["'none'"],
-          "frame-src": turnstile ? [TURNSTILE_ORIGIN] : ["'none'"],
+          "frame-src": turnstile || cardFields ? [...(turnstile ? [TURNSTILE_ORIGIN] : []), ...(cardFields ? [STRIPE_JS] : [])] : ["'none'"],
           "worker-src": ["'self'"],
           "manifest-src": ["'self'"],
           // Only force HTTPS sub-requests in production; in development it breaks plain-HTTP access
@@ -162,6 +167,8 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   app.use("/api/settings", settingsRoutes(ctx));
   app.use("/api/account", accountRoutes(ctx));
   app.use("/api/payments", paymentRoutes(ctx));
+  app.use("/api/cards", cardRoutes(ctx));
+  app.use("/api/tap", tapRoutes(ctx));
   app.use("/api/connections", connectionRoutes(ctx));
   app.use("/api/ai", aiRoutes(ctx));
   app.use("/api/trading", tradingRoutes(ctx));

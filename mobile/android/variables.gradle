@@ -1,5 +1,6 @@
 ext {
-    minSdkVersion = 24
+    // 26 (Android 8): needed by the Stripe Terminal SDK for Tap to Pay.
+    minSdkVersion = 26
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidxActivityVersion = '1.11.0'

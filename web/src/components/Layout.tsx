@@ -10,6 +10,7 @@ const NAV = [
   { to: "/app/wallet", label: "Wallet", icon: Icon.Wallet },
   { to: "/app/connections", label: "Connections", icon: Icon.Link },
   { to: "/app/payments", label: "Payments", icon: Icon.Send },
+  { to: "/app/card", label: "Card", icon: Icon.Card },
   { to: "/app/ai", label: "AI Hub", icon: Icon.Sparkle },
   { to: "/app/trading", label: "Trading", icon: Icon.Chart },
   { to: "/app/learn", label: "Learn", icon: Icon.Learn },

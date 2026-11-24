@@ -8,7 +8,7 @@ import { alertPush, notify } from "./push.js";
 import type { UserRow } from "./users.js";
 
 /** Alerts important enough to also email (to verified addresses). */
-const EMAILED = new Set(["new_payee", "new_device", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "admin", "security_hold", "account"]);
+const EMAILED = new Set(["new_payee", "new_device", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "admin", "security_hold", "account", "card", "card_wallet"]);
 
 // ---------------------------------------------------------------------------
 // Security alerts: shown in the app (dashboard banner, Settings → Security).

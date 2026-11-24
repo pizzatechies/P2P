@@ -52,6 +52,15 @@ We share only what each needs to do its job:
   - Your messages, and the market data needed for a signal, are sent to the provider you or we choose: [Anthropic, OpenAI, Google, Mistral, Groq, xAI, DeepSeek, OpenRouter, Together, Perplexity].
   - Don't share personal or sensitive details in AI chats.
 - **Email delivery:** [Resend].
+- **Card payments, if you get an Aurex card:**
+  - The card is issued by [Stripe's card-issuing partner]. Your name, billing address, email and phone number go to them to issue it.
+  - Each card payment comes back to us so we can approve it: the merchant, amount and place.
+  - The card number is shown to you only in Stripe's secure fields; we never see or store it.
+  - If you add the card to Apple Wallet, Google Wallet or Samsung Wallet, that wallet's provider handles it under its own terms. We're told which wallet and device, so we can warn you if it wasn't you.
+- **Tap to Pay, if you take card payments as a business:**
+  - Payments are processed by Stripe.
+  - Your phone's location is used while you take a payment, because Stripe's Tap to Pay software requires it.
+- **NFC stickers and phone-to-phone taps** only pass your public pay link; nothing else is shared.
 - **Phone notifications, if you turn them on:**
   - They're sent from our own notification server to the ntfy app on your phone.
   - On iPhone, the ntfy.sh service (and Apple's push service) is told only that a new message is waiting, with a message ID and a scrambled form of your private channel name. The notification text comes from our server.

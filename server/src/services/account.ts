@@ -1,4 +1,5 @@
 import type { Ctx } from "../context.js";
+import { cancelCardsForUser } from "./cards.js";
 import { exportBusiness } from "./business.js";
 import { exportCases } from "./support.js";
 import { toCsv } from "../lib/csv.js";
@@ -283,6 +284,8 @@ export function closeAccount(ctx: Ctx, userId: string, confirmHandle: string, ip
     run(ctx.db, "UPDATE users SET status = 'frozen', closed_at = ?, push_enabled_at = NULL, push_topic_enc = NULL WHERE id = ?", now, userId);
   });
   audit(ctx, userId, "account.closed", {}, ip);
+  // A closed account's card stops working at once (Aurex declines it) and is cancelled with the issuer.
+  void cancelCardsForUser(ctx, userId);
 }
 
 /** Admin: reopen a closed account (the customer signs in again with their password). */

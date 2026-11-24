@@ -32,7 +32,27 @@
                 <data android:scheme="aurex" />
             </intent-filter>
 
+            <!-- Tapping an Aurex NFC sticker, or a phone sharing a pay link, opens the pay screen. -->
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="${aurexHost}" android:pathPrefix="/pay/" />
+            </intent-filter>
+
         </activity>
+
+        <!-- Presents the pay link as an NFC tag while "Tap to get paid" is open. -->
+        <service
+            android:name=".nfc.PayLinkHceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/apduservice" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -53,4 +73,15 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Unlocking with a fingerprint or face -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Tap to pay: reading and writing NFC stickers, and sharing a pay link phone to phone -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
+    <!-- Tap to Pay for businesses (Stripe Terminal): the SDK needs location, and Bluetooth for card readers -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 </manifest>

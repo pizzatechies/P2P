@@ -13,6 +13,7 @@ import { skrillRail } from "./skrill.js";
 import { stripeRail } from "./stripe.js";
 import { wiseRail } from "./wise.js";
 import type { PaymentRail } from "./types.js";
+import { parseWallets } from "./types.js";
 
 export type { PaymentRail } from "./types.js";
 
@@ -26,9 +27,9 @@ export function getRails(ctx: Ctx): Map<string, PaymentRail> {
   for (const id of c.rails) {
     if (id === "sandbox") rails.set(id, sandboxRail);
     else if (id === "stripe" && ctx.config.STRIPE_SECRET_KEY) {
-      rails.set(id, stripeRail({ secretKey: ctx.config.STRIPE_SECRET_KEY, appUrl: ctx.config.APP_URL }));
+      rails.set(id, stripeRail({ secretKey: ctx.config.STRIPE_SECRET_KEY, appUrl: ctx.config.APP_URL, baseUrl: ctx.config.STRIPE_BASE_URL, wallets: parseWallets(ctx.config.STRIPE_WALLETS) }));
     } else if (id === "flutterwave" && ctx.config.FLUTTERWAVE_SECRET_KEY) {
-      rails.set(id, flutterwaveRail({ secretKey: ctx.config.FLUTTERWAVE_SECRET_KEY, appUrl: ctx.config.APP_URL, baseUrl: ctx.config.FLUTTERWAVE_BASE_URL }));
+      rails.set(id, flutterwaveRail({ secretKey: ctx.config.FLUTTERWAVE_SECRET_KEY, appUrl: ctx.config.APP_URL, baseUrl: ctx.config.FLUTTERWAVE_BASE_URL, wallets: parseWallets(ctx.config.FLUTTERWAVE_WALLETS) }));
     } else if (id === "mpesa" && c.MPESA_CONSUMER_KEY && c.MPESA_CONSUMER_SECRET) {
       rails.set(
         id,
@@ -156,6 +157,7 @@ export function describeRails(ctx: Ctx) {
     phoneHint: r.phoneHint ?? null,
     walletOptions: r.walletOptions ?? null,
     payoutLabel: r.payoutLabel ?? null,
+    wallets: r.wallets ?? [],
   }));
 }
 

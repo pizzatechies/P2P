@@ -18,8 +18,10 @@ import { assertCurrency } from "../lib/money.js";
  *   clearing  - withdrawals in flight, held until the payment rail confirms.
  *   fees      - revenue from fees.
  *   fx        - the house side of currency conversions.
+ *   card_holds      - card payments approved but not yet settled (held from the customer's wallet).
+ *   card_settlement - card payments settled with the card issuer (paid out of the operator's issuing balance).
  */
-export type SystemAccountCode = "external" | "clearing" | "fees" | "fx";
+export type SystemAccountCode = "external" | "clearing" | "fees" | "fx" | "card_holds" | "card_settlement";
 
 export interface Posting {
   accountId: string;
@@ -94,7 +96,7 @@ export function systemAccount(ctx: Ctx, code: SystemAccountCode, currency: strin
   );
   if (existing) return existing;
   const id = newId("acct");
-  const allowNegative = code === "external" || code === "fx" ? 1 : 0;
+  const allowNegative = code === "external" || code === "fx" || code === "card_settlement" ? 1 : 0;
   run(
     ctx.db,
     "INSERT INTO accounts (id, owner_type, code, currency, allow_negative, created_at) VALUES (?, 'system', ?, ?, ?, ?)",

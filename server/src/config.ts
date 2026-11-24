@@ -119,6 +119,44 @@ const EnvSchema = z.object({
   PAYMENT_RAILS: z.string().default("sandbox"),
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
+  STRIPE_BASE_URL: z.string().url().default("https://api.stripe.com/v1"),
+  /**
+   * Wallets offered as quick ways to add money through Stripe Checkout (apple_pay, google_pay; empty
+   * = none). Turn the same wallets on in the Stripe Dashboard under Payment methods.
+   */
+  STRIPE_WALLETS: z.string().default("apple_pay,google_pay"),
+  /** The same for Flutterwave Standard (Apple Pay and Google Pay must be enabled on your Flutterwave account). */
+  FLUTTERWAVE_WALLETS: z.string().default(""),
+  /**
+   * Aurex cards: virtual debit cards on Stripe Issuing that spend from the customer's Aurex wallet, and
+   * can be added to Apple Wallet, Google Wallet and Samsung Wallet. Needs STRIPE_SECRET_KEY on an account
+   * with Issuing, STRIPE_ISSUING_WEBHOOK_SECRET and STRIPE_PUBLISHABLE_KEY.
+   */
+  CARD_ISSUING: bool.default(false),
+  /** Signing secret of the webhook endpoint /api/webhooks/stripe-issuing (real-time authorisations). */
+  STRIPE_ISSUING_WEBHOOK_SECRET: optionalString,
+  /** Publishable key, so the app can show card numbers in Stripe's secure fields (never on Aurex's servers). */
+  STRIPE_PUBLISHABLE_KEY: optionalString,
+  /** Stripe API version for ephemeral keys and authorisation replies. */
+  STRIPE_API_VERSION: z.string().default("2025-03-31.basil"),
+  /** The cards' currency (your Issuing balance's currency): card payments are taken from this wallet. */
+  CARD_CURRENCY: z.string().length(3).default("USD"),
+  /** Identity verification level needed for a card (2 = fully verified). */
+  CARD_MIN_KYC_LEVEL: z.coerce.number().int().min(0).max(2).default(2),
+  /**
+   * Show Stripe's "Add to Apple Wallet / Google Wallet" buttons (push provisioning). Only after Stripe,
+   * Apple and Google have approved your card programme for it; until then customers add the card by hand.
+   */
+  CARD_WALLET_BUTTONS: bool.default(false),
+  /**
+   * Tap to Pay: approved businesses take contactless payments on their phone (Stripe Terminal's Tap to
+   * Pay on iPhone and Android). Needs STRIPE_SECRET_KEY and a Terminal location in your Stripe account.
+   */
+  TAP_TO_PAY: bool.default(false),
+  /** The Stripe Terminal location (tml_...) Tap to Pay payments are taken at. */
+  STRIPE_TERMINAL_LOCATION: optionalString,
+  /** Kept from each Tap to Pay payment (100 = 1%), e.g. to cover Stripe's card fees. */
+  TAP_TO_PAY_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(0),
   P2P_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(0),
   FX_SPREAD_BPS: z.coerce.number().int().min(0).max(1000).default(50),
   WITHDRAWAL_FEE_BPS: z.coerce.number().int().min(0).max(1000).default(0),
@@ -431,6 +469,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     .filter(Boolean);
   if (rails.includes("stripe") && !env.STRIPE_SECRET_KEY) {
     throw new Error("PAYMENT_RAILS includes 'stripe' but STRIPE_SECRET_KEY is not set.");
+  }
+  if (env.TAP_TO_PAY && (!env.STRIPE_SECRET_KEY || !env.STRIPE_TERMINAL_LOCATION)) {
+    throw new Error("TAP_TO_PAY is on but STRIPE_SECRET_KEY or STRIPE_TERMINAL_LOCATION is not set.");
+  }
+  if (env.CARD_ISSUING && !env.STRIPE_SECRET_KEY) {
+    throw new Error("CARD_ISSUING is on but STRIPE_SECRET_KEY is not set.");
   }
   if (rails.includes("flutterwave") && !env.FLUTTERWAVE_SECRET_KEY) {
     throw new Error("PAYMENT_RAILS includes 'flutterwave' but FLUTTERWAVE_SECRET_KEY is not set.");

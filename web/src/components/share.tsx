@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { publicOrigin } from "../native";
 import { money } from "../format";
 import { useAuth, useToast } from "../state";
 import { CurrencySelect } from "./ui";
+import { ShareByTapDialog, useNfc, WriteStickerDialog } from "./TapToPay";
 
 export function payLink(handle: string, opts: { amount?: string; currency?: string; note?: string } = {}) {
-  const url = new URL(`/pay/@${handle}`, window.location.origin);
+  const url = new URL(`/pay/@${handle}`, publicOrigin());
   if (opts.amount && Number(opts.amount) > 0) {
     url.searchParams.set("amount", opts.amount);
     url.searchParams.set("currency", opts.currency ?? "USD");
@@ -48,6 +50,8 @@ export function ShareButtons({ text, url, title = "Aurex" }: { text: string; url
 /** "Your pay link": lets anyone, even without an account, pay you from a link. */
 export function PayLinkCard() {
   const { user } = useAuth();
+  const { status: nfc } = useNfc();
+  const [nfcDialog, setNfcDialog] = useState<null | "share" | "sticker">(null);
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
   const [note, setNote] = useState("");
@@ -80,8 +84,16 @@ export function PayLinkCard() {
       <div className="pay-link mono small">{url}</div>
       <div className="row wrap between" style={{ marginTop: 10 }}>
         <ShareButtons text={text} url={url} title="Pay me on Aurex" />
-        <ShareButtons text="Join me on Aurex: send money, use every AI and trade with an AI analyst." url={new URL("/register", window.location.origin).toString()} title="Join Aurex" />
+        {nfc?.supported && (
+          <div className="row wrap" style={{ gap: 8 }}>
+            {nfc.canShare && <button type="button" className="btn secondary sm" onClick={() => setNfcDialog("share")}>Tap phones to get paid</button>}
+            {nfc.canWrite && <button type="button" className="btn ghost sm" onClick={() => setNfcDialog("sticker")}>Write to an NFC sticker</button>}
+          </div>
+        )}
+        <ShareButtons text="Join me on Aurex: send money, use every AI and trade with an AI analyst." url={new URL("/register", publicOrigin()).toString()} title="Join Aurex" />
       </div>
+      {nfcDialog === "share" && <ShareByTapDialog url={url} summary={amount ? `${money(amount, currency)}${note ? ` · ${note}` : ""}` : `Pay @${user.handle}`} onClose={() => setNfcDialog(null)} />}
+      {nfcDialog === "sticker" && <WriteStickerDialog url={url} summary={amount ? `${money(amount, currency)} to @${user.handle}` : `pay @${user.handle} any amount`} onClose={() => setNfcDialog(null)} />}
     </div>
   );
 }

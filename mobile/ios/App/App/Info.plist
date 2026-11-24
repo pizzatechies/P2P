@@ -70,6 +70,12 @@
 	<string>Aurex uses the camera to photograph your ID document and take a selfie for identity verification.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Aurex lets you choose a photo of your ID document or a business document from your library.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Businesses taking Tap to Pay payments: card payments need your location to confirm where they're taken.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Businesses can connect a Stripe card reader to take payments.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>Aurex reads and writes NFC stickers and phones that share an Aurex pay link.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Aurex can use Face ID to unlock the app, so nobody else can open it on your phone.</string>
 	<key>CFBundleURLTypes</key>

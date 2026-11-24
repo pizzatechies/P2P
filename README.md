@@ -396,6 +396,55 @@ Phone notifications go through [ntfy](https://ntfy.sh), an open-source push serv
 - **Setup:** `deploy/server/install.sh` runs ntfy at `push.<DOMAIN>` once that name's DNS points at the server (sslip.io addresses work straight away). Or point `PUSH_NTFY_URL` and `PUSH_NTFY_PUBLIC_URL` at any ntfy server.
 - **Reliability:** a notification that can't be sent never holds up a payment; the in-app alert and email still go out.
 
+### Tap to pay: NFC, Apple Pay, Google Pay and Samsung Pay
+
+Four ways to pay by tapping. The first two work today; the card and Tap to Pay need a provider account and approvals, listed below.
+
+**1. Phone-to-phone and NFC stickers (no partner needed)**
+- **Tap phones to get paid** (Android app): under Payments → Your pay link, the phone presents the pay link as a standard NFC tag through host card emulation. Any phone that touches it opens the pay page, iPhones included, even without Aurex installed. Sharing stops after two minutes or when Aurex closes.
+- **Write to an NFC sticker** (Android and iPhone apps, and Chrome on Android): writes the pay link to a sticker for a stall or counter. Locking the sticker is on by default, so nobody can overwrite it with their own link.
+- **Tap to pay** (Payments): reads a sticker or a sharing phone and opens the pay screen. Only Aurex pay links on this server are opened; links to anywhere else are refused. The payer always sees who they're paying and the amount first.
+
+**2. Add money with Apple Pay or Google Pay**
+- Add money shows an **Apple Pay** button on iPhone and Safari, and **Google Pay** on Android and Chrome, when a payment method offers it.
+- Stripe Checkout: on by default (`STRIPE_WALLETS=apple_pay,google_pay`). Turn the same wallets on in the Stripe Dashboard under Payment methods.
+- Flutterwave: set `FLUTTERWAVE_WALLETS` once Apple Pay or Google Pay is enabled on your Flutterwave account.
+- In the apps, checkout opens in the system browser sheet, where the wallets work, and Add money waits for the payment to be confirmed.
+- Samsung phones pay with Google Pay here; neither provider offers Samsung Pay for top-ups.
+
+**3. The Aurex card in Apple Wallet, Google Wallet and Samsung Wallet** (`CARD_ISSUING`)
+- **What it is:** a virtual Visa or Mastercard debit card on Stripe Issuing that spends from the customer's wallet in `CARD_CURRENCY` (default USD).
+- **Gold or Black:** the customer picks a Gold or a Black card when applying, and can switch any time on the Card page. This sets the card shown in Aurex. The picture phone wallets show is set per card design in the Stripe Dashboard.
+- **Real-time approval:**
+  - Aurex approves every card payment itself, within Stripe's two seconds, through the `issuing_authorization.request` webhook.
+  - Approval needs an active card and account, no sanctions review, current identity details, the card's own daily limit, the account limits, and enough money.
+  - The approved amount is held (wallet → `card_holds`). Settlement moves it to `card_settlement`; refunds and reversals come back to the wallet.
+  - Partial settlements return the rest, and holds Stripe never resolves are released after 31 days.
+- **Customer controls:**
+  - Freeze takes effect in Aurex instantly. Unfreeze asks for the password again.
+  - Cancel, and a daily limit.
+- **Phone wallets:**
+  - The card number is shown only in Stripe's secure fields (Issuing Elements), so it never reaches Aurex's servers.
+  - The customer adds the card to Apple Wallet, Google Wallet or Samsung Wallet by hand, with steps for each in the app.
+  - Every time the card is added to a phone, the customer gets a security alert, an email and a push notification.
+- **Add to Wallet buttons:** push provisioning (`CARD_WALLET_BUTTONS=true`) needs Stripe's and Apple's or Google's approval first. Samsung Pay push provisioning isn't available through Stripe.
+- **Who can get one:** identity level `CARD_MIN_KYC_LEVEL` (default 2).
+- **Setup:**
+  - `CARD_ISSUING=true`, `STRIPE_SECRET_KEY` on an account with Issuing, `STRIPE_PUBLISHABLE_KEY`.
+  - A webhook endpoint `/api/webhooks/stripe-issuing` for the `issuing_authorization.*`, `issuing_transaction.created`, `issuing_token.*` and `issuing_card.updated` events, with `STRIPE_ISSUING_WEBHOOK_SECRET`.
+  - In Stripe, turn on real-time authorisations for that endpoint and fund the Issuing balance.
+- **Availability:** Stripe Issuing serves businesses in the US, UK and EU. For cards in Kenya, a local card issuer (BIN sponsor) plugs in where Stripe is today (`cards.provider`).
+
+**4. Tap to Pay for businesses** (`TAP_TO_PAY`)
+- **What it does:** an approved business takes contactless cards and phones (Apple Pay, Google Pay, Samsung Pay) on its own phone: Payments → Take a card payment.
+- **How it works:**
+  - Aurex creates a card-present payment through Stripe Terminal's Tap to Pay on iPhone and Android, and the phone collects it.
+  - When Stripe confirms it (webhook `payment_intent.succeeded`, or Aurex asking Stripe), the amount less `TAP_TO_PAY_FEE_BPS` lands in the business's wallet.
+- **Setup:**
+  - `TAP_TO_PAY=true` and `STRIPE_TERMINAL_LOCATION` (a Terminal location in your Stripe account).
+  - Tap to Pay must be available for your Stripe account's country.
+  - On iPhone, Apple's Tap to Pay entitlement (`com.apple.developer.proximity-reader.payment.acceptance`) must be requested from Apple and added to the app.
+
 ### Security
 
 No system can honestly promise to be unhackable. Aurex is built so that a single failure doesn't lose anyone's money: a stolen password, a stolen session, a leaked database file or a forged webhook each run into another layer.
@@ -599,6 +648,8 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Wallet | `GET /payments/balances`, `GET /payments/activity`, `GET /payments/transfers`, `POST /payments/deposits`, `POST /payments/withdrawals` |
 | P2P | `POST /payments/send`, `GET/POST /payments/requests`, `POST /payments/requests/:id/{pay,decline,cancel}`, `POST /payments/requests/split` (equal shares from several people), `GET /payments/users/search` |
 | Notifications | `GET /account/push`, `POST /account/push/{enable,disable,reset,test}`, `PUT /account/push/prefs` |
+| Card | `GET /cards`, `POST /cards`, `POST /cards/:id/{freeze,unfreeze,cancel,key}`, `PUT /cards/:id/{limit,design}` |
+| Tap to Pay | `GET /tap`, `POST /tap/connection-token`, `POST /tap/payments`, `GET /tap/payments/:id`, `POST /tap/payments/:id/cancel` |
 | FX | `GET /payments/fx/quote`, `POST /payments/convert` |
 | AI | `GET /ai/providers`, `GET /ai/providers/:id/models`, `POST /ai/chat` (SSE), `POST /ai/compare` (SSE), `GET/DELETE /ai/conversations/:id` |
 | Trading | `GET /trading/account`, `GET /trading/quote/:symbol`, `GET /trading/bars/:symbol`, `GET/POST/DELETE /trading/watchlist`, `GET/POST /trading/orders`, `POST /trading/orders/:id/cancel`, `POST /trading/analyze`, `GET /trading/signals`, `POST /trading/signals/:id/execute`, `GET /trading/records/{trades,realized,performance,cash}` (`?format=csv` on trades and realized) |

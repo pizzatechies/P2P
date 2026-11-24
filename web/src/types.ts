@@ -27,6 +27,8 @@ export interface Rail {
   phoneHint: string | null;
   walletOptions: ("paypal" | "venmo")[] | null;
   payoutLabel: string | null;
+  /** Wallets this rail's checkout opens on directly. */
+  wallets: ("apple_pay" | "google_pay")[];
 }
 
 export interface RequirementField {

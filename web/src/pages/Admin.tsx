@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { publicOrigin } from "../native";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api, downloadFile } from "../api";
 import { ErrorText, Field } from "../components/ui";
@@ -1025,7 +1026,7 @@ function BetaCard() {
     e.preventDefault();
     try {
       const r = await api.post<{ code: string }>("/api/admin/beta/invites", { label: label || undefined, maxUses: Number(uses) || 1, expiresInDays: Number(days) || undefined });
-      setFresh({ code: r.code, label: label || "Invite", link: `${location.origin}/register?invite=${r.code}` });
+      setFresh({ code: r.code, label: label || "Invite", link: `${publicOrigin()}/register?invite=${r.code}` });
       setLabel("");
       data.reload();
     } catch (err) {

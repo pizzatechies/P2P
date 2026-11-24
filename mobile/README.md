@@ -18,6 +18,13 @@ The apps are the Aurex web app inside native iOS and Android shells, built with 
   - **Camera:** for ID photos, selfies and Smile ID's live selfie.
   - **Files:** statements, exports and documents open in the share sheet (save to Files, open in a PDF viewer). Images open in a viewer.
   - **Links:** links to other sites open in the phone's browser. `aurex://pay/@handle` links open the pay screen, and `aurex://app/...` links (from notifications) open that screen.
+  - **Tap to pay (NFC):**
+    - Android shares the pay link phone to phone (host card emulation of an NFC tag) and reads and writes NFC stickers. Tapping an Aurex sticker opens the pay screen, even from the home screen.
+    - iPhone reads and writes stickers in the app (Core NFC). iPhones can't present a link to another phone.
+    - In a build you sign yourself, the "NFC Tag Reading" capability must be on your App ID. The unsigned CI build can't use NFC until it's signed with it.
+  - **Tap to Pay for businesses:** Stripe Terminal (`@capacitor-community/stripe-terminal`).
+    - Android: version 8.0+ (minSdk 26), NFC, and location permission, which Stripe's SDK requires. The plugin also declares Bluetooth permissions for card readers.
+    - iPhone: Apple's Tap to Pay entitlement, `com.apple.developer.proximity-reader.payment.acceptance`. Request it from Apple, add it to `App.entitlements`, and use a provisioning profile that includes it.
   - **Notifications:** through the free ntfy app, with no Firebase and no Apple push key (Settings → Notifications; see "Push notifications" in the main README). On Android, "Subscribe in ntfy" opens the ntfy app with the channel filled in. On iPhone, the customer copies the channel name and server into ntfy. Tapping a notification opens Aurex on the right screen.
   - **Backups:** the app keeps nothing worth restoring, and its session is tied to the phone, so Android backups are switched off.
 

@@ -4,4 +4,6 @@
     <string name="title_activity_main">Aurex</string>
     <string name="package_name">com.pizzatechies.aurex</string>
     <string name="custom_url_scheme">com.pizzatechies.aurex</string>
+    <string name="nfc_service_description">Aurex pay link</string>
+    <string name="nfc_aid_description">Shares your Aurex pay link when phones touch</string>
 </resources>

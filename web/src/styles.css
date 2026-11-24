@@ -133,6 +133,39 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .main { min-width: 0; padding: 28px 32px 64px; max-width: 1280px; width: 100%; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
 .page-head p { margin-top: 4px; }
+/* Aurex card: the card itself, and Stripe's secure fields for its number. */
+.aurex-card { position: relative; aspect-ratio: 1.586; max-width: 420px; width: 100%; border-radius: 18px; padding: 22px; color: #1f1a0a; background: linear-gradient(135deg, #f7e2a0 0%, #d9b44a 45%, #a97b17 100%); box-shadow: 0 18px 40px rgb(80 60 10 / .25); display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+.aurex-card.frozen { filter: grayscale(.85); }
+/* The Black card: matte black with gold lettering and a fine gold edge. */
+.aurex-card.black { color: #e6c766; background: radial-gradient(120% 140% at 0% 0%, #2c2a24 0%, #111 45%, #050505 100%); box-shadow: 0 18px 40px rgb(0 0 0 / .45), inset 0 0 0 1px rgb(230 199 102 / .35); }
+.aurex-card.black .aurex-card-net { color: #f3d77a; }
+.aurex-card.black.frozen { filter: grayscale(.6) brightness(.8); }
+.aurex-card.card-mini { aspect-ratio: 1.586; width: 150px; max-width: 100%; border-radius: 10px; padding: 12px; gap: 6px; box-shadow: 0 8px 18px rgb(60 45 10 / .2); }
+.aurex-card.card-mini .aurex-card-brand { font-size: 15px; }
+.aurex-card.card-mini .aurex-card-number { font-size: 12px; letter-spacing: 1px; }
+.design-picker { display: flex; gap: 14px; flex-wrap: wrap; }
+.design-option { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; border: 2px solid transparent; border-radius: 14px; background: none; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; }
+.design-option.on { border-color: var(--brand); background: var(--brand-soft); }
+.design-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.aurex-card-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.02em; }
+.aurex-card-net { font-weight: 700; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; }
+.aurex-card-number { font-family: ui-monospace, Menlo, monospace; font-size: clamp(16px, 4.6vw, 22px); letter-spacing: 2px; }
+.aurex-card-frozen { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(255 255 255 / .35); font-weight: 800; font-size: 20px; letter-spacing: .1em; text-transform: uppercase; }
+.card-fields { display: grid; gap: 12px; }
+.card-fields .label, .card .label { display: block; font-size: 12px; font-weight: 600; color: var(--text-3); margin-bottom: 4px; }
+.card-field { min-height: 28px; min-width: 70px; padding: 6px 10px; background: #fff; border: 1px solid var(--border); border-radius: 8px; }
+/* Apple Pay / Google Pay: a plain black button in the wallets' own style. */
+.wallet-btn { display: flex; align-items: center; justify-content: center; width: 100%; height: 48px; border: 0; border-radius: 10px; background: #000; color: #fff; font: 600 17px/1 -apple-system, "Segoe UI", Roboto, sans-serif; cursor: pointer; }
+.wallet-btn.on { outline: 3px solid var(--brand); outline-offset: 2px; }
+.wallet-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* Tap to pay: rings that pulse out from the NFC mark while the phone waits for a tap. */
+.nfc-pulse { position: relative; width: 140px; height: 140px; display: grid; place-items: center; color: var(--brand-text); }
+.nfc-pulse span { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--brand); opacity: 0; animation: nfc-ring 2.4s ease-out infinite; }
+.nfc-pulse span:nth-child(2) { animation-delay: .8s; }
+.nfc-pulse span:nth-child(3) { animation-delay: 1.6s; }
+.nfc-pulse svg { position: relative; background: var(--brand-soft); border-radius: 50%; padding: 18px; box-sizing: content-box; }
+@keyframes nfc-ring { from { transform: scale(.45); opacity: .9; } to { transform: scale(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .nfc-pulse span { animation: none; opacity: .35; transform: scale(.8); } }
 /* Action buttons in a page header wrap onto a second line on narrow screens instead of running off the edge. */
 .page-head > .row { flex-wrap: wrap; }
 

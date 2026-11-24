@@ -10,6 +10,9 @@ export const isNative = Capacitor.isNativePlatform();
 export const platform = Capacitor.getPlatform() as "ios" | "android" | "web";
 export const API_ORIGIN = isNative ? String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/+$/, "") : "";
 
+/** The public address of the Aurex site: links shared from the apps must point there, not at the app's own localhost. */
+export const publicOrigin = () => (isNative && API_ORIGIN ? API_ORIGIN : window.location.origin);
+
 /** The address for an API path: unchanged on the website, the Aurex server in the apps. */
 export const apiUrl = (path: string) => (isNative && path.startsWith("/api/") ? `${API_ORIGIN}${path}` : path);
 
@@ -104,6 +107,23 @@ async function setupShell() {
     if (!isActive) hiddenAt = Date.now();
     else if (lockEnabled && token && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_MS) lockListeners.forEach((l) => l());
   });
+}
+
+/** Opens a payment page (Stripe or Flutterwave checkout) in the system browser sheet, where Apple Pay and Google Pay work. */
+export async function openCheckout(url: string) {
+  const { Browser } = await import("@capacitor/browser");
+  await Browser.open({ url, presentationStyle: "popover" });
+}
+
+/** Which wallet this device can pay with on a hosted checkout page. */
+export function deviceWallet(): "apple_pay" | "google_pay" | null {
+  if (platform === "ios") return "apple_pay";
+  if (platform === "android") return "google_pay";
+  const ua = navigator.userAgent;
+  const apple = /iPhone|iPad|iPod|Macintosh/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (apple && /Safari\//.test(ua) && !/Chrome|CriOS|Chromium|Edg|Firefox|FxiOS/.test(ua)) return "apple_pay";
+  if (/Chrome|Chromium|Android/.test(ua)) return "google_pay";
+  return null;
 }
 
 /** Which in-app page a link opens: aurex://pay/@amara, or https://<the Aurex site>/pay/@amara. */

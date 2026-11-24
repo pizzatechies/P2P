@@ -1,12 +1,11 @@
 import { createHmac } from "node:crypto";
 import { safeEqual } from "../../lib/crypto.js";
 import { HttpError } from "../../lib/errors.js";
-import type { PaymentRail } from "./types.js";
+import type { PaymentRail, Wallet } from "./types.js";
 
-const STRIPE_API = "https://api.stripe.com/v1";
 
 /** Flattens nested objects into Stripe's form encoding: a[b][c]=v */
-function formEncode(obj: Record<string, unknown>, prefix = "", out = new URLSearchParams()): URLSearchParams {
+export function formEncode(obj: Record<string, unknown>, prefix = "", out = new URLSearchParams()): URLSearchParams {
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined || v === null) continue;
     const key = prefix ? `${prefix}[${k}]` : k;
@@ -29,7 +28,8 @@ function formEncode(obj: Record<string, unknown>, prefix = "", out = new URLSear
  * the wallet is credited only when the signed `checkout.session.completed` webhook arrives.
  * Use test keys (sk_test_...) until you have the licences and agreements to hold customer funds.
  */
-export function stripeRail(opts: { secretKey: string; appUrl: string }): PaymentRail {
+export function stripeRail(opts: { secretKey: string; appUrl: string; baseUrl?: string; wallets?: Wallet[] }): PaymentRail {
+  const STRIPE_API = (opts.baseUrl ?? "https://api.stripe.com/v1").replace(/\/+$/, "");
   return {
     id: "stripe",
     name: "Card (Stripe)",
@@ -40,9 +40,12 @@ export function stripeRail(opts: { secretKey: string; appUrl: string }): Payment
     supportsWithdrawal: false,
     currencies: ["USD", "EUR", "GBP", "CAD", "AUD", "CHF", "JPY", "INR", "AED", "BRL", "MXN", "ZAR", "KES", "NGN"],
     depositInput: "none",
+    wallets: opts.wallets ?? [],
     async createDeposit(input) {
       const body = formEncode({
         mode: "payment",
+        // Apple Pay and Google Pay ride on cards in Checkout: they show at the top on devices that have them.
+        ...(input.method ? { payment_method_types: ["card"] } : {}),
         client_reference_id: input.externalId,
         customer_email: input.email,
         success_url: `${opts.appUrl}/app/wallet?deposit=success&ref=${input.externalId}`,

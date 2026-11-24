@@ -81,6 +81,7 @@ Revenue comes from:
 | Amazon Web Services | Hosting (EC2, S3 backups, Parameter Store) | All (encrypted at rest) |
 | Smile ID | Government ID checks | Identity details |
 | Resend | Email | Email address, message |
+| Stripe (Issuing, Terminal) | Aurex cards; Tap to Pay for businesses (if enabled) | Cardholder name, address, contact; card and payment details |
 | ntfy.sh (only for iPhones, if customers turn on notifications) | Wakes the ntfy app; the message itself comes from Aurex's own server | Message ID, hashed channel name |
 | Stripe, Flutterwave, Safaricom M-Pesa, MTN MoMo, PayPal, Wise, Skrill, MoneyGram | Pay-in and pay-out (as enabled) | Payment details |
 | Plaid, Mono, Salt Edge, SnapTrade, Coinbase | Account connections (at the customer's request) | Connection tokens |

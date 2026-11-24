@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AccountPage } from "./pages/Account";
+import { CardPage } from "./pages/Card";
 import { AdminPage } from "./pages/Admin";
 import { AdminUserPage } from "./pages/AdminUser";
 import { StatementPage } from "./pages/Statement";
@@ -124,6 +125,7 @@ void initNative().finally(() => createRoot(document.getElementById("root")!).ren
               <Route path="admin" element={<AdminPage />} />
               <Route path="admin/users/:id" element={<AdminUserPage />} />
               <Route path="account" element={<AccountPage />} />
+              <Route path="card" element={<CardPage />} />
               <Route path="statement" element={<StatementPage />} />
               <Route path="trading/records" element={<TradingRecordsPage />} />
               <Route path="pro" element={<ProPage />} />

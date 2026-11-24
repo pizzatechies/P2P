@@ -9,9 +9,9 @@ import { defineConfig, type Plugin } from "vite";
 function appHtml(apiOrigin: string): Plugin {
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://web-models.smileidentity.com",
+    "script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com https://web-models.smileidentity.com https://js.stripe.com",
     "script-src-attr 'none'",
-    `connect-src 'self' ${apiOrigin} https://web-models.smileidentity.com https://cdn.jsdelivr.net https://unpkg.com data:`,
+    `connect-src 'self' ${apiOrigin} https://web-models.smileidentity.com https://cdn.jsdelivr.net https://unpkg.com https://api.stripe.com data:`,
     "img-src 'self' data: blob:",
     "media-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
@@ -19,7 +19,7 @@ function appHtml(apiOrigin: string): Plugin {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-src https://challenges.cloudflare.com",
+    "frame-src https://challenges.cloudflare.com https://js.stripe.com",
     "worker-src 'self' blob:",
   ].join("; ");
   return {

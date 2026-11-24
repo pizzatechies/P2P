@@ -18,6 +18,8 @@ import {
 import { getRails, mpesaCallbackToken } from "../services/rails/index.js";
 import { skrillOutcome, verifySkrillSignature } from "../services/rails/skrill.js";
 import { verifyStripeSignature } from "../services/rails/stripe.js";
+import { applyTapPayment } from "../services/tapToPay.js";
+import { applyAuthorizationUpdate, applyCardUpdate, applyToken, applyTransaction, decideAuthorization, type StripeAuthorization, type StripeToken, type StripeTransaction } from "../services/cards.js";
 
 interface StripeEvent {
   id: string;
@@ -64,6 +66,12 @@ export function webhookRoutes(ctx: Ctx) {
     }
     const event = JSON.parse(raw.toString("utf8")) as StripeEvent;
     const session = event.data?.object;
+    // Tap to Pay payments (card-present PaymentIntents created for a business).
+    const intent = event.data?.object as unknown as { id?: string; status?: string; metadata?: Record<string, string> } | undefined;
+    if (event.type?.startsWith("payment_intent.") && intent?.id && intent.metadata?.aurex_tap_payment) {
+      applyTapPayment(ctx, { id: intent.id, status: intent.status, metadata: intent.metadata });
+      return res.json({ received: true });
+    }
     const ext = session?.id ? findExternalByProviderRef(ctx, "stripe", session.id) : undefined;
 
     if (ext) {
@@ -84,6 +92,49 @@ export function webhookRoutes(ctx: Ctx) {
       }
     }
     // Always 2xx for verified events so Stripe doesn't retry ones we deliberately ignore.
+    res.json({ received: true });
+  });
+
+  /**
+   * Aurex cards (Stripe Issuing). `issuing_authorization.request` is answered in the response itself,
+   * within Stripe's two seconds: approved only if the money is in the customer's wallet (and held).
+   */
+  r.post("/stripe-issuing", async (req, res) => {
+    const secret = ctx.config.STRIPE_ISSUING_WEBHOOK_SECRET;
+    if (!secret || !ctx.config.CARD_ISSUING) return res.status(404).json({ error: { code: "not_found", message: "Card webhooks not configured" } });
+    const raw = req.body as Buffer;
+    if (!Buffer.isBuffer(raw) || !verifyStripeSignature(raw, req.get("stripe-signature"), secret)) {
+      return res.status(400).json({ error: { code: "bad_signature", message: "Invalid signature" } });
+    }
+    const event = JSON.parse(raw.toString("utf8")) as { type?: string; data?: { object?: unknown } };
+    const obj = event.data?.object;
+    if (!obj || typeof obj !== "object") return res.json({ received: true });
+    switch (event.type) {
+      case "issuing_authorization.request": {
+        let approved = false;
+        try {
+          approved = (await decideAuthorization(ctx, obj as StripeAuthorization)).approved;
+        } catch (err) {
+          console.error(`[cards] authorization ${(obj as { id?: string }).id}: ${(err as Error).message}`);
+        }
+        res.set("Stripe-Version", ctx.config.STRIPE_API_VERSION).json({ approved });
+        return;
+      }
+      case "issuing_authorization.created":
+      case "issuing_authorization.updated":
+        applyAuthorizationUpdate(ctx, obj as StripeAuthorization);
+        break;
+      case "issuing_transaction.created":
+        applyTransaction(ctx, obj as StripeTransaction);
+        break;
+      case "issuing_token.created":
+      case "issuing_token.updated":
+        applyToken(ctx, obj as StripeToken);
+        break;
+      case "issuing_card.updated":
+        applyCardUpdate(ctx, obj as { id: string; status?: string });
+        break;
+    }
     res.json({ received: true });
   });
 

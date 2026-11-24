@@ -3,6 +3,8 @@ import { api } from "../api";
 import { Icon } from "../components/icons";
 import { ActivityList, RequestDialog, SendDialog, SplitDialog } from "../components/money";
 import { PayLinkCard } from "../components/share";
+import { ScanToPayDialog, useNfc } from "../components/TapToPay";
+import { TakePaymentDialog, useTapToPay } from "../components/TakePayment";
 import { Empty, StatusPill } from "../components/ui";
 import { money, timeAgo } from "../format";
 import { useLoad, useToast } from "../state";
@@ -10,7 +12,9 @@ import type { Activity, PaymentRequest } from "../types";
 
 export function PaymentsPage() {
   const toast = useToast();
-  const [dialog, setDialog] = useState<null | "send" | "request" | "split">(null);
+  const [dialog, setDialog] = useState<null | "send" | "request" | "split" | "tap" | "take">(null);
+  const { status: nfc } = useNfc();
+  const tap = useTapToPay();
   const [sendTo, setSendTo] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const requests = useLoad(() => api.get<{ incoming: PaymentRequest[]; outgoing: PaymentRequest[] }>("/api/payments/requests"));
@@ -52,6 +56,8 @@ export function PaymentsPage() {
           <button className="btn" onClick={() => { setSendTo(""); setDialog("send"); }}><Icon.Send size={16} /> Send money</button>
           <button className="btn secondary" onClick={() => setDialog("request")}>Request money</button>
           <button className="btn secondary" onClick={() => setDialog("split")}>Split a bill</button>
+          {nfc?.canRead && <button className="btn secondary" onClick={() => setDialog("tap")}>Tap to pay</button>}
+          {tap && <button className="btn secondary" onClick={() => setDialog("take")}>Take a card payment</button>}
         </div>
       </div>
 
@@ -126,6 +132,8 @@ export function PaymentsPage() {
       {dialog === "send" && <SendDialog initialTo={sendTo} onClose={() => setDialog(null)} onDone={refresh} />}
       {dialog === "request" && <RequestDialog onClose={() => setDialog(null)} onDone={refresh} />}
       {dialog === "split" && <SplitDialog onClose={() => setDialog(null)} onDone={refresh} />}
+      {dialog === "tap" && <ScanToPayDialog onClose={() => setDialog(null)} />}
+      {dialog === "take" && tap && <TakePaymentDialog tap={tap} onClose={() => setDialog(null)} onDone={refresh} />}
     </>
   );
 }

@@ -993,4 +993,86 @@ export const migrations: Migration[] = [
   ALTER TABLE users ADD COLUMN push_account INTEGER NOT NULL DEFAULT 1;
   ALTER TABLE users ADD COLUMN push_opens_app INTEGER NOT NULL DEFAULT 0;
   `,
+  // 33: Aurex cards (Stripe Issuing): the card, each authorisation and what's held for it, settled
+  //     transactions, and the phone wallets (Apple Pay, Google Pay, Samsung Pay) it has been added to.
+  `
+  CREATE TABLE cards (
+    id                     TEXT PRIMARY KEY,
+    user_id                TEXT NOT NULL REFERENCES users(id),
+    provider               TEXT NOT NULL,
+    provider_card_id       TEXT NOT NULL UNIQUE,
+    provider_cardholder_id TEXT NOT NULL,
+    brand                  TEXT,
+    last4                  TEXT,
+    exp_month              INTEGER,
+    exp_year               INTEGER,
+    currency               TEXT NOT NULL,
+    status                 TEXT NOT NULL CHECK (status IN ('active','frozen','canceled')),
+    daily_limit            INTEGER,
+    created_at             TEXT NOT NULL,
+    updated_at             TEXT NOT NULL
+  );
+  CREATE INDEX cards_user ON cards(user_id, status);
+  CREATE TABLE card_authorizations (
+    id                TEXT PRIMARY KEY,
+    card_id           TEXT NOT NULL REFERENCES cards(id),
+    user_id           TEXT NOT NULL,
+    currency          TEXT NOT NULL,
+    amount            INTEGER NOT NULL,
+    held              INTEGER NOT NULL DEFAULT 0,
+    merchant_name     TEXT,
+    merchant_city     TEXT,
+    merchant_country  TEXT,
+    merchant_category TEXT,
+    wallet            TEXT,
+    approved          INTEGER NOT NULL,
+    decline_reason    TEXT,
+    status            TEXT NOT NULL CHECK (status IN ('pending','closed','reversed','declined')),
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+  );
+  CREATE INDEX card_auths_card ON card_authorizations(card_id, created_at);
+  CREATE TABLE card_transactions (
+    id               TEXT PRIMARY KEY,
+    card_id          TEXT NOT NULL REFERENCES cards(id),
+    user_id          TEXT NOT NULL,
+    authorization_id TEXT,
+    type             TEXT NOT NULL CHECK (type IN ('capture','refund')),
+    currency         TEXT NOT NULL,
+    amount           INTEGER NOT NULL CHECK (amount > 0),
+    merchant_name    TEXT,
+    journal_id       TEXT,
+    created_at       TEXT NOT NULL
+  );
+  CREATE TABLE card_wallet_tokens (
+    id         TEXT PRIMARY KEY,
+    card_id    TEXT NOT NULL REFERENCES cards(id),
+    wallet     TEXT,
+    status     TEXT NOT NULL,
+    device     TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  `,
+  // 34: Tap to Pay: contactless payments a business takes on its phone (Stripe Terminal).
+  `
+  CREATE TABLE tap_payments (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id),
+    provider_ref TEXT NOT NULL UNIQUE,
+    currency     TEXT NOT NULL,
+    amount       INTEGER NOT NULL CHECK (amount > 0),
+    fee          INTEGER NOT NULL DEFAULT 0,
+    note         TEXT,
+    status       TEXT NOT NULL CHECK (status IN ('pending','succeeded','failed','canceled')),
+    journal_id   TEXT,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+  );
+  CREATE INDEX tap_payments_user ON tap_payments(user_id, created_at);
+  `,
+  // 35: Card designs: the customer picks a Gold or a Black Aurex card.
+  `
+  ALTER TABLE cards ADD COLUMN design TEXT NOT NULL DEFAULT 'gold' CHECK (design IN ('gold','black'));
+  `,
 ];

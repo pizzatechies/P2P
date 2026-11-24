@@ -15,7 +15,7 @@ import {
   type JournalRow,
 } from "./ledger.js";
 import { getRail, getRails } from "./rails/index.js";
-import type { PayoutDestination } from "./rails/types.js";
+import type { PayoutDestination, Wallet } from "./rails/types.js";
 import { limitsFor } from "./kyc.js";
 import { hasOpenSeriousAlert, monitor, notifyAdmins } from "./monitoring.js";
 import { addAlert } from "./security.js";
@@ -38,7 +38,7 @@ export async function dailyOutflowUsdMinor(ctx: Ctx, userId: string) {
      JOIN accounts a ON a.id = e.account_id
      JOIN journals j ON j.id = e.journal_id
      WHERE a.owner_type = 'user' AND a.user_id = ? AND e.amount < 0
-       AND j.kind IN ('transfer', 'withdrawal') AND e.created_at >= ?
+       AND j.kind IN ('transfer', 'withdrawal', 'card_hold', 'card_capture') AND e.created_at >= ?
      GROUP BY e.currency`,
     userId,
     since,
@@ -70,7 +70,7 @@ async function oneAtATime<T>(userId: string, fn: () => Promise<T>): Promise<T> {
 }
 
 /** Per-payment and 24-hour limits, which depend on the user's verification level (or an admin override). */
-async function checkLimits(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
+export async function checkLimits(ctx: Ctx, userId: string, currency: string, amountMinor: number) {
   const limits = limitsFor(ctx, getUserRow(ctx, userId));
   const usd = await toUsdMinor(ctx, currency, amountMinor);
   if (usd > Math.round(limits.txUsd * 100)) {
@@ -594,10 +594,11 @@ export function listExternal(ctx: Ctx, userId: string) {
   ).map(externalView);
 }
 
-export async function deposit(ctx: Ctx, input: { userId: string; rail: string; currency: string; amountMinor: number; phone?: string }) {
+export async function deposit(ctx: Ctx, input: { userId: string; rail: string; currency: string; amountMinor: number; phone?: string; method?: Wallet }) {
   const currency = assertCurrency(input.currency).code;
   if (input.amountMinor <= 0) throw badRequest("Amount must be greater than zero");
   const rail = getRail(ctx, input.rail, "deposit", currency);
+  if (input.method && !rail.wallets?.includes(input.method)) throw badRequest(`${rail.name} doesn't offer ${input.method === "apple_pay" ? "Apple Pay" : "Google Pay"} here`);
   const user = getUserRow(ctx, input.userId);
   assertActive(user, "sender");
   const depositLimits = limitsFor(ctx, user);
@@ -625,7 +626,7 @@ export async function deposit(ctx: Ctx, input: { userId: string; rail: string; c
 
   let result;
   try {
-    result = await rail.createDeposit!({ externalId: id, userId: user.id, email: user.email, currency, amount: input.amountMinor, phone: input.phone });
+    result = await rail.createDeposit!({ externalId: id, userId: user.id, email: user.email, currency, amount: input.amountMinor, phone: input.phone, method: input.method });
   } catch (err) {
     run(
       ctx.db,
@@ -1015,12 +1016,17 @@ export function listActivity(ctx: Ctx, userId: string, opts: { limit?: number; b
       const outgoing = meta.from === userId;
       direction = outgoing ? "out" : "in";
       counterparty = profile(String(outgoing ? meta.to : meta.from));
-    } else if (j.kind === "deposit" || j.kind === "withdrawal_reversal") direction = "in";
-    else if (j.kind === "withdrawal") direction = "out";
+    } else if (j.kind === "deposit" || j.kind === "withdrawal_reversal" || j.kind === "card_release" || j.kind === "card_refund" || j.kind === "card_sale") direction = "in";
+    else if (j.kind === "withdrawal" || j.kind === "card_hold" || j.kind === "card_capture") direction = "out";
 
     let status = "completed";
     if (typeof meta.externalId === "string" && j.kind === "withdrawal") {
       status = one<{ status: string }>(ctx.db, "SELECT status FROM external_transfers WHERE id = ?", meta.externalId)?.status ?? status;
+    }
+    // A card payment stays "pending" until the shop settles it.
+    if (j.kind === "card_hold" && typeof meta.authorizationId === "string") {
+      const auth = one<{ status: string }>(ctx.db, "SELECT status FROM card_authorizations WHERE id = ?", meta.authorizationId);
+      if (auth?.status === "pending") status = "pending";
     }
     return {
       id: j.id,

@@ -65,6 +65,8 @@ const DepositBody = z.object({
   amount: amountField,
   currency: currencyField,
   phone: z.string().trim().max(20).optional(),
+  /** Open the checkout on Apple Pay or Google Pay. */
+  method: z.enum(["apple_pay", "google_pay"]).optional(),
 });
 
 const detailsField = z
@@ -273,8 +275,9 @@ export function paymentRoutes(ctx: Ctx) {
       currency: body.currency,
       amountMinor: toMinor(body.amount, body.currency),
       phone: body.phone,
+      method: body.method,
     });
-    audit(ctx, req.user!.id, "payments.deposit", { id: result.transfer.id, rail: body.rail }, req.ip);
+    audit(ctx, req.user!.id, "payments.deposit", { id: result.transfer.id, rail: body.rail, ...(body.method ? { method: body.method } : {}) }, req.ip);
     res.status(201).json(result);
   });
 

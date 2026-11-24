@@ -1,6 +1,6 @@
 import { HttpError } from "../../lib/errors.js";
 import { fromMinor } from "../../lib/money.js";
-import type { PaymentRail } from "./types.js";
+import type { PaymentRail, Wallet } from "./types.js";
 
 /**
  * Flutterwave (v3): card, bank-transfer and mobile-money deposits through Flutterwave Standard
@@ -11,7 +11,7 @@ import type { PaymentRail } from "./types.js";
  */
 const CURRENCIES = ["NGN", "GHS", "KES", "UGX", "TZS", "ZAR", "ZMW", "USD", "EUR", "GBP"];
 
-export function flutterwaveRail(opts: { secretKey: string; appUrl: string; baseUrl: string }): PaymentRail {
+export function flutterwaveRail(opts: { secretKey: string; appUrl: string; baseUrl: string; wallets?: Wallet[] }): PaymentRail {
   async function call<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
     let res: Response;
     try {
@@ -39,6 +39,7 @@ export function flutterwaveRail(opts: { secretKey: string; appUrl: string; baseU
     currencies: CURRENCIES,
     depositInput: "none",
     payoutInput: "bank_code",
+    wallets: opts.wallets ?? [],
 
     async createDeposit(input) {
       const redirect = new URL("/app/wallet", opts.appUrl);
@@ -53,6 +54,8 @@ export function flutterwaveRail(opts: { secretKey: string; appUrl: string; baseU
           redirect_url: redirect.toString(),
           customer: { email: input.email },
           customizations: { title: "Aurex wallet top-up" },
+          // Open the checkout straight on the wallet the customer picked.
+          ...(input.method ? { payment_options: input.method === "apple_pay" ? "applepay" : "googlepay" } : {}),
           meta: { external_id: input.externalId, user_id: input.userId },
         },
       });

@@ -6,7 +6,15 @@ export interface DepositInput {
   amount: number; // minor units
   /** Phone number for push-to-phone rails (M-Pesa STK Push, MTN MoMo). */
   phone?: string;
+  /** A wallet the customer picked (Apple Pay, Google Pay): the hosted checkout opens on it. */
+  method?: Wallet;
 }
+
+export type Wallet = "apple_pay" | "google_pay";
+export const WALLETS: Wallet[] = ["apple_pay", "google_pay"];
+/** The wallets named in a config list such as "apple_pay,google_pay". */
+export const parseWallets = (list: string) =>
+  list.split(",").map((w) => w.trim().toLowerCase()).filter((w): w is Wallet => (WALLETS as string[]).includes(w));
 
 export interface DepositResult {
   status: "completed" | "pending";
@@ -95,6 +103,8 @@ export interface PaymentRail {
   payoutLabel?: string;
   /** Example phone format for phone inputs. */
   phoneHint?: string;
+  /** Wallets this rail's checkout can open on directly (Apple Pay, Google Pay). */
+  wallets?: Wallet[];
   createDeposit?(input: DepositInput): Promise<DepositResult>;
   createPayout?(input: PayoutInput): Promise<PayoutResult>;
   /** Asks the provider for the real state of a pending deposit (never trust a redirect or webhook alone). */

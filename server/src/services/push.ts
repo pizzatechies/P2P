@@ -167,12 +167,13 @@ export function sendTestPush(ctx: Ctx, userId: string) {
 // ---------------------------------------------------------------------------
 // What each in-app alert looks like as a notification
 // ---------------------------------------------------------------------------
-const SECURITY_KINDS = new Set(["new_device", "new_payee", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "security_hold", "admin"]);
+const SECURITY_KINDS = new Set(["new_device", "new_payee", "account_locked", "password_changed", "2fa_enabled", "2fa_disabled", "recovery_code_used", "recovery_codes", "security_hold", "admin", "card_wallet"]);
 
 /** The notification for an in-app alert (security, support, verification, account messages). */
 export function alertPush(kind: string, message: string): PushMessage {
   if (SECURITY_KINDS.has(kind)) return { category: "account", title: "Aurex security alert", message, path: "/app/settings#security", tags: ["warning"], priority: 4 };
   if (kind === "support") return { category: "account", title: "Aurex support", message, path: "/app/help", tags: ["speech_balloon"] };
   if (kind === "upgrade") return { category: "account", title: "Aurex", message, path: "/app/upgrade" };
+  if (kind === "card") return { category: "account", title: "Aurex card", message, path: "/app/card", tags: ["credit_card"] };
   return { category: "account", title: "Aurex", message, path: "/app" };
 }

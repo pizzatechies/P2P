@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { deviceWallet, isNative, openCheckout } from "../native";
 import { api, ApiError, idempotencyKey } from "../api";
 import { money, timeAgo } from "../format";
 import { useAuth, useToast } from "../state";
@@ -300,6 +301,10 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState(user?.defaultCurrency ?? "USD");
   const [phone, setPhone] = useState(remembered);
+  // Apple Pay or Google Pay, when this device has it and a payment method offers it.
+  const wallet = deviceWallet();
+  const walletRail = wallet ? rails.find((r) => r.wallets?.includes(wallet)) : undefined;
+  const [method, setMethod] = useState<"apple_pay" | "google_pay" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState<PendingDeposit | null>(null);
@@ -356,9 +361,18 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
         amount,
         currency,
         ...(needsPhone ? { phone } : {}),
+        ...(method ? { method } : {}),
       });
       if (needsPhone) remember(phone);
       if (r.redirectUrl) {
+        if (isNative) {
+          // In the app, checkout opens in the browser sheet (where Apple Pay and Google Pay work); this
+          // window then waits for the payment to be confirmed.
+          await openCheckout(r.redirectUrl);
+          setWaiting({ id: r.transfer.id, instructions: "Finish paying in the window that opened. Your wallet updates here when it's done.", amount, currency });
+          onDone();
+          return;
+        }
         window.location.href = r.redirectUrl;
         return;
       }
@@ -407,8 +421,26 @@ export function DepositDialog({ onClose, onDone }: { onClose: () => void; onDone
   return (
     <Modal title="Add money" onClose={onClose}>
       <form className="stack" onSubmit={submit}>
+        {wallet && walletRail && (
+          <div className="stack" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className={`wallet-btn ${method === wallet ? "on" : ""}`}
+              aria-pressed={method === wallet}
+              onClick={() => {
+                setRail(walletRail.id);
+                setMethod(method === wallet ? null : wallet);
+              }}
+            >
+              {wallet === "apple_pay" ? "Apple Pay" : "Google Pay"}
+            </button>
+            <p className="faint small" style={{ margin: 0, textAlign: "center" }}>
+              {method ? `Paying with ${wallet === "apple_pay" ? "Apple Pay" : "Google Pay"} through ${walletRail.name}. Tap again for other ways.` : "or choose another way below"}
+            </p>
+          </div>
+        )}
         <Field label="Method" hint={selected?.description}>
-          <select className="input" value={rail} onChange={(e) => setRail(e.target.value)}>
+          <select className="input" value={rail} onChange={(e) => { setRail(e.target.value); setMethod(null); }}>
             {rails.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
@@ -735,6 +767,15 @@ function describe(a: Activity) {
       return "Withdrawal returned";
     case "fx":
       return "Currency conversion";
+    case "card_hold":
+    case "card_capture":
+      return a.memo ?? "Card payment";
+    case "card_release":
+      return "Card payment returned";
+    case "card_refund":
+      return "Card refund";
+    case "card_sale":
+      return "Tap to Pay sale";
     default:
       return a.kind;
   }

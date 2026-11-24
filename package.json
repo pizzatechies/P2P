@@ -20,5 +20,10 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "overrides": {
+    "@stripe/terminal-js": {
+      "ws": "6.2.6"
+    }
   }
 }

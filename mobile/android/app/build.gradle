@@ -10,6 +10,8 @@ android {
         // Google Play needs a higher versionCode for every upload: CI passes its run number.
         versionCode((System.getenv("AUREX_VERSION_CODE") ?: "1").toInteger())
         versionName "1.0"
+        // NFC pay links (https://<this host>/pay/...) open the app; the same server the pages talk to.
+        manifestPlaceholders = [aurexHost: new URI(System.getenv("AUREX_API_ORIGIN") ?: "https://aurex.dpdns.org").host]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
