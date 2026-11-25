@@ -13,7 +13,7 @@ import { listStatus, refreshSanctionsLists, screenName, setOwnList } from "../se
 import { z } from "zod";
 import type { Ctx } from "../context.js";
 import { all, one, run } from "../db/index.js";
-import { badRequest, HttpError, notFound } from "../lib/errors.js";
+import { badRequest, HttpError, notFound, unprocessable } from "../lib/errors.js";
 import { fromMinor } from "../lib/money.js";
 import { parse } from "../lib/validate.js";
 import { requireAdmin, requireRecentAuth } from "../middleware/auth.js";
@@ -55,10 +55,48 @@ import {
 } from "../services/safeguarding.js";
 import { tradeHistory, tradingActivity, verifyTradingRecords } from "../services/trading/records.js";
 import { audit } from "../services/users.js";
+import { testCredentials } from "../services/ai/gateway.js";
+import { BYOK_PROVIDERS, getProvider } from "../services/ai/providers.js";
+import { deleteServerKey, listServerKeys, saveServerKey } from "../services/keys.js";
 
 export function adminRoutes(ctx: Ctx) {
   const r = Router();
   r.use(requireAdmin(ctx));
+
+  // ---- AI for everyone: provider keys that serve all customers on the free allowance ----
+  const serverKeyView = () => {
+    const saved = new Map(listServerKeys(ctx).map((k) => [k.provider, k]));
+    return {
+      freeDailyRequests: ctx.config.AI_FREE_DAILY_REQUESTS,
+      providers: BYOK_PROVIDERS.map((id) => {
+        const p = getProvider(id)!;
+        const inApp = saved.get(id);
+        const inEnv = Boolean(p.envKey && ctx.config[p.envKey]);
+        return { id, name: p.name, keyUrl: p.keyUrl ?? null, source: inApp ? "app" : inEnv ? "env" : null, hint: inApp?.hint ?? null, setAt: inApp?.createdAt ?? null };
+      }),
+    };
+  };
+  r.get("/ai-keys", (_req, res) => {
+    res.json(serverKeyView());
+  });
+  r.put("/ai-keys/:provider", requireRecentAuth(ctx), async (req, res) => {
+    const provider = String(req.params.provider);
+    if (!BYOK_PROVIDERS.includes(provider)) throw badRequest("Unknown AI provider");
+    const { apiKey } = parse(z.object({ apiKey: z.string().trim().min(8).max(500) }), req.body);
+    try {
+      await testCredentials(ctx, provider, apiKey);
+    } catch (err) {
+      throw unprocessable("key_rejected", (err as Error).message);
+    }
+    saveServerKey(ctx, provider, apiKey, req.user!.id);
+    audit(ctx, req.user!.id, "admin.ai_key_saved", { provider }, req.ip);
+    res.json(serverKeyView());
+  });
+  r.delete("/ai-keys/:provider", requireRecentAuth(ctx), (req, res) => {
+    deleteServerKey(ctx, String(req.params.provider));
+    audit(ctx, req.user!.id, "admin.ai_key_deleted", { provider: String(req.params.provider) }, req.ip);
+    res.json(serverKeyView());
+  });
 
   r.get("/overview", (_req, res) => {
     const users = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM users")!.n;

@@ -87,6 +87,8 @@ describe("identity checks for company directors and owners", () => {
     const details = { dateOfBirth: "1979-11-20", nationality: "KE", idType: "national_id", idNumber: "12345678", idCountry: "KE", idExpiry: "2033-01-01", phone: "+254 700 000 001" };
     expect((await otieno.details({ ...details, consent: false })).status).toBe(400);
     expect((await otieno.details({ ...details, idExpiry: "2020-01-01", consent: true })).body.error.message).toMatch(/expired/);
+    const { idExpiry: _expiry, ...withoutExpiry } = details;
+    expect((await otieno.details({ ...withoutExpiry, consent: true })).body.detailsSaved).toBe(true);
     expect((await otieno.details({ ...details, consent: true })).body.detailsSaved).toBe(true);
     expect((await otieno.submit()).body.error.code).toBe("documents_missing");
     expect((await otieno.upload("id_front", pdf)).status).toBe(400); // photos only

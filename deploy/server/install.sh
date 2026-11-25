@@ -67,6 +67,8 @@ setting() { local v="${!1:-}"; [ -n "$v" ] || v="$(existing "$1")"; printf '%s' 
 PARAM_PREFIX="$(setting PARAM_PREFIX)"
 BACKUP_BUCKET="$(setting BACKUP_BUCKET)"
 PAYMENT_RAILS="$(setting PAYMENT_RAILS sandbox)"
+# Test cards come with a test-money server; switch to CARD_ISSUING=stripe (or false) in .env when you go live.
+CARD_ISSUING="$(setting CARD_ISSUING "$( [ "$PAYMENT_RAILS" = sandbox ] && echo sandbox || echo false)")"
 AWS_REGION="$(setting AWS_REGION)"
 if [ -z "$AWS_REGION" ] && { [ -n "$BACKUP_BUCKET" ] || [ -n "$PARAM_PREFIX" ]; }; then
   AWS_REGION="$(imds placement/region || true)"
@@ -182,7 +184,7 @@ done
 
 log "Writing $ENV_FILE"
 # Keep any extra settings you added by hand (provider keys etc.); rewrite only the managed ones.
-MANAGED='^(DOMAIN|ACME_EMAIL|APP_URL|ADMIN_EMAILS|ADMIN_SETUP_CODE|MASTER_KEY|PAYMENT_RAILS|BACKUP_BUCKET|AWS_REGION|PARAM_PREFIX|COMPOSE_PROFILES|NODE_IMAGE|PUSH_NOTIFICATIONS|PUSH_DOMAIN|PUSH_NTFY_URL|PUSH_NTFY_PUBLIC_URL)='
+MANAGED='^(DOMAIN|ACME_EMAIL|APP_URL|ADMIN_EMAILS|ADMIN_SETUP_CODE|MASTER_KEY|PAYMENT_RAILS|CARD_ISSUING|BACKUP_BUCKET|AWS_REGION|PARAM_PREFIX|COMPOSE_PROFILES|NODE_IMAGE|PUSH_NOTIFICATIONS|PUSH_DOMAIN|PUSH_NTFY_URL|PUSH_NTFY_PUBLIC_URL)='
 DROP_RE="^($(IFS='|'; echo "${DROP[*]}"))="
 EXTRA="$( [ -f "$ENV_FILE" ] && grep -Ev "$MANAGED" "$ENV_FILE" | grep -Ev '^# (Managed|Add|From Parameter Store)' \
   | { if [ "${#DROP[@]}" -gt 0 ]; then grep -Ev "$DROP_RE"; else cat; fi; } || true)"
@@ -196,6 +198,7 @@ umask 077
   echo "ADMIN_SETUP_CODE=$ADMIN_SETUP_CODE"
   echo "MASTER_KEY=$MASTER_KEY"
   echo "PAYMENT_RAILS=$PAYMENT_RAILS"
+  echo "CARD_ISSUING=$CARD_ISSUING"
   echo "BACKUP_BUCKET=$BACKUP_BUCKET"
   echo "AWS_REGION=$AWS_REGION"
   echo "PARAM_PREFIX=$PARAM_PREFIX"

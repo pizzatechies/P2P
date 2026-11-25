@@ -127,6 +127,7 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .nav-link svg { flex: none; }
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 0; border-top: 1px solid var(--border); }
 .user-chip { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sidebar .nav-menu-btn, .app-menu, .app-menu-backdrop { display: none; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--surface-3); display: grid; place-items: center; font-weight: 650; font-size: 13px; color: var(--text-2); flex: none; }
 .user-chip .who { min-width: 0; }
 .user-chip .who div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -148,6 +149,7 @@ code, .mono { font-family: var(--mono); font-size: 0.92em; }
 .design-option.on { border-color: var(--brand); background: var(--brand-soft); }
 .design-option:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .aurex-card-brand { font-weight: 800; font-size: 22px; letter-spacing: -0.02em; }
+.aurex-card-test { margin-left: 8px; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 4px; background: rgb(0 0 0 / 0.18); }
 .aurex-card-net { font-weight: 700; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; }
 .aurex-card-number { font-family: ui-monospace, Menlo, monospace; font-size: clamp(16px, 4.6vw, 22px); letter-spacing: 2px; }
 .aurex-card-frozen { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(255 255 255 / .35); font-weight: 800; font-size: 20px; letter-spacing: .1em; text-transform: uppercase; }
@@ -229,8 +231,9 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .hint { font-size: 12px; color: var(--text-3); font-weight: 400; }
 .error-text { font-size: 13px; color: var(--bad); }
 
-.seg { display: inline-flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; padding: 3px; background: var(--surface-2); border-radius: 10px; gap: 2px; border: 1px solid var(--border); }
-.seg button { flex-shrink: 0; white-space: nowrap; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 560; padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+/* Segmented choices wrap onto a second row on narrow screens rather than hiding options off the edge. */
+.seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 3px; background: var(--surface-2); border-radius: 10px; gap: 2px; border: 1px solid var(--border); }
+.seg button { flex: 1 0 auto; white-space: nowrap; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; font-weight: 560; padding: 6px 12px; border-radius: 7px; cursor: pointer; }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .seg.buy-sell button.on.buy { background: var(--good); color: #fff; }
 .seg.buy-sell button.on.sell { background: var(--bad); color: #fff; }
@@ -296,6 +299,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .conv-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .chat-main { display: flex; flex-direction: column; min-height: 0; padding: 0; }
 .chat-toolbar { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.chat-toolbar > *, .chat-toolbar select { min-width: 0; max-width: 100%; }
 .chat-scroll { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 18px; }
 .msg { max-width: 780px; }
 .msg.user { align-self: flex-end; background: var(--brand-soft); padding: 10px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
@@ -352,17 +356,40 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
-  .shell { grid-template-columns: 1fr; }
+  /* Phones: one row along the top with the main pages and a menu for the rest. The bar's row keeps
+     its own height (auto) so a short or still-loading page can't stretch it down the screen. */
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar {
-    position: sticky; top: 0; z-index: 20; height: auto; flex-direction: row; align-items: center;
-    padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--border); overflow-x: auto; gap: 2px;
+    position: sticky; top: 0; z-index: 20; height: auto; flex-direction: row; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--border); gap: 2px;
   }
   .brand { padding: 0 8px 0 0; }
   .brand span { display: none; }
-  .nav-link { padding: 8px; }
+  .nav-link { padding: 9px; }
   .nav-link .label { display: none; }
-  .sidebar-foot { margin: 0 0 0 auto; border: 0; padding: 0; flex-direction: row; }
-  .sidebar-foot .user-chip { display: none; }
+  .sidebar .nav-link.in-menu, .sidebar-foot { display: none; }
+  .sidebar .nav-menu-btn { display: inline-flex; width: 38px; height: 38px; color: var(--text-2); }
+  .sidebar .nav-menu-btn.open { background: var(--surface-2); color: var(--text); }
+  .app-menu {
+    display: flex; flex-direction: column; gap: 6px; position: absolute; top: 100%; left: 0; right: 0;
+    padding: 8px 12px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+    box-shadow: 0 12px 28px rgb(0 0 0 / 0.12); max-height: calc(100vh - 80px); overflow-y: auto;
+  }
+  .app-menu-backdrop { display: block; position: fixed; inset: 0; z-index: 19; background: rgb(0 0 0 / 0.25); }
+  .app-menu-grid, .app-menu-foot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+  .app-menu-foot { border-top: 1px solid var(--border); padding-top: 8px; }
+  .app-menu-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 10px 12px;
+    border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text);
+    font: inherit; font-weight: 540; text-align: left; cursor: pointer;
+  }
+  .app-menu-item:hover { background: var(--surface-2); text-decoration: none; }
+  .app-menu-item.active { background: var(--brand-soft); color: var(--brand-text); }
+  .app-menu-item svg { flex: none; color: var(--text-2); }
+  .app-menu-item.active svg { color: inherit; }
+  .app-menu-item.user { border-bottom: 1px solid var(--border); border-radius: var(--radius-sm) var(--radius-sm) 0 0; padding-bottom: 12px; }
+  .app-menu-item.user .grow > span { display: block; }
+  .menu-name { font-weight: 600; font-size: 14px; }
   .main { padding: 20px 16px 48px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: minmax(0, 1fr); }
   .span-2 { grid-column: auto; }
@@ -523,16 +550,13 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .footer-legal { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 24px; font-size: 12px; color: var(--text-3); }
 .footer-legal p:first-child { max-width: 760px; }
 
-@media (max-width: 380px) {
-  /* Very narrow phones: the Dashboard icon already links home, so drop the logo to fit every icon. */
-  .sidebar .brand { display: none; }
-  .nav-link { padding: 7px 4px !important; }
+@media (max-width: 360px) {
+  .nav-link { padding: 8px 6px !important; }
 }
 @media (max-width: 440px) {
   .sidebar { padding: 8px; gap: 0; }
   .brand { padding-right: 4px; }
-  .nav-link { padding: 7px 6px; }
-  .sidebar-foot .row { gap: 0 !important; }
+  .nav-link { padding: 8px; }
 }
 @media (max-width: 1000px) {
   .hero-grid, .split, .pricing-layout { grid-template-columns: 1fr; gap: 36px; }
@@ -728,6 +752,7 @@ html.native .modal-backdrop { padding-top: calc(16px + var(--inset-top)); paddin
 html.native .auth-wrap { min-height: calc(100vh - var(--inset-top) - var(--inset-bottom)); }
 @media (max-width: 860px) {
   html.native .sidebar { height: auto; }
+  html.native .app-menu { max-height: calc(100vh - 80px - var(--inset-top) - var(--inset-bottom)); }
   html.native .chat-main { height: calc(100vh - 140px - var(--inset-top) - var(--inset-bottom)); }
 }
 .native-viewer {

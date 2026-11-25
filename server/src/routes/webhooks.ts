@@ -19,7 +19,8 @@ import { getRails, mpesaCallbackToken } from "../services/rails/index.js";
 import { skrillOutcome, verifySkrillSignature } from "../services/rails/skrill.js";
 import { verifyStripeSignature } from "../services/rails/stripe.js";
 import { applyTapPayment } from "../services/tapToPay.js";
-import { applyAuthorizationUpdate, applyCardUpdate, applyToken, applyTransaction, decideAuthorization, type StripeAuthorization, type StripeToken, type StripeTransaction } from "../services/cards.js";
+import { applyAuthorizationUpdate, applyCardUpdate, applyToken, applyTransaction, decideAuthorization, handleBitnobEvent, type BitnobEvent, type StripeAuthorization, type StripeToken, type StripeTransaction } from "../services/cards.js";
+import { verifyWebhook as verifyBitnobWebhook } from "../services/cardIssuers/bitnob.js";
 
 interface StripeEvent {
   id: string;
@@ -96,12 +97,38 @@ export function webhookRoutes(ctx: Ctx) {
   });
 
   /**
+   * Aurex cards on Bitnob (prepaid cards for Africa). Signed with HMAC-SHA512 of the raw body; a 2xx
+   * tells Bitnob it was delivered, so errors answer 500 to have it retried.
+   */
+  r.post("/bitnob", async (req, res) => {
+    const secret = ctx.config.BITNOB_WEBHOOK_SECRET;
+    if (!secret || ctx.config.cardIssuer !== "bitnob") return res.status(404).json({ error: { code: "not_found", message: "Card webhooks not configured" } });
+    const raw = req.body as Buffer;
+    if (!Buffer.isBuffer(raw) || !verifyBitnobWebhook(raw, req.get("x-bitnob-signature"), secret)) {
+      return res.status(401).json({ error: { code: "bad_signature", message: "Invalid signature" } });
+    }
+    let event: BitnobEvent;
+    try {
+      event = JSON.parse(raw.toString("utf8")) as BitnobEvent;
+    } catch {
+      return res.status(400).json({ error: { code: "bad_request", message: "Not JSON" } });
+    }
+    try {
+      await handleBitnobEvent(ctx, event);
+    } catch (err) {
+      console.error(`[cards] bitnob ${event.event ?? "event"} ${event.event_id ?? ""}: ${(err as Error).message}`);
+      return res.status(500).json({ error: { code: "retry", message: "Couldn't process the event yet" } });
+    }
+    res.json({ received: true });
+  });
+
+  /**
    * Aurex cards (Stripe Issuing). `issuing_authorization.request` is answered in the response itself,
    * within Stripe's two seconds: approved only if the money is in the customer's wallet (and held).
    */
   r.post("/stripe-issuing", async (req, res) => {
     const secret = ctx.config.STRIPE_ISSUING_WEBHOOK_SECRET;
-    if (!secret || !ctx.config.CARD_ISSUING) return res.status(404).json({ error: { code: "not_found", message: "Card webhooks not configured" } });
+    if (!secret || ctx.config.cardIssuer !== "stripe") return res.status(404).json({ error: { code: "not_found", message: "Card webhooks not configured" } });
     const raw = req.body as Buffer;
     if (!Buffer.isBuffer(raw) || !verifyStripeSignature(raw, req.get("stripe-signature"), secret)) {
       return res.status(400).json({ error: { code: "bad_signature", message: "Invalid signature" } });

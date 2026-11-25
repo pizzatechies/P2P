@@ -24,7 +24,7 @@
 | What | Examples | Why |
 |---|---|---|
 | **Account details** | Name, @handle, email address, password (stored only as a one-way hash), preferred currency | To run your account and sign you in |
-| **Identity details** | Legal name, date of birth, nationality, phone, address, ID type, number and expiry | Required by anti-money-laundering law to verify who you are |
+| **Identity details** | Legal name, date of birth, nationality, phone, address, ID type and number | Required by anti-money-laundering law to verify who you are |
 | **Identity documents** | Photos or scans of your ID, a selfie, proof of address | The same. Stored encrypted. |
 | **Government record checks** | The result of checking your ID number with the issuing authority (name and birth date on record, match result) | To confirm your identity; done by our identity partner with your consent |
 | **Sanctions and compliance** | Screening results, monitoring alerts, reviewer notes | Legal duty to prevent financial crime. We don't share these with you where the law forbids it. |
@@ -53,7 +53,8 @@ We share only what each needs to do its job:
   - Don't share personal or sensitive details in AI chats.
 - **Email delivery:** [Resend].
 - **Card payments, if you get an Aurex card:**
-  - The card is issued by [Stripe's card-issuing partner]. Your name, billing address, email and phone number go to them to issue it.
+  - The card is issued by [Stripe's card-issuing partner], or for customers in Africa by Bitnob. Your name, billing address, email and phone number go to the issuer to issue it.
+  - Bitnob also checks who you are: your verified date of birth, ID number and ID photos, and your answers about your work and income, go to Bitnob when you apply.
   - Each card payment comes back to us so we can approve it: the merchant, amount and place.
   - The card number is shown to you only in Stripe's secure fields; we never see or store it.
   - If you add the card to Apple Wallet, Google Wallet or Samsung Wallet, that wallet's provider handles it under its own terms. We're told which wallet and device, so we can warn you if it wasn't you.

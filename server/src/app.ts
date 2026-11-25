@@ -85,7 +85,7 @@ export function createApp(config: Config, db: DB = openDb(config.DATABASE_PATH))
   const liveSelfie = Boolean(config.SMILEID_LIVENESS && config.SMILEID_PARTNER_ID && config.SMILEID_API_KEY);
   const SMILE_MODELS = "https://web-models.smileidentity.com";
   // Aurex cards show the card number in Stripe's own secure fields (Stripe.js and its frames).
-  const cardFields = Boolean(config.CARD_ISSUING && config.STRIPE_PUBLISHABLE_KEY);
+  const cardFields = Boolean(config.cardIssuer === "stripe" && config.STRIPE_PUBLISHABLE_KEY);
   const STRIPE_JS = "https://js.stripe.com";
   if (config.TRUST_PROXY) app.set("trust proxy", 1);
 

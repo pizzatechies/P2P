@@ -776,6 +776,10 @@ function describe(a: Activity) {
       return "Card refund";
     case "card_sale":
       return "Tap to Pay sale";
+    case "card_load":
+      return "Loaded onto your card";
+    case "card_unload":
+      return "Back from your card";
     default:
       return a.kind;
   }

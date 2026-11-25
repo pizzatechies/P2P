@@ -43,7 +43,7 @@ function ModelPicker({ providers, value, onChange }: { providers: Provider[]; va
     <div className="row wrap" style={{ gap: 8 }}>
       <select
         className="input"
-        style={{ width: "auto", height: 34, fontSize: 14 }}
+        style={{ width: "auto", maxWidth: "100%", minWidth: 0, height: 34, fontSize: 14 }}
         value={value.provider}
         onChange={(e) => {
           const p = providers.find((x) => x.id === e.target.value)!;

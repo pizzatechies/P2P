@@ -223,7 +223,7 @@ Everything about a customer's account lives on the **Account** page (click your 
 
 **Statements.** Customers pick a month and a wallet and get the opening balance, every movement and the closing balance, built from the ledger. The page prints cleanly, so "Save as PDF" in the browser gives a PDF statement, and there's a CSV download. Cells that would start a spreadsheet formula are neutralised.
 
-**Keeping details current.** A verified customer is asked to update their identity details when their ID expires, or every `KYC_REFRESH_YEARS` (3 by default; `KYC_REFRESH_HIGH_RISK_YEARS`, 1, for confirmed PEPs and customers with an escalated case).
+**Keeping details current.** The identity check doesn't ask for the ID's expiry date. A verified customer is asked to update their identity details every `KYC_REFRESH_YEARS` (3 by default; `KYC_REFRESH_HIGH_RISK_YEARS`, 1, for confirmed PEPs and customers with an escalated case).
 - **Reminders:** in the app and by email, 30 days before and on the due date.
 - **After `KYC_REFRESH_GRACE_DAYS` (30):** sending and withdrawing pause until they re-verify with fresh photos. The grace period runs from their first reminder too, so nobody is paused without warning. Receiving keeps working, and nothing is held while an update is being reviewed.
 - **Admin:** a list shows who is due, overdue or paused. `KYC_REFRESH_YEARS=0` switches it off.
@@ -396,6 +396,15 @@ Phone notifications go through [ntfy](https://ntfy.sh), an open-source push serv
 - **Setup:** `deploy/server/install.sh` runs ntfy at `push.<DOMAIN>` once that name's DNS points at the server (sslip.io addresses work straight away). Or point `PUSH_NTFY_URL` and `PUSH_NTFY_PUBLIC_URL` at any ntfy server.
 - **Reliability:** a notification that can't be sent never holds up a payment; the in-app alert and email still go out.
 
+### AI for everyone
+
+- **What it does:** with no AI keys, the AI Hub runs an offline demo assistant and the trading analyst and Autopilot use a transparent rule-based model. Add a provider key to switch on real AI for every customer.
+- **Easiest way, from the app:** Admin → AI for everyone. Pick a provider, paste its key and save. Google Gemini and Groq have free tiers.
+  - The key is checked with the provider first, then stored encrypted (`MASTER_KEY`); only its last four characters are shown.
+  - It takes the place of the same provider's key in `.env`.
+- **Who can use it:** every customer, up to `AI_FREE_DAILY_REQUESTS` requests a day each (Aurex Pro raises it). Customers' own keys under Settings → AI keys are never limited. `AI_FREE_MODELS` can restrict which models the shared key serves.
+- **Real stock prices for trading:** add free Alpaca market-data keys (`ALPACA_DATA_KEY_ID`, `ALPACA_DATA_SECRET_KEY`), or each customer can connect their own under Settings. Crypto prices are live from Coinbase without a key.
+
 ### Tap to pay: NFC, Apple Pay, Google Pay and Samsung Pay
 
 Four ways to pay by tapping. The first two work today; the card and Tap to Pay need a provider account and approvals, listed below.
@@ -433,7 +442,31 @@ Four ways to pay by tapping. The first two work today; the card and Tap to Pay n
   - `CARD_ISSUING=true`, `STRIPE_SECRET_KEY` on an account with Issuing, `STRIPE_PUBLISHABLE_KEY`.
   - A webhook endpoint `/api/webhooks/stripe-issuing` for the `issuing_authorization.*`, `issuing_transaction.created`, `issuing_token.*` and `issuing_card.updated` events, with `STRIPE_ISSUING_WEBHOOK_SECRET`.
   - In Stripe, turn on real-time authorisations for that endpoint and fund the Issuing balance.
-- **Availability:** Stripe Issuing serves businesses in the US, UK and EU. For cards in Kenya, a local card issuer (BIN sponsor) plugs in where Stripe is today (`cards.provider`).
+- **Availability:** Stripe Issuing serves businesses in the US, UK and EU. For Kenya and the rest of Africa, use Bitnob (below).
+
+**Card issuers** (`CARD_ISSUING`):
+
+| Setting | Who issues the card | How it's paid for |
+| --- | --- | --- |
+| `stripe` (or `true`) | Stripe Issuing (US, UK, EU businesses) | Spends straight from the wallet; Aurex approves each payment in real time |
+| `bitnob` | Bitnob: prepaid USD Visa or Mastercard cards for customers in Africa | The customer loads the card from their wallet and can move money back |
+| `sandbox` | Aurex itself, with test cards (test-money servers only) | Spends straight from the test wallet; "Try a card payment" runs the same checks |
+
+- **Test cards** (`CARD_ISSUING=sandbox`):
+  - `install.sh` turns them on for a server running on test money (`PAYMENT_RAILS=sandbox`), so the apps' Card tab works there.
+  - The number is in the well-known 4242 test range, passes the card-number check, and can't be used in real shops.
+  - No identity check is needed by default (`CARD_MIN_KYC_LEVEL`, default 0 for test cards).
+  - They're refused on a server with real payment methods.
+- **Bitnob** (`CARD_ISSUING=bitnob`, for Kenya and the rest of Africa):
+  - **Setup:** `BITNOB_CLIENT_ID`, `BITNOB_CLIENT_SECRET` and `BITNOB_WEBHOOK_SECRET` (Bitnob dashboard → Settings → Webhooks) from a Bitnob business account with card issuing turned on. Point the webhook at `/api/webhooks/bitnob`. Optionally set `BITNOB_CARD_BRAND=mastercard` (default `visa`). Sandbox and live share `https://api.bitnob.com`; the credentials pick which.
+  - **Applying:** the customer needs a verified identity (`CARD_MIN_KYC_LEVEL`, default 2). Their verified name, date of birth, ID number and ID photos go to Bitnob's own cardholder check. The customer also answers its questions (occupation, work, income, expected monthly spending) and chooses how much to load to start ($2 to $2,500).
+  - **Loading and moving back:** "Load card" moves money from the wallet onto the card (`card_load`: wallet → `card_funding`). "Move to wallet" brings it back (the card keeps at least $1, Bitnob's rule). Loads count toward the customer's limits.
+  - **Spending:** Bitnob's webhooks report authorisations, settlements, refunds and declines. After each, Aurex checks the card's balance with Bitnob and moves what was spent from `card_funding` to `card_settlement`. A check every 6 hours catches anything a webhook missed.
+  - **Fees:** Bitnob charges $1 per card and the larger of $1 or 1% per load. They're passed on to the customer as Aurex fees unless `CARD_ISSUER_FEES=false`.
+  - **Phone wallets:** cards are issued with contactless on, so they can be added to Apple Pay or Google Pay. Every time a card is added, the customer gets a security alert.
+  - **Card details:** they come from Bitnob for the cardholder's eyes only. They're passed through and never stored or logged, but they do cross Aurex's server, so plan for PCI DSS.
+  - **Before going live:** confirm in Bitnob's sandbox that it serves cardholders in your countries (its docs don't list them), and check its current fees. Then run a few real loads, purchases and refunds and compare the card balances in Bitnob's dashboard with Admin → system accounts (`card_funding`).
+  - **Other issuers:** Timon (the travel-money app) has no public card-issuing API; ask them for partner access if you want them as the issuer. Another issuer can be added the same way, in `server/src/services/cardIssuers/`.
 
 **4. Tap to Pay for businesses** (`TAP_TO_PAY`)
 - **What it does:** an approved business takes contactless cards and phones (Apple Pay, Google Pay, Samsung Pay) on its own phone: Payments → Take a card payment.
@@ -648,7 +681,8 @@ All endpoints are under `/api` and use JSON bodies. Mutations need the header `X
 | Wallet | `GET /payments/balances`, `GET /payments/activity`, `GET /payments/transfers`, `POST /payments/deposits`, `POST /payments/withdrawals` |
 | P2P | `POST /payments/send`, `GET/POST /payments/requests`, `POST /payments/requests/:id/{pay,decline,cancel}`, `POST /payments/requests/split` (equal shares from several people), `GET /payments/users/search` |
 | Notifications | `GET /account/push`, `POST /account/push/{enable,disable,reset,test}`, `PUT /account/push/prefs` |
-| Card | `GET /cards`, `POST /cards`, `POST /cards/:id/{freeze,unfreeze,cancel,key}`, `PUT /cards/:id/{limit,design}` |
+| Card | `GET /cards`, `GET /cards/occupations`, `POST /cards`, `POST /cards/:id/{freeze,unfreeze,cancel,key,load,unload,test-payment}`, `PUT /cards/:id/{limit,design}` |
+| AI for everyone (admin) | `GET /admin/ai-keys`, `PUT /admin/ai-keys/:provider`, `DELETE /admin/ai-keys/:provider` |
 | Tap to Pay | `GET /tap`, `POST /tap/connection-token`, `POST /tap/payments`, `GET /tap/payments/:id`, `POST /tap/payments/:id/cancel` |
 | FX | `GET /payments/fx/quote`, `POST /payments/convert` |
 | AI | `GET /ai/providers`, `GET /ai/providers/:id/models`, `POST /ai/chat` (SSE), `POST /ai/compare` (SSE), `GET/DELETE /ai/conversations/:id` |

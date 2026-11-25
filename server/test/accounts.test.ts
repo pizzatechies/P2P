@@ -97,6 +97,9 @@ describe("identity verification and limits", () => {
     expect((await A.put("/api/account/verification/1", { ...identity, dateOfBirth: "2012-01-01" })).body.error.message).toMatch(/18 or older/);
     expect((await A.put("/api/account/verification/1", { ...identity, idExpiry: "2020-01-01" })).body.error.message).toMatch(/expired/);
     expect((await A.put("/api/account/verification/2", {})).body.error.code).toBe("identity_first");
+    // The expiry date isn't asked for any more: details without one are accepted.
+    const { idExpiry: _expiry, ...withoutExpiry } = identity;
+    expect((await A.put("/api/account/verification/1", withoutExpiry)).status).toBe(200);
     const saved = await A.put("/api/account/verification/1", identity);
     expect(saved.status).toBe(200);
     expect(saved.body.identity.documents.map((d: { kind: string }) => d.kind)).toEqual(["id_front", "id_back", "selfie"]);

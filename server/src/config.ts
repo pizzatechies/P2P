@@ -128,11 +128,27 @@ const EnvSchema = z.object({
   /** The same for Flutterwave Standard (Apple Pay and Google Pay must be enabled on your Flutterwave account). */
   FLUTTERWAVE_WALLETS: z.string().default(""),
   /**
-   * Aurex cards: virtual debit cards on Stripe Issuing that spend from the customer's Aurex wallet, and
-   * can be added to Apple Wallet, Google Wallet and Samsung Wallet. Needs STRIPE_SECRET_KEY on an account
-   * with Issuing, STRIPE_ISSUING_WEBHOOK_SECRET and STRIPE_PUBLISHABLE_KEY.
+   * Aurex cards: virtual debit cards that spend from the customer's Aurex wallet.
+   * - "stripe" (or "true"): Stripe Issuing, for Apple Wallet, Google Wallet and Samsung Wallet. Needs
+   *   STRIPE_SECRET_KEY on an account with Issuing, STRIPE_ISSUING_WEBHOOK_SECRET and STRIPE_PUBLISHABLE_KEY.
+   * - "bitnob": Bitnob, for cardholders in Africa: prepaid USD Visa or Mastercard cards that the customer
+   *   loads from their wallet. Needs BITNOB_CLIENT_ID, BITNOB_CLIENT_SECRET and BITNOB_WEBHOOK_SECRET.
+   * - "sandbox": test cards on a test-money server (every payment method is the sandbox). Customers get a
+   *   card, its details and test payments that go through the same approvals; nothing can be spent in shops.
    */
-  CARD_ISSUING: bool.default(false),
+  CARD_ISSUING: z.enum(["true", "false", "1", "0", "yes", "no", "", "stripe", "sandbox", "bitnob"]).default("false"),
+  /** Bitnob card issuing: sandbox and live share this URL; the credentials pick the environment. */
+  BITNOB_BASE_URL: z.string().url().default("https://api.bitnob.com"),
+  BITNOB_CLIENT_ID: optionalString,
+  BITNOB_CLIENT_SECRET: optionalString,
+  /** The webhook signing secret from Bitnob's dashboard (Settings → Webhooks), not the API secret. */
+  BITNOB_WEBHOOK_SECRET: optionalString,
+  BITNOB_CARD_BRAND: z.enum(["visa", "mastercard"]).default("visa"),
+  /**
+   * Pass Bitnob's card fees on to the customer: $1 for a new card, and the larger of $1 or 1% each time
+   * money is loaded onto it (Bitnob's published fees; it charges them to your Bitnob balance).
+   */
+  CARD_ISSUER_FEES: bool.default(true),
   /** Signing secret of the webhook endpoint /api/webhooks/stripe-issuing (real-time authorisations). */
   STRIPE_ISSUING_WEBHOOK_SECRET: optionalString,
   /** Publishable key, so the app can show card numbers in Stripe's secure fields (never on Aurex's servers). */
@@ -141,8 +157,8 @@ const EnvSchema = z.object({
   STRIPE_API_VERSION: z.string().default("2025-03-31.basil"),
   /** The cards' currency (your Issuing balance's currency): card payments are taken from this wallet. */
   CARD_CURRENCY: z.string().length(3).default("USD"),
-  /** Identity verification level needed for a card (2 = fully verified). */
-  CARD_MIN_KYC_LEVEL: z.coerce.number().int().min(0).max(2).default(2),
+  /** Identity verification level needed for a card (2 = fully verified). Default 2, or 0 for sandbox cards. */
+  CARD_MIN_KYC_LEVEL: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(2).optional()),
   /**
    * Show Stripe's "Add to Apple Wallet / Google Wallet" buttons (push provisioning). Only after Stripe,
    * Apple and Google have approved your card programme for it; until then customers add the card by hand.
@@ -428,6 +444,9 @@ export interface Config extends Env {
   requireEmailVerification: boolean;
   emailFrom: string;
   liveCountries: Set<string>;
+  /** Who issues Aurex cards (CARD_ISSUING), or null when cards are off. */
+  cardIssuer: "stripe" | "sandbox" | "bitnob" | null;
+  cardMinKycLevel: number;
   cryptoData: "coinbase" | "simulated";
   stockDirectory: "nasdaq" | "builtin";
 }
@@ -473,8 +492,20 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
   if (env.TAP_TO_PAY && (!env.STRIPE_SECRET_KEY || !env.STRIPE_TERMINAL_LOCATION)) {
     throw new Error("TAP_TO_PAY is on but STRIPE_SECRET_KEY or STRIPE_TERMINAL_LOCATION is not set.");
   }
-  if (env.CARD_ISSUING && !env.STRIPE_SECRET_KEY) {
+  const cardIssuer =
+    env.CARD_ISSUING === "sandbox" || env.CARD_ISSUING === "bitnob" ? env.CARD_ISSUING : ["true", "1", "yes", "stripe"].includes(env.CARD_ISSUING) ? "stripe" : null;
+  if (cardIssuer === "bitnob" && (!env.BITNOB_CLIENT_ID || !env.BITNOB_CLIENT_SECRET || !env.BITNOB_WEBHOOK_SECRET)) {
+    throw new Error("CARD_ISSUING=bitnob needs BITNOB_CLIENT_ID, BITNOB_CLIENT_SECRET and BITNOB_WEBHOOK_SECRET.");
+  }
+  if (cardIssuer === "bitnob" && env.CARD_CURRENCY.toUpperCase() !== "USD") {
+    throw new Error("Bitnob cards are in US dollars: set CARD_CURRENCY=USD.");
+  }
+  if (cardIssuer === "stripe" && !env.STRIPE_SECRET_KEY) {
     throw new Error("CARD_ISSUING is on but STRIPE_SECRET_KEY is not set.");
+  }
+  // Test cards spend wallet money into a pretend shop, so they're only for servers that hold test money.
+  if (cardIssuer === "sandbox" && rails.some((r) => r !== "sandbox")) {
+    throw new Error("CARD_ISSUING=sandbox is only for test-money servers (PAYMENT_RAILS=sandbox). Use CARD_ISSUING=stripe with real payment methods.");
   }
   if (rails.includes("flutterwave") && !env.FLUTTERWAVE_SECRET_KEY) {
     throw new Error("PAYMENT_RAILS includes 'flutterwave' but FLUTTERWAVE_SECRET_KEY is not set.");
@@ -533,6 +564,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
         .map((m) => m.trim())
         .filter(Boolean),
     ),
+    cardIssuer,
+    cardMinKycLevel: env.CARD_MIN_KYC_LEVEL ?? (cardIssuer === "sandbox" ? 0 : 2),
     previousMasterKeys: list(env.MASTER_KEY_PREVIOUS).map((k) => createHash("sha256").update(k).digest()),
     allowedOrigins: new Set([new URL(env.APP_URL).origin, ...list(env.ALLOWED_ORIGINS).map((o) => new URL(o).origin)]),
     // Kept as written: "capacitor://localhost" has no standard origin, so URL() can't normalise it.

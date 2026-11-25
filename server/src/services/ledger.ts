@@ -20,8 +20,9 @@ import { assertCurrency } from "../lib/money.js";
  *   fx        - the house side of currency conversions.
  *   card_holds      - card payments approved but not yet settled (held from the customer's wallet).
  *   card_settlement - card payments settled with the card issuer (paid out of the operator's issuing balance).
+ *   card_funding    - money customers have loaded onto prepaid cards (Bitnob): the total of those cards' balances.
  */
-export type SystemAccountCode = "external" | "clearing" | "fees" | "fx" | "card_holds" | "card_settlement";
+export type SystemAccountCode = "external" | "clearing" | "fees" | "fx" | "card_holds" | "card_settlement" | "card_funding";
 
 export interface Posting {
   accountId: string;

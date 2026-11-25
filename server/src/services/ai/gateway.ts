@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { Ctx } from "../../context.js";
 import { badRequest, unprocessable } from "../../lib/errors.js";
-import { getUserKey } from "../keys.js";
+import { getServerKey, getUserKey } from "../keys.js";
 import { assertFreeModel, chargeFreeRequest } from "./allowance.js";
 import { listAnthropicModels, streamAnthropic, structuredAnthropic } from "./anthropic.js";
 import { streamDemo } from "./demo.js";
@@ -21,7 +21,7 @@ function ollamaBase(url: string) {
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
-/** Works out which credentials to use: the user's own key first, then the server-wide key. */
+/** Works out which credentials to use: the user's own key first, then the server-wide key (set in the app, or in .env). */
 export function tryResolve(ctx: Ctx, userId: string, providerId: string): ResolvedProvider | null {
   const provider = getProvider(providerId);
   if (!provider) throw badRequest(`Unknown AI provider "${providerId}"`);
@@ -32,7 +32,7 @@ export function tryResolve(ctx: Ctx, userId: string, providerId: string): Resolv
   }
   const userKey = getUserKey(ctx, userId, provider.id);
   if (userKey) return { provider, apiKey: userKey.secret, baseUrl: provider.baseUrl, source: "user" };
-  const serverKey = provider.envKey ? (ctx.config[provider.envKey] as string | undefined) : undefined;
+  const serverKey = getServerKey(ctx, provider.id) ?? (provider.envKey ? (ctx.config[provider.envKey] as string | undefined) : undefined);
   if (serverKey) return { provider, apiKey: serverKey, baseUrl: provider.baseUrl, source: "server" };
   return null;
 }

@@ -35,7 +35,8 @@ export interface PersonDetails {
   idType: "passport" | "national_id" | "drivers_license";
   idNumber: string;
   idCountry: string;
-  idExpiry: string;
+  /** Only from older app versions; the expiry date is no longer asked for. */
+  idExpiry?: string;
   phone: string;
   consentAt: string;
 }
@@ -250,7 +251,7 @@ export function personInviteView(ctx: Ctx, token: string, lookup: PeopleLookup) 
 export function savePersonDetails(ctx: Ctx, token: string, lookup: PeopleLookup, input: Omit<PersonDetails, "consentAt"> & { consent: boolean }) {
   const { check } = open(ctx, token, lookup);
   if (!input.consent) throw badRequest("Please agree to the identity check to continue");
-  if (Date.parse(input.idExpiry) <= Date.now()) throw badRequest("This ID has expired");
+  if (input.idExpiry && Date.parse(input.idExpiry) <= Date.now()) throw badRequest("This ID has expired");
   const { consent: _consent, ...rest } = input;
   const data: PersonDetails = { ...rest, idNumber: rest.idNumber.trim(), consentAt: nowIso() };
   run(ctx.db, "UPDATE business_person_checks SET data_enc = ?, updated_at = ? WHERE id = ?", encryptSecret(JSON.stringify(data), ctx.config.masterKey), nowIso(), check.id);

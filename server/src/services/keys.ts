@@ -49,3 +49,43 @@ export function listUserKeys(ctx: Ctx, userId: string) {
     userId,
   ).map((r) => ({ provider: r.provider, hint: r.key_hint, createdAt: r.created_at }));
 }
+
+/**
+ * Keys that serve everyone on the server's free AI allowance, set by an admin in the app (Admin → AI for
+ * everyone). They take the place of the same provider's key in .env, so AI can be switched on without
+ * touching the server.
+ */
+export function saveServerKey(ctx: Ctx, provider: string, secret: string, adminId: string) {
+  run(
+    ctx.db,
+    `INSERT INTO server_api_keys (provider, key_enc, key_hint, set_by, created_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (provider) DO UPDATE SET key_enc = excluded.key_enc, key_hint = excluded.key_hint, set_by = excluded.set_by, created_at = excluded.created_at`,
+    provider,
+    encryptSecret(secret, ctx.config.masterKey),
+    secret.length > 8 ? secret.slice(-4) : "••••",
+    adminId,
+    nowIso(),
+  );
+}
+
+export function getServerKey(ctx: Ctx, provider: string): string | null {
+  const row = one<{ key_enc: string }>(ctx.db, "SELECT key_enc FROM server_api_keys WHERE provider = ?", provider);
+  if (!row) return null;
+  try {
+    return decryptSecret(row.key_enc, ctx.config.masterKey);
+  } catch {
+    return null;
+  }
+}
+
+export function deleteServerKey(ctx: Ctx, provider: string) {
+  run(ctx.db, "DELETE FROM server_api_keys WHERE provider = ?", provider);
+}
+
+export function listServerKeys(ctx: Ctx) {
+  return all<{ provider: string; key_hint: string; created_at: string }>(ctx.db, "SELECT provider, key_hint, created_at FROM server_api_keys ORDER BY provider").map((r) => ({
+    provider: r.provider,
+    hint: r.key_hint,
+    createdAt: r.created_at,
+  }));
+}

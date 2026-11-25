@@ -115,6 +115,13 @@ export async function openCheckout(url: string) {
   await Browser.open({ url, presentationStyle: "popover" });
 }
 
+/** Opens a provider's secure https page: the browser sheet in the apps, a new tab on the web. */
+export async function openExternal(url: string) {
+  if (!/^https:\/\//i.test(url)) return;
+  if (isNative) await openCheckout(url);
+  else window.open(url, "_blank", "noopener,noreferrer");
+}
+
 /** Which wallet this device can pay with on a hosted checkout page. */
 export function deviceWallet(): "apple_pay" | "google_pay" | null {
   if (platform === "ios") return "apple_pay";

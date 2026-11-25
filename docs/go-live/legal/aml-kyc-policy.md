@@ -49,7 +49,7 @@ It is reviewed yearly and before launching new products or countries. **[TO DO]*
 | Level | What's collected and checked | Default limits (USD per payment / per 24 h) |
 |---|---|---|
 | 0 | Verified email address | 200 / 500 |
-| 1 | Legal name, date of birth, nationality, phone, residential address, ID type, number and expiry; ID front (and back unless a passport); selfie | 2,000 / 5,000 |
+| 1 | Legal name, date of birth, nationality, phone, residential address, ID type and number; ID front (and back unless a passport); selfie | 2,000 / 5,000 |
 | 2 | Level 1 plus proof of address and source of funds | 10,000 / 25,000 |
 
 How each level is checked:
@@ -112,7 +112,7 @@ EDD means source of funds and wealth, senior-management approval, and closer mon
 
 - **Re-screening [SYSTEM]:** customers are re-screened whenever the sanctions lists change.
 - **Refreshing details [SYSTEM]:**
-  - **When:** verified customers update their identity details when their ID expires, or every `KYC_REFRESH_YEARS` (3 by default). For confirmed PEPs and customers with an escalated case, it's every `KYC_REFRESH_HIGH_RISK_YEARS` (1 by default).
+  - **When:** verified customers update their identity details every `KYC_REFRESH_YEARS` (3 by default). For confirmed PEPs and customers with an escalated case, it's every `KYC_REFRESH_HIGH_RISK_YEARS` (1 by default).
   - **Reminders:** they're reminded 30 days before and on the due date.
   - **If they don't:** after the grace period (`KYC_REFRESH_GRACE_DAYS`, 30), sending and withdrawing pause until they've re-verified with fresh photos.
 - **[TO DO]** Confirm these intervals in the risk assessment.

@@ -260,6 +260,7 @@ export function AdminPage() {
         </div>
       )}
       {!overview.error && <SecurityChecklist />}
+      {!overview.error && <AiKeysCard />}
       {!overview.error && <BetaCard />}
       {!overview.error && <PayoutQueue onChange={overview.reload} />}
       {!overview.error && <ComplianceQueue onChange={overview.reload} />}
@@ -1013,6 +1014,79 @@ interface BetaData {
 
 const MODE_TEXT = { open: "Open: anyone can sign up", invite: "Invite-only: others join the waitlist", closed: "Closed: no new sign-ups" } as const;
 
+interface AiKeys {
+  freeDailyRequests: number;
+  providers: { id: string; name: string; keyUrl: string | null; source: "app" | "env" | null; hint: string | null; setAt: string | null }[];
+}
+
+/** AI for everyone: a provider key that serves every customer on the free daily allowance. */
+function AiKeysCard() {
+  const toast = useToast();
+  const data = useLoad(() => api.get<AiKeys>("/api/admin/ai-keys"));
+  const [provider, setProvider] = useState("gemini");
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const d = data.data;
+  const current = d?.providers.find((p) => p.id === provider);
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      data.setData(await api.put<AiKeys>(`/api/admin/ai-keys/${provider}`, { apiKey: key.trim() }));
+      setKey("");
+      toast(`${current?.name ?? "AI"} is on for everyone`);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(id: string, name: string) {
+    try {
+      data.setData(await api.del<AiKeys>(`/api/admin/ai-keys/${id}`));
+      toast(`${name} key removed`);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
+  if (!d) return null;
+  const on = d.providers.filter((p) => p.source);
+  return (
+    <div className="card stack" style={{ gap: 12 }}>
+      <div className="card-head"><h2>AI for everyone</h2><span className={`pill ${on.length ? "good" : ""}`}>{on.length ? `${on.length} on` : "Off"}</span></div>
+      <p className="muted small" style={{ margin: 0 }}>
+        Add a key from an AI provider and every customer gets AI chat, the AI trading analyst and Autopilot on it, {d.freeDailyRequests ? `up to ${d.freeDailyRequests} requests a day each` : "with no daily cap"}. Google Gemini and Groq have free tiers. Keys are checked with the provider, then stored encrypted.
+      </p>
+      {on.length > 0 && (
+        <div className="list">
+          {on.map((p) => (
+            <div className="list-item" key={p.id}>
+              <div className="grow"><strong>{p.name}</strong> <span className="faint small">{p.source === "app" ? `key ending ${p.hint}` : "set on the server (.env)"}</span></div>
+              {p.source === "app" && <button className="btn ghost sm" onClick={() => void remove(p.id, p.name)}>Remove</button>}
+            </div>
+          ))}
+        </div>
+      )}
+      <form className="stack" style={{ gap: 8 }} onSubmit={save}>
+        <div className="grid grid-2">
+          <Field label="Provider">
+            <select id="ai-key-provider" className="input" value={provider} onChange={(e) => setProvider(e.target.value)}>
+              {d.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+          <Field label="API key">
+            <input id="ai-key-value" className="input mono" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={current?.source === "app" ? "Replace the saved key" : "Paste the key"} />
+          </Field>
+        </div>
+        <div className="row wrap" style={{ gap: 10, alignItems: "center" }}>
+          <button className="btn sm" disabled={busy || key.trim().length < 8}>{busy ? "Checking the key…" : "Save for everyone"}</button>
+          {current?.keyUrl && <a className="small" href={current.keyUrl} target="_blank" rel="noopener noreferrer">Get a {current.name} key</a>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
 /** Who can sign up: invite codes and the waitlist (REGISTRATION_MODE, MAX_USERS). */
 function BetaCard() {
   const toast = useToast();
@@ -1156,7 +1230,7 @@ interface PersonReview {
   invitedAt: string | null;
   submittedAt: string | null;
   linkExpired: boolean;
-  details: { idType: string; idNumber: string; idCountry: string; idExpiry: string; dateOfBirth: string; nationality: string } | null;
+  details: { idType: string; idNumber: string; idCountry: string; idExpiry?: string; dateOfBirth: string; nationality: string } | null;
   documents: { id: string; kind: string; label: string }[];
   government: { status?: string; reason?: string | null; message?: string | null; nameMatch?: number | null; dobMatch?: boolean | null; recordName?: string | null } | null;
 }
@@ -1186,7 +1260,7 @@ function PersonCheckLine({ person, check, applicantLevel }: { person: { dateOfBi
   return (
     <div>
       <span className="good">Identity sent {check.submittedAt ? timeAgo(check.submittedAt) : ""}</span>
-      {d && <span className="faint"> · {d.idType.replace("_", " ")} {d.idNumber} ({d.idCountry}, expires {d.idExpiry}){d.dateOfBirth !== person.dateOfBirth ? <span className="bad"> · born {d.dateOfBirth} on their ID, not {person.dateOfBirth}</span> : null}</span>}
+      {d && <span className="faint"> · {d.idType.replace("_", " ")} {d.idNumber} ({d.idCountry}{d.idExpiry ? `, expires ${d.idExpiry}` : ""}){d.dateOfBirth !== person.dateOfBirth ? <span className="bad"> · born {d.dateOfBirth} on their ID, not {person.dateOfBirth}</span> : null}</span>}
       {check.documents.map((doc) => (
         <a key={doc.id} href={`/api/admin/businesses/person-documents/${doc.id}`} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 8 }}>{doc.label}</a>
       ))}

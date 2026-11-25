@@ -61,7 +61,7 @@ export function VerifyPersonPage() {
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [f, setF] = useState({ dateOfBirth: "", nationality: "", idType: "national_id", idNumber: "", idCountry: "", idExpiry: "", phone: "", consent: false });
+  const [f, setF] = useState({ dateOfBirth: "", nationality: "", idType: "national_id", idNumber: "", idCountry: "", phone: "", consent: false });
   const [editing, setEditing] = useState(true);
   const base = `/api/public/kyb-person/${encodeURIComponent(token)}`;
 
@@ -159,7 +159,6 @@ export function VerifyPersonPage() {
                 </Field>
                 <Field label="ID number"><input className="input" required minLength={3} maxLength={40} value={f.idNumber} onChange={(e) => setF({ ...f, idNumber: e.target.value })} /></Field>
                 <CountryField label="Country that issued it" value={f.idCountry} onChange={(v) => setF({ ...f, idCountry: v })} />
-                <Field label="Expiry date"><input className="input" type="date" required value={f.idExpiry} onChange={(e) => setF({ ...f, idExpiry: e.target.value })} /></Field>
                 <Field label="Phone (optional)" hint="International format, e.g. +254 712 345 678"><input className="input" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
               </div>
               <label className="row small" style={{ gap: 8, alignItems: "flex-start" }}>

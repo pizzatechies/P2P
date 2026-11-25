@@ -38,7 +38,7 @@ export async function dailyOutflowUsdMinor(ctx: Ctx, userId: string) {
      JOIN accounts a ON a.id = e.account_id
      JOIN journals j ON j.id = e.journal_id
      WHERE a.owner_type = 'user' AND a.user_id = ? AND e.amount < 0
-       AND j.kind IN ('transfer', 'withdrawal', 'card_hold', 'card_capture') AND e.created_at >= ?
+       AND j.kind IN ('transfer', 'withdrawal', 'card_hold', 'card_capture', 'card_load') AND e.created_at >= ?
      GROUP BY e.currency`,
     userId,
     since,
@@ -1016,8 +1016,8 @@ export function listActivity(ctx: Ctx, userId: string, opts: { limit?: number; b
       const outgoing = meta.from === userId;
       direction = outgoing ? "out" : "in";
       counterparty = profile(String(outgoing ? meta.to : meta.from));
-    } else if (j.kind === "deposit" || j.kind === "withdrawal_reversal" || j.kind === "card_release" || j.kind === "card_refund" || j.kind === "card_sale") direction = "in";
-    else if (j.kind === "withdrawal" || j.kind === "card_hold" || j.kind === "card_capture") direction = "out";
+    } else if (j.kind === "deposit" || j.kind === "withdrawal_reversal" || j.kind === "card_release" || j.kind === "card_refund" || j.kind === "card_sale" || j.kind === "card_unload") direction = "in";
+    else if (j.kind === "withdrawal" || j.kind === "card_hold" || j.kind === "card_capture" || j.kind === "card_load") direction = "out";
 
     let status = "completed";
     if (typeof meta.externalId === "string" && j.kind === "withdrawal") {

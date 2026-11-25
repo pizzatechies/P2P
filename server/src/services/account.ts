@@ -257,6 +257,8 @@ export function closureBlockers(ctx: Ctx, userId: string) {
   if (funded.length) {
     blockers.push(`Withdraw or send your remaining money first: ${funded.map((a) => `${a.currency} ${fromMinor(a.balance, a.currency)}`).join(", ")}.`);
   }
+  const onCard = one<{ n: number }>(ctx.db, "SELECT COALESCE(SUM(balance), 0) AS n FROM cards WHERE user_id = ? AND status <> 'canceled' AND balance > 0", userId)!.n;
+  if (onCard > 0) blockers.push("Move the money on your Aurex card back to your wallet first (Card → Move to wallet).");
   const pending = one<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM external_transfers WHERE user_id = ? AND status IN ('pending','processing')", userId)!.n;
   if (pending) blockers.push(`Wait for ${pending} deposit${pending === 1 ? "" : "s"} or withdrawal${pending === 1 ? "" : "s"} in progress to finish.`);
   const broker = one<{ broker: string }>(ctx.db, "SELECT broker FROM trading_accounts WHERE user_id = ?", userId)?.broker;

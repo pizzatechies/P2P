@@ -42,7 +42,7 @@ export function publicRoutes(ctx: Ctx) {
         idType: z.enum(["passport", "national_id", "drivers_license"]),
         idNumber: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9 -]+$/, "Letters, numbers, spaces and dashes only"),
         idCountry: iso2,
-        idExpiry: isoDate,
+        idExpiry: isoDate.optional(),
         phone: z.string().trim().regex(/^\+?[0-9][0-9 ()-]{6,19}$/, "Use an international number, e.g. +254 712 345 678").or(z.literal("")).default(""),
         consent: z.boolean(),
       }),

@@ -370,7 +370,6 @@ function IdentityForm({ initial, onSaved }: { initial: Record<string, unknown> |
     idType: str(initial?.idType) || "passport",
     idNumber: str(initial?.idNumber),
     idCountry: str(initial?.idCountry),
-    idExpiry: str(initial?.idExpiry),
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -390,7 +389,6 @@ function IdentityForm({ initial, onSaved }: { initial: Record<string, unknown> |
         idType: f.idType,
         idNumber: f.idNumber,
         idCountry: f.idCountry,
-        idExpiry: f.idExpiry,
       });
       onSaved();
     } catch (err) {
@@ -428,7 +426,6 @@ function IdentityForm({ initial, onSaved }: { initial: Record<string, unknown> |
         </Field>
         <Field label="Document number"><input className="input" value={f.idNumber} onChange={(e) => set("idNumber")(e.target.value)} required /></Field>
         <CountrySelect label="Issuing country" value={f.idCountry} onChange={set("idCountry")} />
-        <Field label="Expiry date"><input className="input" type="date" value={f.idExpiry} onChange={(e) => set("idExpiry")(e.target.value)} required /></Field>
       </div>
       <ErrorText error={error} />
       <button className="btn secondary" disabled={busy}>{busy ? "Saving…" : "Save details"}</button>

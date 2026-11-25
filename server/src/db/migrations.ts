@@ -1075,4 +1075,60 @@ export const migrations: Migration[] = [
   `
   ALTER TABLE cards ADD COLUMN design TEXT NOT NULL DEFAULT 'gold' CHECK (design IN ('gold','black'));
   `,
+  // 36: Prepaid cards (Bitnob): the card's own balance, applications waiting for the issuer's checks,
+  // money moving on and off cards, and the issuer's webhook events (each handled once).
+  `
+  ALTER TABLE cards ADD COLUMN balance INTEGER;
+  CREATE TABLE card_applications (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id),
+    provider         TEXT NOT NULL,
+    customer_id      TEXT,
+    status           TEXT NOT NULL CHECK (status IN ('kyc_pending','creating','failed','done')),
+    reason           TEXT,
+    link             TEXT,
+    name             TEXT NOT NULL,
+    design           TEXT NOT NULL DEFAULT 'gold',
+    currency         TEXT NOT NULL,
+    opening          INTEGER NOT NULL DEFAULT 0,
+    fee              INTEGER NOT NULL DEFAULT 0,
+    journal_id       TEXT,
+    provider_card_id TEXT,
+    card_id          TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  CREATE INDEX card_applications_user ON card_applications(user_id, created_at);
+  CREATE INDEX card_applications_customer ON card_applications(customer_id);
+  CREATE TABLE card_fundings (
+    id         TEXT PRIMARY KEY,
+    card_id    TEXT NOT NULL REFERENCES cards(id),
+    user_id    TEXT NOT NULL,
+    type       TEXT NOT NULL CHECK (type IN ('fund','withdraw')),
+    currency   TEXT NOT NULL,
+    amount     INTEGER NOT NULL CHECK (amount > 0),
+    fee        INTEGER NOT NULL DEFAULT 0,
+    status     TEXT NOT NULL CHECK (status IN ('pending','completed','failed')),
+    reason     TEXT,
+    journal_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX card_fundings_card ON card_fundings(card_id, status);
+  CREATE TABLE card_issuer_events (
+    id          TEXT PRIMARY KEY,
+    type        TEXT NOT NULL,
+    received_at TEXT NOT NULL
+  );
+  `,
+  // 37: AI keys for everyone, set by an admin in the app (encrypted), used before the .env keys.
+  `
+  CREATE TABLE server_api_keys (
+    provider   TEXT PRIMARY KEY,
+    key_enc    TEXT NOT NULL,
+    key_hint   TEXT NOT NULL,
+    set_by     TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  `,
 ];

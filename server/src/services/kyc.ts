@@ -61,7 +61,8 @@ export const Level1Schema = z.object({
   idType: z.enum(["passport", "national_id", "drivers_license"]),
   idNumber: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9 -]+$/, "Letters, numbers, spaces and dashes only"),
   idCountry: iso2,
-  idExpiry: isoDate.refine((d) => Date.parse(d) > Date.now(), "This ID has expired"),
+  // No longer asked for. Older app versions still send it; if they do, it has to be in the future.
+  idExpiry: isoDate.refine((d) => Date.parse(d) > Date.now(), "This ID has expired").optional(),
 });
 export type Level1Data = z.infer<typeof Level1Schema>;
 
@@ -167,6 +168,31 @@ function latest(ctx: Ctx, userId: string, level: 1 | 2) {
 }
 
 const decryptData = <T>(ctx: Ctx, row: SubmissionRow | undefined) => (row?.data_enc ? (JSON.parse(decryptSecret(row.data_enc, ctx.config.masterKey)) as T) : null);
+
+/**
+ * A customer's approved identity details and ID photos, for a card issuer that runs its own check on
+ * the cardholder (only ever sent to that issuer, when the customer applies for a card).
+ */
+export function approvedIdentity(ctx: Ctx, userId: string) {
+  const l1 = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE user_id = ? AND level = 1 AND status = 'approved' ORDER BY reviewed_at DESC, rowid DESC LIMIT 1", userId);
+  const l2 = one<SubmissionRow>(ctx.db, "SELECT * FROM kyc_submissions WHERE user_id = ? AND level = 2 AND status = 'approved' ORDER BY reviewed_at DESC, rowid DESC LIMIT 1", userId);
+  const data = decryptData<Level1Data>(ctx, l1);
+  if (!data) return null;
+  const docs = latestDocs(ctx, userId);
+  const photo = (kind: DocKind) => {
+    const d = docs.get(kind);
+    if (!d || !/^image\/(jpeg|png)$/.test(d.mime)) return null;
+    const { mime, bytes } = readDocument(ctx, d.id, userId);
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  };
+  return {
+    ...data,
+    occupation: decryptData<{ occupation?: string }>(ctx, l2)?.occupation ?? null,
+    expectedMonthlyUsd: decryptData<{ expectedMonthlyUsd?: string }>(ctx, l2)?.expectedMonthlyUsd ?? null,
+    idFront: photo("id_front"),
+    idBack: photo("id_back"),
+  };
+}
 
 function latestDocs(ctx: Ctx, userId: string) {
   const rows = all<Omit<DocRow, "data_enc">>(ctx.db, "SELECT id, user_id, kind, mime, size, sha256, created_at FROM kyc_documents WHERE user_id = ? ORDER BY created_at DESC, rowid DESC", userId);
