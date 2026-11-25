@@ -1023,7 +1023,7 @@ interface AiKeys {
 function AiKeysCard() {
   const toast = useToast();
   const data = useLoad(() => api.get<AiKeys>("/api/admin/ai-keys"));
-  const [provider, setProvider] = useState("gemini");
+  const [provider, setProvider] = useState("google");
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const d = data.data;
