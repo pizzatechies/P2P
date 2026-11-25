@@ -4,7 +4,7 @@ import { initials } from "../format";
 import { useInstall, useOnline } from "../pwa";
 import { useAuth, useTheme, type Theme } from "../state";
 import { Icon } from "./icons";
-import { Logo } from "./Logo";
+import { BrandName, Logo, MAKER } from "./Logo";
 
 interface NavItem {
   to: string;
@@ -81,7 +81,7 @@ export function Layout() {
       <aside className="sidebar">
         <NavLink to="/app" className="brand" aria-label="Aurex home">
           <Logo size={30} />
-          <span>Aurex</span>
+          <BrandName />
         </NavLink>
         <nav style={{ display: "contents" }} aria-label="Main">
           {[...NAV, ...extra].map(({ to, label, icon: I, end, top }) => (
@@ -155,6 +155,7 @@ export function Layout() {
                 <span>Sign out</span>
               </button>
             </div>
+            <p className="app-menu-maker">Aurex by {MAKER}</p>
           </nav>
         )}
       </aside>

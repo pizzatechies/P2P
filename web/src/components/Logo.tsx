@@ -23,3 +23,16 @@ export function Logo({ size = 30, title }: { size?: number; title?: string }) {
     </svg>
   );
 }
+
+/** The company behind Aurex. */
+export const MAKER = "Pizza Technologies";
+
+/** "Aurex" with "by Pizza Technologies" under it, for beside the mark. */
+export function BrandName() {
+  return (
+    <span className="brand-name">
+      <span>Aurex</span>
+      <span className="brand-by">by {MAKER}</span>
+    </span>
+  );
+}

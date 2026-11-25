@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { Icon } from "../components/icons";
 import { ThemeButton } from "../components/Layout";
-import { Logo } from "../components/Logo";
+import { BrandName, Logo } from "../components/Logo";
 import { useAuth } from "../state";
 import { AppLink } from "./common";
 
@@ -75,7 +75,7 @@ export function SiteLayout() {
             <div className="footer-brand">
               <Link to="/" className="brand" style={{ padding: 0 }}>
                 <Logo size={30} />
-                <span>Aurex</span>
+                <BrandName />
               </Link>
               <p className="muted small">Money, AI and markets in one place. Send and request money worldwide, use every major AI model, and trade with an AI analyst that waits for your go-ahead.</p>
             </div>

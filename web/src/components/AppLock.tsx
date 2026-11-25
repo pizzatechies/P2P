@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { lockOnStart, onLockRequired, unlockWithBiometrics, biometryAvailable, setAuthToken } from "../native";
-import { Logo } from "./Logo";
+import { BrandName, Logo } from "./Logo";
 
 /**
  * In the apps, with "Unlock with Face ID / fingerprint" switched on: the app asks for biometrics (or
@@ -36,7 +36,7 @@ export function AppLock({ children }: { children: ReactNode }) {
       <div className="auth-card" style={{ textAlign: "center" }}>
         <div className="brand" style={{ justifyContent: "center", padding: "0 0 18px" }}>
           <Logo size={34} />
-          <span>Aurex</span>
+          <BrandName />
         </div>
         <div className="card" style={{ padding: 26 }}>
           <h1 style={{ fontSize: 22 }}>Aurex is locked</h1>

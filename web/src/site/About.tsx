@@ -12,7 +12,7 @@ export function AboutPage() {
           <div>
             <span className="eyebrow">About Aurex</span>
             <h1>The gold standard for <span className="gold-text">everyday money.</span></h1>
-            <p className="lead">Aurex brings together what people increasingly do with money online (paying each other, getting answers from AI, and learning to invest) in one calm, trustworthy place.</p>
+            <p className="lead">Aurex is made by Pizza Technologies. It brings together what people increasingly do with money online (paying each other, getting answers from AI, and learning to invest) in one calm, trustworthy place.</p>
           </div>
         </div>
       </section>

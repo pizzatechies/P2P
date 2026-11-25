@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { Logo } from "../components/Logo";
+import { Logo, MAKER } from "../components/Logo";
 import { Empty, ErrorText } from "../components/ui";
 import { money } from "../format";
 import { useLoad } from "../state";
@@ -58,7 +58,7 @@ export function StatementPage() {
               <Logo size={36} />
               <div>
                 <div style={{ fontWeight: 700, fontSize: 18 }}>Aurex</div>
-                <div className="faint xs">Account statement</div>
+                <div className="faint xs">by {MAKER} · Account statement</div>
               </div>
             </div>
             <div style={{ textAlign: "right" }}>

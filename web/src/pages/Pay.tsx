@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { Logo } from "../components/Logo";
+import { BrandName, Logo } from "../components/Logo";
 import { SendDialog } from "../components/money";
 import { payLink, ShareButtons } from "../components/share";
 import { initials, money } from "../format";
@@ -40,7 +40,7 @@ export function PayPage() {
       <div className="auth-card">
         <Link to="/" className="brand" style={{ justifyContent: "center", padding: "0 0 18px" }}>
           <Logo size={30} />
-          <span>Aurex</span>
+          <BrandName />
         </Link>
         <div className="card pay-card">
           {missing ? (

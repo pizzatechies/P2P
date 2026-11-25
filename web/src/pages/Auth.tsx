@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../api";
-import { Logo } from "../components/Logo";
+import { BrandName, Logo } from "../components/Logo";
 import { ErrorText, Field } from "../components/ui";
 import { CurrencySelect } from "../components/ui";
 import { useAuth, useLoad } from "../state";
@@ -21,7 +21,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
       <div className="auth-card">
         <Link to="/" className="brand" style={{ justifyContent: "center", padding: "0 0 18px" }}>
           <Logo size={30} />
-          <span>Aurex</span>
+          <BrandName />
         </Link>
         <div className="card" style={{ padding: 26 }}>
           <h1 style={{ fontSize: 22 }}>{title}</h1>
